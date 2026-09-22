@@ -126,6 +126,33 @@ usually a missing `.env`, not a bug. CalDAV needs no client credentials.
 - `src/renderer/src/main.tsx` inspects the URL hash: `#mini` → `MiniApp` (frameless always-on-top tray companion), otherwise `App`.
 - `App.tsx` is a single large `useState` container that owns view routing (Day/Week/Month/Year/List), the global keyboard-shortcut listener, and all modal state. There is no state-management library — follow the existing `useState` pattern unless deliberately introducing one.
 - All five calendar views are hand-built React components (no third-party calendar library). Drag/drop and edge-resize math lives in `src/renderer/src/dnd/` with pure functions unit-tested separately.
+- **Year view is one year per page**, like month and week - navigation moves a year at a time
+  (header arrows, wheel, or swipe on Android). It used to be an infinite scroller with a moving
+  window of year blocks, scroll-anchor compensation and an active-year probe, which is why
+  `App.tsx` had a `yearSpan` state widening the event query to whatever span was mounted; all of
+  that is gone and the query is the plain `visibleRange`. Twelve months divide the page with
+  `.gc-year-grid` (3 columns on a phone, 4 normally, 6 when short and wide, 6 when very wide), and
+  each month always lays out six week rows so the cards stay the same height. Two rules in
+  `index.css` earn their keep: a `min-height` per card, without which short windows shrank the
+  rows below the height of the digits and the numbers overlapped into an unreadable stack; and
+  `.gc-year-lunar`, which shows the lunar date only when the viewport is both wide *and* tall
+  enough for a second line in each cell. `align-content: safe center` banks the page's leftover
+  height at the edges instead of dealing it out between the rows; the `safe` keyword is what keeps
+  January reachable when a short window makes the grid overflow.
+- **Wheel navigation is shared by Day, Week, Month and Year** — the decision lives in
+  `src/renderer/src/lib/wheel-navigation.ts`, the DOM side in `hooks/use-wheel-navigation.ts`.
+  Two rules: a step is taken on the *first* event of a gesture, never on a throttle (one trackpad
+  flick emits events for a second or more, and throttling stepped several periods per flick), and
+  a scroller passed to the hook keeps the gesture until it is against the edge being pushed —
+  events it consumes still advance the gesture clock, so reaching that edge and stepping never
+  happen on one flick. **Where it is attached is the design:** Month and Year take it on their
+  root, Day and Week only on their header band, because the hour grid's wheel means "scroll the 24
+  hours" and nothing else. Inside that band the all-day strip is the scroller — it is capped
+  (`ALL_DAY_MAX_LANES`, and `max-h` in Day) and scrolls its hidden lanes before the wheel moves on
+  to the next day or week. Its scrollbar is hidden in `.gc-allday-scroll` on purpose: the strip's
+  day columns are aligned with the hour grid below, and a scrollbar inside it would take its width
+  out of the last column. List view is left out of all of this: scrolling it already extends its
+  loaded range.
 - All user-visible strings go through i18next; keys in `src/renderer/src/i18n/index.ts`, `vi` + `en` kept in sync — `tests/i18n-parity.test.ts` fails on a key present in one locale only, or on an empty string.
 - The main process has its own tiny flat catalog, `src/main/i18n-main.ts` (`mt('tray.quit')`), for the strings the renderer can't own: tray menu, notifications, sync status, OAuth callback pages. It reads the persisted locale from the DB and is kept in sync by `IPC_CHANNELS.APP.SET_LOCALE`. Add main-side strings there, not to the i18next catalog.
 - Styling is Tailwind 4 utilities over CSS variables in `src/renderer/src/styles/index.css`, mapped to theme tokens (`app`, `surface`, `sidebar`, `hairline`, `primary`, `muted`, `today`, `accent`, `hover`). It is a deliberate Notion/Notion-Calendar look — see `docs/design-guidelines.md` for the palette and the hard rules (corner radius strictly `<5px` outside the `ToggleSwitch` track; soft pastel event colours, no saturated gradients). Dark is the default theme.
