@@ -130,6 +130,28 @@ usually a missing `.env`, not a bug. CalDAV needs no client credentials.
 - The main process has its own tiny flat catalog, `src/main/i18n-main.ts` (`mt('tray.quit')`), for the strings the renderer can't own: tray menu, notifications, sync status, OAuth callback pages. It reads the persisted locale from the DB and is kept in sync by `IPC_CHANNELS.APP.SET_LOCALE`. Add main-side strings there, not to the i18next catalog.
 - Styling is Tailwind 4 utilities over CSS variables in `src/renderer/src/styles/index.css`, mapped to theme tokens (`app`, `surface`, `sidebar`, `hairline`, `primary`, `muted`, `today`, `accent`, `hover`). It is a deliberate Notion/Notion-Calendar look — see `docs/design-guidelines.md` for the palette and the hard rules (corner radius strictly `<5px` outside the `ToggleSwitch` track; soft pastel event colours, no saturated gradients). Dark is the default theme.
 
+### Keyboard navigation and focus
+
+The whole calendar is drivable without a mouse, and the maths for that is pure and shared:
+
+- `src/shared/keyboard-nav.ts` owns *where* the cursor lands — `sortForCursor` (day by day,
+  all-day first, matching draw order), `stepCursor` (enters an unselected list at the anchor date,
+  not at the oldest loaded row, and stops rather than wraps at the ends), `nudgedRange` and
+  `resizedRange`. `App.tsx` owns *when*: plain arrows walk the cursor, Shift+arrows move the event
+  under it, Alt+arrows stretch its end. All-day spans are floating dates read in UTC; timed ones
+  shift in local time so "one day later" survives a DST change.
+- Views take `selectedOccurrenceId` and draw `.is-key-selected`; `EventPill` / `TimedEventBlock`
+  also set `data-selected-occurrence` so `App.tsx` can scroll the cursor into view. Month view
+  swaps a selected event into its visible rows instead of growing the cell, so the `+N more` count
+  is unchanged.
+- Every picker (`CustomSelect`, `DatePicker`, `TimePicker`) portals its list to the end of `<body>`,
+  so the list can never be tabbed into. Focus stays on the trigger and a **roving index** moves
+  instead — `src/renderer/src/lib/roving-index.ts` (`nextEnabledIndex` / `firstEnabledIndex`,
+  skipping disabled entries and wrapping), with `.gc-option-active` for the highlight. Tested
+  without a DOM in `tests/roving-index.test.ts`.
+- `.gc-focus-ring` is drawn on `:focus-visible` only (and `:has(:focus-visible)` for composite
+  fields), so a mouse click never leaves a ring behind. Don't reintroduce `:focus`.
+
 ### Testing notes
 
 - Main-process tests run in plain Node. `vitest.config.ts` aliases `electron` → `tests/stubs/electron.ts`, so tests do not need the Electron binary. Extend that stub if a test needs another Electron API.
