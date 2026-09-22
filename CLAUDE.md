@@ -10,7 +10,7 @@ npm run build          # production bundle -> out/{main,preload,renderer}
 npm run lint           # eslint . (flat config in eslint.config.mjs)
 npm run lint:fix       # eslint . --fix
 npm run clean          # remove out/, dist/, *.tsbuildinfo
-npm run typecheck      # typecheck:node && typecheck:web (run this before commit)
+npm run typecheck      # typecheck:node && :web && :android (run this before commit)
 npm run typecheck:node # tsc -p tsconfig.node.json  (main + preload + shared + most tests)
 npm run typecheck:web  # tsc -p tsconfig.web.json   (renderer + shared + renderer-touching tests)
 npm run test           # vitest run (whole suite)
@@ -19,6 +19,61 @@ npm run pack:linux     # build + electron-builder AppImage x64
 npm run app:install    # pack:linux + install AppImage & .desktop entry for this user
 npm run app:update     # alias of app:install
 ```
+
+Android target:
+
+```bash
+npm run build:android          # vite build (vite.android.config.ts) + cap sync android
+npm run pack:android           # build:android + gradlew assembleDebug -> app-debug.apk
+npm run pack:android:release   # ...assembleRelease, R8-minified (~8 MB); signs if configured
+npm run android:run            # build + cap run android (needs a device/emulator on adb)
+npm run android:open           # open the Gradle project in Android Studio
+npm run android:configure-oauth # derive the Google redirect scheme -> android/gradle.properties
+npm run typecheck:android      # tsc -p tsconfig.android.json (part of `npm run typecheck`)
+cd android && ./gradlew :app:testDebugUnitTest   # JVM tests for the Kotlin bridge
+```
+
+The APK lands at `android/app/build/outputs/apk/debug/app-debug.apk` (~12 MB; the R8-minified
+release is ~8 MB).
+
+Release signing is opt-in and never committed: set `xrncalStoreFile`, `xrncalStorePassword`,
+`xrncalKeyAlias` and `xrncalKeyPassword` in `~/.gradle/gradle.properties` (or the matching
+`XRNCAL_*` environment variables) and `assembleRelease` signs; leave them unset and it still
+builds, just unsigned, so CI keeps working. R8 is on for release, which matters for the bridge:
+`XrncalNative` is only ever called from JavaScript, so R8 sees no callers and would rename or
+strip every `@JavascriptInterface` method - `android/app/proguard-rules.pro` keeps it, along with
+requery's native SQLite classes and Capacitor's reflectively-resolved plugins. A release build
+that starts but shows an empty calendar is the signature of those rules going missing. The Gradle
+build provisions its own JDK 21 (Capacitor 7 requires it) through the foojay resolver in
+`android/settings.gradle`, so the daemon's JVM does not matter; `android/build.gradle` pins
+every compile task to that toolchain. `android/` is generated - it is in `.eslintignore`
+territory (see `eslint.config.mjs`) and `npx cap add android` can recreate it.
+
+### Running it on an emulator
+
+```bash
+export ANDROID_HOME=~/.local/opt/android-sdk
+$ANDROID_HOME/emulator/emulator -avd xrncal_test -no-window -no-audio -no-boot-anim \
+  -gpu swiftshader_indirect &          # headless; drop -no-window for a screen
+adb wait-for-device && adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+adb shell am start -n app.xrncal.android/.MainActivity
+adb exec-out screencap -p > /tmp/shot.png
+adb logcat -d | grep Capacitor/Console      # the renderer's console
+```
+
+Two things bite when setting the SDK up from the command line:
+
+- **`sdkmanager` may fail to unzip its downloads** ("Error on ZipFile unknown archive") while a
+  plain `curl` of the same artifact succeeds. When that happens, fetch the zip from
+  `dl.google.com/android/repository/`, unpack it into `$ANDROID_HOME`, and hand-write the
+  `package.xml` the package would have contained - `avdmanager` discovers packages through
+  those manifests, not by scanning directories, and reports "emulator package must be
+  installed!" without one.
+- The **WebView is remotely debuggable in a debug build**, which is far more useful than
+  screenshots for diagnosing layout: `adb forward tcp:9222
+  localabstract:webview_devtools_remote_$(adb shell pidof app.xrncal.android)`, then drive
+  `Runtime.evaluate` over the socket listed at `http://localhost:9222/json`. Several of the
+  layout bugs found during the port were only diagnosable by reading computed styles this way.
 
 `app:install` (`scripts/install-linux-app.sh`) builds the AppImage, drops it at
 `~/Applications/xrncal.AppImage`, and writes `~/.local/share/applications/xrncal.desktop`.
@@ -38,7 +93,10 @@ ESLint 9 (flat config, `eslint.config.mjs`) is the lint gate; **there is no form
 
 ## Architecture
 
-Electron desktop calendar (Windows + Linux). Local-first: **SQLite is the single source of truth for the UI**; provider sync engines only push/pull against it.
+Calendar for Windows, Linux (Electron) and Android (Capacitor), from one codebase. Local-first:
+**SQLite is the single source of truth for the UI**; provider sync engines only push/pull against it.
+Unless a section says otherwise it describes both targets — see "Android (Capacitor)" below for the
+handful of places they diverge.
 
 ### Four layers, strict import boundaries
 
@@ -48,6 +106,7 @@ Electron desktop calendar (Windows + Linux). Local-first: **SQLite is the single
 | `src/preload` | `contextBridge`, `ipcRenderer`, `src/shared` | exposes `window.xrncal` |
 | `src/renderer` | React, DOM, `src/shared`, `window.xrncal` | never imports `src/main` |
 | `src/shared` | pure TS only | no Node, no DOM, no Electron — used by both sides |
+| `src/android` | Capacitor, `src/main`, `src/renderer`, `src/shared` | host shims + mobile chrome; the only platform-specific tree |
 
 IPC is the only bridge between renderer and main. See `docs/code-standards.md` for the full conventions (naming, i18n, security rules); the points below are the ones that span multiple files.
 
@@ -99,6 +158,128 @@ context, not from props.
 Conflict strategy is last-write-wins guarded by an `If-Match` precondition on every update/delete (Google and CalDAV use `If-Match`, Graph uses `if-match`). A 412 sets `has_conflict = 1`, and conflicted rows are excluded from the push set until `resolveConflict()` clears them — otherwise they retry and re-fail every poll.
 
 **Occurrence exceptions sync too.** A `this`-scoped edit or delete writes an `event_exceptions` row with `dirty = 1`. CalDAV re-PUTs the whole series (master + `RECURRENCE-ID` components) since a series is one resource; Google and Graph resolve the occurrence through the master's `/instances` collection and PATCH (or DELETE) that instance, caching the resolved id in `provider_instance_id`. A pull never overwrites a row that is still `dirty`. Per-provider engines: `google-sync-engine.ts`, `microsoft-sync-engine.ts`, `caldav-sync-engine.ts`.
+
+### Android (Capacitor)
+
+Android runs **the same code**, not a port of it. There is one renderer, one set of repos and
+one set of sync engines; `vite.android.config.ts` compiles `src/main/**` straight into the web
+bundle and swaps only the modules that genuinely cannot work in a WebView. Adding a feature
+means touching the shared code, not two implementations.
+
+The swap is done by the `androidModuleSwap` Vite plugin rather than `resolve.alias`, because
+aliases match import *specifiers* and the same module is reached as both `./sqlite-driver` and
+`../db/sqlite-driver`. The plugin resolves first and matches on the resulting file path, so
+every import route is covered. `MODULE_SWAPS` in that config is the authoritative list:
+
+| Desktop module | Android replacement | Why |
+|---|---|---|
+| `db/sqlite-driver.ts` | `android/platform/sqlite-driver.ts` | `node:sqlite` -> Android SQLite over the JS bridge |
+| `secure-store.ts` | `android/platform/secure-store.ts` | `safeStorage` -> Keystore AES-GCM |
+| `oauth/google-oauth.ts` | `android/oauth/google-oauth.ts` | loopback listener -> custom-scheme redirect, PKCE-only |
+| `oauth/microsoft-oauth.ts` | `android/oauth/microsoft-oauth.ts` | same |
+| `load-credentials.ts` | `android/platform/load-credentials.ts` | no `.env` on disk -> build-time inlined client ids |
+| `db/backup.ts` | `android/platform/backup.ts` | still `VACUUM INTO`, then the share sheet |
+| `notifications/reminder-scheduler.ts` | `android/platform/reminder-scheduler.ts` | polling -> OS-scheduled alarms |
+
+Everything else is shimmed at the module level: `electron` resolves to
+`src/android/shims/electron.ts`, which reimplements `ipcMain`/`ipcRenderer` as one in-process
+map. That is what lets `src/main/ipc/*.ts` **and `src/preload/index.ts` run unchanged** - `invoke`
+looks the channel up in the map `handle` wrote to. `node:fs`, `node:path` and friends have
+shims beside it; `Buffer` and `process` are installed by `src/android/boot/polyfills.ts`, which
+the entry point imports first so the globals exist before any main-process module body runs.
+
+**The synchronous bridge is the load-bearing decision.** `ISqliteDatabase` is synchronous and
+every repo is written against it, so Capacitor's promise-based plugin bridge is unusable here -
+it would mean rewriting the repos, the IPC handlers and the three sync engines. Instead
+`XrncalNative` is injected with `WebView.addJavascriptInterface`, whose methods *are*
+synchronous from JS. Native code lives in `android/app/src/main/java/app/xrncal/android/`;
+`src/android/native/bridge.ts` is the typed TS side of that contract. Change one, change both.
+Methods return a JSON envelope because an exception thrown out of an `@JavascriptInterface`
+method reaches JS as a bare `null`.
+
+Two consequences worth knowing:
+
+- SQLite is **requery's bundled build** (`com.github.requery:sqlite-android`, via JitPack - the
+  original jcenter artifact is gone), not the platform's. Migration 002 creates an `fts5` virtual
+  table and FTS5 is not reliably compiled into Android's own SQLite at minSdk 23.
+- `node:sqlite`'s `exec()` takes a whole script; Android's `execSQL` takes one statement. The
+  migrations are multi-statement blobs containing trigger bodies with their own `;`, so
+  `SqlStatementSplitter.kt` cuts them up. It is the riskiest new logic in the port and is covered
+  by `SqlStatementSplitterTest.kt`, which asserts against migration 002 verbatim.
+- **Never re-enable WAL with `SQLiteDatabase.enableWriteAheadLogging()`.** It switches Android to
+  a multi-connection pool, and a read issued inside an explicit `SAVEPOINT` is then served by a
+  different connection that cannot see the transaction's own uncommitted rows. `createEvent`
+  inserts and reads back, and `importIcs` wraps that in a transaction - the symptom was an
+  import reporting "0 imported, 2 errors" while both rows had in fact been written.
+  `XrncalNative.dbOpen` sets `PRAGMA journal_mode = WAL` directly instead, which keeps the WAL
+  journal while leaving the pool at one connection. `tests/android-sqlite-bridge.test.ts` states
+  the read-your-writes contract.
+- A statement that returns rows must not go to `execSQL`, which rejects it with "Queries can be
+  performed using SQLiteDatabase query or rawQuery methods only". `PRAGMA journal_mode = …`
+  returns a row, which is why `execOne()` routes PRAGMA/SELECT/WITH through `rawQuery`.
+
+**Window insets.** `env(safe-area-inset-*)` is *not* enough on Android: in a WebView those
+values describe display cutouts only and read 0 for the status bar and the gesture pill. The app
+draws edge to edge, so `MainActivity` reads the real insets and pushes them in as
+`--xrncal-inset-*` (see `src/android/platform/window-insets.ts`); `mobile.css` uses those with
+env() only as a fallback. The same applies horizontally - a punch-hole that sits in the status
+bar in portrait moves to a screen *edge* in landscape. The soft keyboard is handled the same way
+(`--xrncal-keyboard`) because the WebView is deliberately not resized on focus.
+
+**Touch gestures.** The views drive direct manipulation with APIs a phone does not produce:
+moving an event uses HTML5 drag-and-drop (`draggable`, `dataTransfer`), which touch input never
+fires, and drag-to-create a time range uses `mousedown`/`mousemove`, of which touch produces only
+a down/up pair. Both were completely dead on device. `src/android/ui/touch-drag.ts` synthesises
+what those hooks expect - real `DragEvent`s carrying a real `DataTransfer`, and real
+`MouseEvent`s - from a long press, so the shared hooks and their unit-tested geometry are
+untouched and React cannot tell a finger was involved. The gesture has to be long-press-then-drag
+because an immediate drag is indistinguishable from a scroll, and the week grid scrolls in both
+axes. The engine also auto-scrolls near an edge, which is not optional: only three days are
+visible on a phone, so reaching Friday depends on it. Resize is left alone - it already uses
+pointer events, which touch does fire - but its handles need `touch-action: none` (or the browser
+claims the gesture and cancels the pointer stream) and a grown hit area, both in `mobile.css`.
+Resize handles are excluded from drag arming so resting a finger on one cannot turn a resize into
+a move.
+
+**Back button.** `src/android/ui/use-back-button.ts` dismisses one layer per press and minimises
+at the root. It closes dialogs by dispatching `Escape` rather than hunting for a close button,
+because `App.tsx` already owns a full Escape hierarchy - reusing it means Back and Escape can
+never disagree and a new dialog gets Back support for free. Which layers count is read from the
+DOM, not from React state: `isOverlayOpen` reaches the shell through a ref that `App` refreshes as
+it renders, and `App` re-rendering does not re-render the shell around it, so that value can lag.
+Note `EventEditorDialog` renders either a centred modal (`.gc-dialog`) *or* a side panel
+(`.gc-slide-left` / `.gc-slide-right`, chosen by where the drag started) - matching only one of
+them made Back leave the app with the editor still on screen. Also expect the first Back to
+dismiss the soft keyboard rather than the sheet; that is Android, not a bug.
+
+**UI.** `App.tsx` is shared. It grew three optional render props - `renderHeader`,
+`renderSidebar`, `renderBottomBar` - each handed an `AppShellContext`. Desktop passes none and
+behaves exactly as before; `src/android/ui/MobileApp.tsx` passes mobile chrome (bottom nav,
+drawer, compact header). Forking the 1,400-line container was the alternative and it would have
+drifted within a release. Styling differences live in `src/android/ui/mobile.css`, layered over
+the shared stylesheet - the Notion look and the `docs/design-guidelines.md` rules are unchanged.
+
+Two traps worth knowing before changing the mobile shell:
+
+- **Tailwind's source detection follows the build root.** The Android build sets Vite's root to
+  `src/android`, which silently narrowed Tailwind v4's scan to that directory and dropped every
+  utility used only under `src/renderer` - the stylesheet shipped at 28 kB instead of 63 kB, and
+  the app *almost* looked right while `min-h-0` and `h-screen` were simply missing, so the shell's
+  flex layout collapsed. `src/renderer/src/styles/index.css` now declares both trees with
+  `@source`. Add a new source tree there, not to a config file.
+- **Overlays must be portalled.** App renders the sidebar inside its content row, which carries
+  `z-10` and is a flex item, so it opens a stacking context; anything inside it paints below the
+  bottom nav's `z-30` no matter how large its own z-index. `CalendarDrawer` renders through
+  `createPortal` to `document.body` for that reason.
+
+**OAuth differs by necessity.** Android flows are public PKCE clients and never send a client
+secret; a secret inside an APK is readable by anyone who unzips it. `vite.android.config.ts`
+inlines client *ids* through an explicit `define` allowlist rather than `envPrefix`, because any
+prefix covering `GOOGLE_OAUTH_CLIENT_ID` also covers `..._SECRET`. Google's redirect scheme is
+the reversed client id, so it is per-install: `npm run android:configure-oauth` derives it and
+writes `googleRedirectScheme` into `android/gradle.properties`, where the manifest placeholder
+picks it up. Microsoft's is the fixed `app.xrncal.android://oauth2callback`. Both are declared as
+intent filters in `AndroidManifest.xml` - change the scheme in TS and you must change it there.
 
 ### Renaming and the user profile
 
@@ -187,9 +368,14 @@ The whole calendar is drivable without a mouse, and the maths for that is pure a
 
 ## Gotchas
 
-- **Path aliases are declared twice** — in `electron.vite.config.ts` (per-bundle, for the build) and in each `tsconfig.*.json` + `vitest.config.ts` (for typecheck/tests). Adding an alias means updating both.
+- **Path aliases (`@main`, `@preload`, `@renderer`, `@shared`) are declared twice** — in `electron.vite.config.ts` (per-bundle, for the build) and in each `tsconfig.*.json` + `vitest.config.ts` (for typecheck/tests); `vite.android.config.ts` declares its own set again. Adding an alias means updating all of them.
 - **Electron binary install can silently fail** — if `node_modules/electron/dist/` contains only `locales/`, `npm run dev` and packaging break (tests still pass via the stub). Recover with:
   ```bash
   cd node_modules/electron/dist && unzip -q ~/.cache/electron/*/electron-v*-linux-x64.zip && printf electron > ../path.txt
   ```
-- Docs live in `docs/`: `urd.md`, `project-overview-pdr.md`, `system-architecture.md`, `codebase-summary.md`, `design-guidelines.md`, `code-standards.md`, `deployment-guide.md`, `project-roadmap.md`. The README is in Vietnamese and is user-facing, not a spec — parts of it (local tasks) describe a feature that migration `005` dropped. Implementation history is in `docs/journals/`; plans in `plans/<timestamp>-<slug>/`. Commit messages follow `feat(scope): …` / `fix(scope): …`.
+- **The DB tests need a Node with `node:sqlite` built in** — it is flagged in 22.5 and unflagged
+  from 23.4 on, and `better-sqlite3` is not a declared dependency, so there is no fallback in a
+  fresh checkout. CI pins Node 24 for exactly this reason (`.github/workflows/ci.yml`, which also
+  sets `ELECTRON_SKIP_BINARY_DOWNLOAD=1` since the tests stub `electron`).
+- `.agents/skills/notion-ui-skills/SKILL.md` is a project skill holding the Notion design tokens (surface/text/border hexes, 4px grid) that `docs/design-guidelines.md` describes in prose.
+- Docs live in `docs/`: `urd.md`, `project-overview-pdr.md`, `system-architecture.md`, `codebase-summary.md`, `design-guidelines.md`, `code-standards.md`, `deployment-guide.md`, `project-roadmap.md`. `README.md` (English) and `README.vi.md` (Vietnamese) are user-facing and kept in step with each other, not specs. Implementation history is in `docs/journals/`; plans in `plans/<timestamp>-<slug>/`. Commit messages follow `feat(scope): …` / `fix(scope): …`.
