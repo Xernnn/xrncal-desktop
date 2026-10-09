@@ -34,6 +34,12 @@ xrncal.env
 *.sqlite-shm
 *.sqlite-wal
 
+# AI-assistant files: kept locally to guide work in this repo, not published
+CLAUDE.md
+.claude/
+.agents/
+skills-lock.json
+
 # Editor directories
 .vscode/*
 !.vscode/extensions.json
