@@ -270,5 +270,7 @@ describe('Database Repositories & Read-Only Protections', () => {
       '2026-10-19T09:00:00.000Z',
       '2026-10-26T09:00:00.000Z'
     ])
-  })
+    // The feed spends its calendar's whole allowance, which is ~2 s by design
+    // (bounded-rrule.ts) and took 4.9 s of Vitest's 5 s default in a full run.
+  }, 30_000)
 })

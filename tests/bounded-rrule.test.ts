@@ -171,6 +171,9 @@ describe('boundedBetween keeps the cost of a rule bounded', () => {
 describe('a calendar shares one allowance across its series', () => {
   const range = ['2026-10-01T00:00:00.000Z', '2026-10-31T23:59:59.999Z'] as const
   const dtstart = new Date('2026-01-01T09:00:00.000Z')
+  // Spending a whole calendar's allowance takes about 2 s here, by design; on
+  // a busy machine it came within a few percent of Vitest's 5 s default.
+  const WHOLE_ALLOWANCE_TIMEOUT_MS = 30_000
 
   it('stops spending once a feed of costly rules has used it up', () => {
     const budget = calendarExpansionBudget(...range)
@@ -180,7 +183,7 @@ describe('a calendar shares one allowance across its series', () => {
     }
     expect(budget.remaining).toBe(0)
     expect(allowance).toBeLessThanOrEqual(5_000_000)
-  })
+  }, WHOLE_ALLOWANCE_TIMEOUT_MS)
 
   it('holds far more ordinary series than anyone keeps in one calendar', () => {
     const budget = calendarExpansionBudget(...range)
