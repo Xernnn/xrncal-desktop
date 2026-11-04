@@ -87,7 +87,9 @@ SyncWorker: every 20 s while the window has focus, 5 min otherwise
   → Google, Graph, CalDAV and due subscriptions run concurrently, each with its own .catch
   → per calendar: replies (rsvp_pending) → dirty pushes → pull
       Google: incremental via syncToken
-      Graph:  changes since the last poll; a full listing every 10 min removes deleted events
+      Graph:  changes since the last poll; a full listing every 10 min removes deleted events;
+              a changed series (and every series each 6 h) is read for its changed and
+              cancelled occurrences
       CalDAV: skipped when the ctag is unchanged and nothing was pushed
   → SYNC.CHANGED to every window when rows changed
 ```
@@ -154,7 +156,7 @@ settings (key, value, updated_at)
 ```
 
 `sync_state.sync_token` holds whatever a calendar's engine uses to skip work:
-Google's syncToken, a CalDAV ctag, Graph's `{since, fullAt}`, or a hash of a
+Google's syncToken, a CalDAV ctag, Graph's `{since, fullAt, overridesPending, overridesAt}`, or a hash of a
 subscribed feed.
 
 ### Key indexes

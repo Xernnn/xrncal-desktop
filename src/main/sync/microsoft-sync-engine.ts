@@ -5,8 +5,11 @@ import {
   mapGraphEventToDomain,
   mapDomainEventToGraph,
   graphAttendeesToDomain,
+  graphOccurrenceOverrides,
+  type GraphSeriesOccurrences,
   type MicrosoftGraphApiEvent
 } from './microsoft-event-mapper'
+import { log } from '../log'
 import { AccountsRepo } from '../db/repos/accounts-repo'
 import { EventsRepo } from '../db/repos/events-repo'
 import { mergePulledReminders, parseRemindersJson, serializeReminders } from '@shared/reminders'
@@ -27,6 +30,20 @@ const MAX_SYNC_PAGES = 200
  */
 const FULL_LISTING_INTERVAL_MS = 10 * 60 * 1000
 
+/**
+ * A series' changed and cancelled occurrences are read from its master, one
+ * request per series (see `GraphSeriesOccurrences`). A series is read when a
+ * pull finds its master changed - Exchange keeps exceptions inside the master,
+ * so editing one changes it - and every series of a calendar is read again
+ * this often in case a change did not show on the master.
+ */
+const OVERRIDES_REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000
+/** Series read per poll; the rest wait for the next one, 20 s later. */
+const OVERRIDES_PER_POLL = 40
+const OVERRIDES_QUERY =
+  '$select=subject,body,start,end,isAllDay,location,originalStart,occurrenceId,exceptionOccurrences,cancelledOccurrences' +
+  '&$expand=exceptionOccurrences'
+
 /** Graph answers an invitation through one action per reply. */
 const RSVP_ACTION: Record<RsvpResponse, string> = {
   accepted: 'accept',
@@ -40,11 +57,17 @@ interface GraphPullState {
   since?: string
   /** When the calendar was last listed in full. */
   fullAt?: string
+  /** Series (local ids) whose occurrences are still to be read. */
+  overridesPending?: string[]
+  /** When every series of the calendar was last queued for that. */
+  overridesAt?: string
 }
 
 interface PageWalk {
   touched: number
   listedIds: Set<string>
+  /** Series masters the walk wrote: their occurrences may have changed. */
+  writtenSeries: string[]
   latestModified?: string
   /** False when the walk stopped at MAX_SYNC_PAGES rather than the last page. */
   complete: boolean
@@ -148,11 +171,13 @@ export class MicrosoftSyncEngine {
         skipUnchanged
       })
       if (changed) {
+        const overrides = await this.pullOccurrenceOverrides(calendarId, accessToken, state, changed.writtenSeries)
         this.savePullState(calendarId, {
           since: changed.latestModified ?? state.since,
-          fullAt: state.fullAt
+          fullAt: state.fullAt,
+          ...overrides.state
         })
-        return { pulledCount: changed.touched }
+        return { pulledCount: changed.touched + overrides.pulled }
       }
       // Graph refused the filter; a full listing still works.
     }
@@ -161,13 +186,81 @@ export class MicrosoftSyncEngine {
     let pulledCount = listing.touched
     // A listing cut short at MAX_SYNC_PAGES says nothing about the rest.
     if (listing.complete) pulledCount += this.pruneUnlisted(calendarId, listing.listedIds)
+    const overrides = await this.pullOccurrenceOverrides(calendarId, accessToken, state, listing.writtenSeries)
     this.savePullState(calendarId, {
       // An empty calendar has no server timestamp to start from, so the next poll
       // lists it in full again - cheap, and immune to this machine's clock.
       since: listing.latestModified,
-      fullAt: new Date().toISOString()
+      fullAt: new Date().toISOString(),
+      ...overrides.state
     })
-    return { pulledCount }
+    return { pulledCount: pulledCount + overrides.pulled }
+  }
+
+  /**
+   * Read the changed and cancelled occurrences of the series that need it -
+   * those a pull just wrote, those left over from the last poll, and every
+   * series each OVERRIDES_REFRESH_INTERVAL_MS - at most OVERRIDES_PER_POLL of
+   * them. A series that cannot be read now (the network, throttling) stays
+   * queued; one Graph refuses for good is dropped until the next refresh.
+   */
+  private async pullOccurrenceOverrides(
+    calendarId: string,
+    accessToken: string,
+    state: GraphPullState,
+    changedSeries: readonly string[]
+  ): Promise<{ pulled: number; state: Pick<GraphPullState, 'overridesPending' | 'overridesAt'> }> {
+    const pending = new Set([...(state.overridesPending ?? []), ...changedSeries])
+    let overridesAt = state.overridesAt
+    const lastAll = overridesAt ? Date.parse(overridesAt) : NaN
+    if (Number.isNaN(lastAll) || Date.now() - lastAll >= OVERRIDES_REFRESH_INTERVAL_MS) {
+      for (const id of this.eventsRepo.listSyncedSeriesIds(calendarId)) pending.add(id)
+      overridesAt = new Date().toISOString()
+    }
+
+    let pulled = 0
+    let read = 0
+    for (const masterId of [...pending]) {
+      if (read >= OVERRIDES_PER_POLL) break
+      const master = this.eventsRepo.getEventById(masterId)?.event
+      if (!master?.rrule) {
+        // Deleted, or no longer a series.
+        pending.delete(masterId)
+        continue
+      }
+      read++
+      let series: GraphSeriesOccurrences
+      try {
+        const res = await fetchWithTimeout(
+          `${GRAPH_BASE}/me/events/${encodeURIComponent(master.providerEventId || master.id)}?${OVERRIDES_QUERY}`,
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              Prefer: 'outlook.timezone="UTC", outlook.body-content-type="text"'
+            }
+          }
+        )
+        if (res.status === 404 || res.status === 410) {
+          // Gone from Outlook; the next full listing removes it here.
+          pending.delete(masterId)
+          continue
+        }
+        if (!res.ok) {
+          if (isRetryableStatus(res.status)) break
+          log('warn', `Outlook series occurrences could not be read: HTTP ${res.status}`)
+          pending.delete(masterId)
+          continue
+        }
+        series = await res.json()
+      } catch {
+        // The network: everything after this would fail the same way.
+        break
+      }
+      pulled += this.eventsRepo.applyPulledOverrides(masterId, graphOccurrenceOverrides(master, series))
+      pending.delete(masterId)
+    }
+
+    return { pulled, state: { overridesPending: [...pending], overridesAt } }
   }
 
   /**
@@ -184,7 +277,7 @@ export class MicrosoftSyncEngine {
     filtered: boolean,
     options: { selfEmail?: string; skipUnchanged: boolean }
   ): Promise<PageWalk | null> {
-    const walk: PageWalk = { touched: 0, listedIds: new Set(), complete: false }
+    const walk: PageWalk = { touched: 0, listedIds: new Set(), writtenSeries: [], complete: false }
     let nextUrl: string | undefined = firstUrl
     let pages = 0
 
@@ -207,6 +300,7 @@ export class MicrosoftSyncEngine {
       const page = this.applyPulledPage(calendarId, data, options)
       walk.touched += page.touched
       for (const id of page.listedIds) walk.listedIds.add(id)
+      walk.writtenSeries.push(...page.writtenSeries)
       if (page.latestModified && (!walk.latestModified || page.latestModified > walk.latestModified)) {
         walk.latestModified = page.latestModified
       }
@@ -269,9 +363,10 @@ export class MicrosoftSyncEngine {
     calendarId: string,
     data: any,
     { selfEmail, skipUnchanged }: { selfEmail?: string; skipUnchanged: boolean }
-  ): { touched: number; listedIds: string[]; latestModified?: string } {
+  ): { touched: number; listedIds: string[]; writtenSeries: string[]; latestModified?: string } {
     const items: MicrosoftGraphApiEvent[] = data.value || []
     const listedIds: string[] = []
+    const writtenSeries: string[] = []
     let latestModified: string | undefined
     let pulledCount = 0
 
@@ -421,12 +516,13 @@ export class MicrosoftSyncEngine {
           if (applied.changes > 0 && !stored?.rsvp_pending) {
             this.eventsRepo.replaceAttendees(localId, evt.attendees)
           }
+          if (applied.changes > 0 && evt.rrule) writtenSeries.push(localId)
           pulledCount++
         }
       }
     })()
 
-    return { touched: pulledCount, listedIds, latestModified }
+    return { touched: pulledCount, listedIds, writtenSeries, latestModified }
   }
 
   /**

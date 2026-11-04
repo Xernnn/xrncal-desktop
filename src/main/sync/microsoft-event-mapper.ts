@@ -8,6 +8,8 @@ import type {
   CreateEventInput
 } from '@shared/event-model'
 import { invitationSelf } from '@shared/event-model'
+import { expandOccurrences } from '@shared/expand-occurrences'
+import type { PulledOccurrenceOverride } from '../db/repos/events-repo'
 import { remindersForProvider, type EventReminder } from '@shared/reminders'
 import { ianaZoneFor, windowsZoneFor } from './graph-time-zones'
 import {
@@ -52,7 +54,25 @@ export interface MicrosoftGraphApiEvent {
   responseStatus?: { response?: string }
   /** The zone the organiser created it in; `start` is in UTC (the pull asks for it). */
   originalStartTimeZone?: string
+  /** An occurrence's or exception's start before it was moved, in UTC. */
+  originalStart?: string
+  /** `OID.<series id>.<yyyy-mm-dd>`: which occurrence of its series this is. */
+  occurrenceId?: string
 }
+
+/**
+ * What a series master read by id says about its occurrences. Graph v1.0 has
+ * these only on a GET of the master itself, never in a listing - which holds
+ * series masters and single events, so an occurrence moved or cancelled in
+ * Outlook never reached the app at all.
+ */
+export interface GraphSeriesOccurrences {
+  /** Changed occurrences, as events of their own (cancelled ones are not here). */
+  exceptionOccurrences?: MicrosoftGraphApiEvent[]
+  /** The occurrenceIds of cancelled occurrences. */
+  cancelledOccurrences?: string[]
+}
+
 
 interface GraphEmailAddress {
   address?: string
@@ -213,7 +233,8 @@ export function mapGraphEventToDomain(
       isException: true,
       exception: {
         masterEventId: gEvent.seriesMasterId,
-        originalStartUtc: startInfo.iso,
+        // Where the occurrence was, not where it was moved to.
+        originalStartUtc: utcInstant(gEvent.originalStart) ?? startInfo.iso,
         isCancelled,
         title: gEvent.subject || 'Untitled Event',
         notes,
@@ -254,6 +275,91 @@ export function mapGraphEventToDomain(
       isDeleted: isCancelled
     }
   }
+}
+
+/** A Graph DateTimeOffset ("2020-05-21T11:30:00Z", up to seven fractional
+ *  digits) as the app's UTC ISO string, or undefined. */
+function utcInstant(value: string | undefined): string | undefined {
+  if (!value) return undefined
+  const at = DateTime.fromISO(value, { zone: 'utc' })
+  return at.isValid ? at.toUTC().toISO()! : undefined
+}
+
+/** The date an occurrenceId (`OID.<series id>.<yyyy-mm-dd>`) names. */
+export function occurrenceIdDate(occurrenceId: string | undefined): string | undefined {
+  return occurrenceId?.match(/\.(\d{4}-\d{2}-\d{2})$/)?.[1]
+}
+
+/**
+ * The start an occurrence of `master` had before any change - the key an
+ * exception is stored under, which has to be the very string the app's own
+ * expansion gives that occurrence, or the exception would not replace it.
+ *
+ * A changed occurrence carries `originalStart`. A cancelled one is only an
+ * occurrenceId, which names a date, so the occurrence is found by expanding the
+ * series around it: the one falling on that date in the series' own zone (else
+ * in UTC - the documentation does not say which calendar the date is read in).
+ * All-day occurrences are floating dates, parked at UTC midnight.
+ */
+function originalStartOf(master: CalendarEvent, date: string | undefined, originalStart: string | undefined): string | undefined {
+  if (master.allDay) {
+    const day = date ?? utcInstant(originalStart)?.slice(0, 10)
+    return day ? `${day}T00:00:00.000Z` : undefined
+  }
+  const exact = utcInstant(originalStart)
+  if (exact) return exact
+  if (!date) return undefined
+
+  const day = DateTime.fromISO(date, { zone: 'utc' })
+  if (!day.isValid) return undefined
+  const around = expandOccurrences(
+    { ...master, exdate: undefined, isDeleted: false },
+    [],
+    day.minus({ days: 1 }).toISO()!,
+    day.plus({ days: 2 }).toISO()!
+  )
+  const falling = (zone: string) =>
+    around.find((o) => DateTime.fromISO(o.originalStartUtc, { zone: 'utc' }).setZone(zone).toISODate() === date)
+  return (falling(master.tzid) ?? falling('utc'))?.originalStartUtc
+}
+
+/**
+ * A series' changed and cancelled occurrences, as read from its master
+ * (`GraphSeriesOccurrences`), in the form they are stored. One whose original
+ * start cannot be worked out is left out rather than guessed.
+ */
+export function graphOccurrenceOverrides(master: CalendarEvent, series: GraphSeriesOccurrences): PulledOccurrenceOverride[] {
+  const overrides = new Map<string, PulledOccurrenceOverride>()
+
+  for (const occurrenceId of series.cancelledOccurrences ?? []) {
+    const originalStartUtc = originalStartOf(master, occurrenceIdDate(occurrenceId), undefined)
+    if (originalStartUtc) overrides.set(originalStartUtc, { originalStartUtc, isCancelled: true })
+  }
+
+  for (const item of series.exceptionOccurrences ?? []) {
+    const originalStartUtc = originalStartOf(master, occurrenceIdDate(item.occurrenceId), item.originalStart)
+    if (!originalStartUtc) continue
+    const isAllDay = item.isAllDay ?? master.allDay
+    const startInfo = parseGraphDateTime(item.start, isAllDay)
+    const endInfo = parseGraphDateTime(item.end, isAllDay)
+    overrides.set(originalStartUtc, {
+      originalStartUtc,
+      isCancelled: false,
+      title: item.subject || master.title,
+      notes:
+        (item.body?.contentType?.toLowerCase() === 'text' ? item.body.content?.trim() : undefined) ||
+        item.bodyPreview ||
+        undefined,
+      location: item.location?.displayName || undefined,
+      dtStartUtc: startInfo.iso,
+      dtEndUtc: normaliseEnd(isAllDay, startInfo, endInfo),
+      tzid: master.tzid,
+      allDay: isAllDay,
+      providerInstanceId: item.id
+    })
+  }
+
+  return [...overrides.values()]
 }
 
 /**

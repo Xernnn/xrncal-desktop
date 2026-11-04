@@ -94,6 +94,21 @@ interface ExceptionRow {
   updated_at: string
 }
 
+/** One occurrence of a series as the provider has it, to store as an exception. */
+export interface PulledOccurrenceOverride {
+  originalStartUtc: string
+  isCancelled: boolean
+  title?: string
+  notes?: string
+  location?: string
+  dtStartUtc?: string
+  dtEndUtc?: string
+  tzid?: string
+  allDay?: boolean
+  /** The provider's id for the occurrence, which a push of an edit to it targets. */
+  providerInstanceId?: string
+}
+
 function mapRowToEvent(row: EventRow): CalendarEvent {
   return {
     providerEventId: row.provider_event_id ?? undefined,
@@ -716,6 +731,130 @@ export class EventsRepo {
     this.db
       .prepare('UPDATE event_exceptions SET dirty = 0 WHERE master_event_id = ? AND dirty = 1')
       .run(masterEventId)
+  }
+
+  /** The calendar's series that are on the provider (lunar masters are local). */
+  listSyncedSeriesIds(calendarId: string): string[] {
+    return this.db
+      .prepare(
+        `SELECT id FROM events
+         WHERE calendar_id = ? AND rrule IS NOT NULL AND is_deleted = 0 AND lunar_rule IS NULL
+           AND (etag IS NOT NULL OR provider_event_id IS NOT NULL)
+         ORDER BY dtstart_utc DESC`
+      )
+      .all<{ id: string }>(calendarId)
+      .map((row) => row.id)
+  }
+
+  /**
+   * Make a series' exceptions what the provider says they are: `overrides` is
+   * every changed and cancelled occurrence it has. An exception with an unsent
+   * edit here is left alone, and so is the whole series while the master has
+   * one. One the provider no longer has goes - except its colour, which only
+   * this app keeps (Graph has none): that stays, on an otherwise plain
+   * occurrence. Returns how many exceptions changed, so an unchanged series
+   * reads as nothing pulled.
+   */
+  applyPulledOverrides(masterEventId: string, overrides: readonly PulledOccurrenceOverride[], now = new Date().toISOString()): number {
+    const master = this.db
+      .prepare('SELECT dirty, has_conflict FROM events WHERE id = ?')
+      .get<{ dirty: number; has_conflict: number }>(masterEventId)
+    if (!master || master.dirty === 1 || master.has_conflict === 1) return 0
+
+    const existing = new Map(
+      this.db
+        .prepare('SELECT * FROM event_exceptions WHERE master_event_id = ?')
+        .all<ExceptionRow & { dirty: number; provider_instance_id: string | null }>(masterEventId)
+        .map((row) => [row.original_start_utc, row])
+    )
+    let changed = 0
+
+    this.db.transaction(() => {
+      for (const o of overrides) {
+        const values = {
+          is_cancelled: o.isCancelled ? 1 : 0,
+          title: o.title ?? null,
+          notes: o.notes ?? null,
+          location: o.location ?? null,
+          dtstart_utc: o.dtStartUtc ?? null,
+          dtend_utc: o.dtEndUtc ?? null,
+          tzid: o.tzid ?? null,
+          all_day: o.allDay === undefined ? null : o.allDay ? 1 : 0
+        }
+        const row = existing.get(o.originalStartUtc)
+        if (row?.dirty === 1) continue
+        const same =
+          row !== undefined && (Object.keys(values) as (keyof typeof values)[]).every((key) => row[key] === values[key])
+        if (same) {
+          if (o.providerInstanceId && row.provider_instance_id !== o.providerInstanceId) {
+            this.db
+              .prepare('UPDATE event_exceptions SET provider_instance_id = ? WHERE id = ?')
+              .run(o.providerInstanceId, row.id)
+          }
+          continue
+        }
+        this.db
+          .prepare(
+            `INSERT INTO event_exceptions (
+              id, master_event_id, original_start_utc, is_cancelled,
+              title, notes, location, dtstart_utc, dtend_utc, tzid, all_day,
+              provider_instance_id, dirty, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+            ON CONFLICT(master_event_id, original_start_utc) DO UPDATE SET
+              is_cancelled = excluded.is_cancelled,
+              title = excluded.title,
+              notes = excluded.notes,
+              location = excluded.location,
+              dtstart_utc = excluded.dtstart_utc,
+              dtend_utc = excluded.dtend_utc,
+              tzid = excluded.tzid,
+              all_day = excluded.all_day,
+              provider_instance_id = COALESCE(excluded.provider_instance_id, event_exceptions.provider_instance_id),
+              updated_at = excluded.updated_at
+            WHERE event_exceptions.dirty = 0`
+          )
+          .run(
+            `exc_${masterEventId}_${o.originalStartUtc.replace(/[:.]/g, '')}`,
+            masterEventId,
+            o.originalStartUtc,
+            values.is_cancelled,
+            values.title,
+            values.notes,
+            values.location,
+            values.dtstart_utc,
+            values.dtend_utc,
+            values.tzid,
+            values.all_day,
+            o.providerInstanceId ?? null,
+            now,
+            now
+          )
+        changed++
+      }
+
+      const kept = new Set(overrides.map((o) => o.originalStartUtc))
+      for (const row of existing.values()) {
+        if (row.dirty === 1 || kept.has(row.original_start_utc)) continue
+        if (row.color) {
+          const plain =
+            row.is_cancelled === 0 && row.title === null && row.notes === null && row.location === null &&
+            row.dtstart_utc === null && row.dtend_utc === null && row.tzid === null && row.all_day === null
+          if (plain) continue
+          this.db
+            .prepare(
+              `UPDATE event_exceptions SET
+                 is_cancelled = 0, title = NULL, notes = NULL, location = NULL, dtstart_utc = NULL,
+                 dtend_utc = NULL, tzid = NULL, all_day = NULL, updated_at = ?
+               WHERE id = ?`
+            )
+            .run(now, row.id)
+        } else {
+          this.db.prepare('DELETE FROM event_exceptions WHERE id = ?').run(row.id)
+        }
+        changed++
+      }
+    })()
+    return changed
   }
 
   /** SQLite's default parameter ceiling is 999; stay well inside it. */

@@ -146,6 +146,12 @@ Built to make xrncal usable by someone who is not its developer:
   there, so closing the window quits instead of leaving an app nobody can reach.
 - ✅ **Electron 44.10.1** (2026-11): 44.9.0 carried advisory GHSA-jr5w-w6x2-84p9 (trust in
   compromised eMudhra intermediate certificates).
+- ✅ **Outlook occurrence changes** (2026-11): an occurrence moved, edited or cancelled in
+  Outlook shows that way here. Graph's listing holds series only, so each series is read for its
+  changed and cancelled occurrences when it changes, and every six hours.
+- ✅ **One CalDAV account per user** (2026-11): every account on an https server was stored under
+  one id, so adding a second replaced the first one's password. Accounts already merged that way
+  are separated the next time either is connected.
 - ✅ **Sign-in ready for release builds:** OAuth client ids baked in from repository secrets; a
   build without them says so instead of failing in the browser. The credentials file accepts only
   the four sign-in keys, and installed builds no longer read a `.env` from the working directory.
@@ -200,7 +206,6 @@ The following ideas are outside the current URD scope and require a URD change b
 | Printing | Out of scope by URD principle 5; the most-asked feature of regular calendars that is still missing. |
 | Per-occurrence reminders | Reminders belong to the series; a `this`-scoped reminder change applies to all occurrences. |
 | Moving an Outlook event between calendars | Graph has no move endpoint and the push does not recreate the event, so it returns to its original calendar at the next full listing (it used to leave a duplicate). |
-| Graph occurrence overrides | The `/events` listing carries series masters only, so an occurrence moved in Outlook keeps its series time here. |
 
 ---
 
