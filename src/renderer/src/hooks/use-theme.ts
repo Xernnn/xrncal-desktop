@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ThemeConfig } from '@shared/theme-mode'
 import {
   applyCustomBackground,
@@ -7,29 +7,44 @@ import {
   type ThemeMode
 } from '@shared/theme-mode'
 import { DEFAULT_ACCENT_COLOR } from '@shared/mini-calendar-grid'
-import { DEFAULT_APP_SETTINGS } from '@shared/settings-contract'
+import { useSettings } from '../context/SettingsContext'
 
 function getSystemPrefersDark(): boolean {
   if (typeof window === 'undefined' || !window.matchMedia) return false
   return window.matchMedia('(prefers-color-scheme: dark)').matches
 }
 
+/** The theme the settings describe, applied to the document. */
 export function useTheme() {
-  const [mode, setMode] = useState<ThemeMode>(DEFAULT_APP_SETTINGS.theme)
+  const { settings, setSetting } = useSettings()
   const [systemPrefersDark, setSystemPrefersDark] = useState<boolean>(getSystemPrefersDark)
-  const [themeConfig, setThemeConfig] = useState<ThemeConfig>({
-    mode: DEFAULT_APP_SETTINGS.theme,
-    accentColor: DEFAULT_APP_SETTINGS.themeAccent || DEFAULT_ACCENT_COLOR,
-    customBgUrl: '',
-    bgOverlayOpacity: DEFAULT_APP_SETTINGS.themeOverlayOpacity ?? 0.8,
-    bgBlur: DEFAULT_APP_SETTINGS.themeBlur ?? 8
-  })
+  const mode: ThemeMode = settings.theme
+
+  const themeConfig = useMemo<ThemeConfig>(
+    () => ({
+      mode: settings.theme,
+      accentColor: settings.themeAccent || DEFAULT_ACCENT_COLOR,
+      customBgUrl: settings.themeCustomBg || '',
+      bgOverlayOpacity: settings.themeOverlayOpacity ?? 0.8,
+      bgBlur: settings.themeBlur ?? 8
+    }),
+    [settings.theme, settings.themeAccent, settings.themeCustomBg, settings.themeOverlayOpacity, settings.themeBlur]
+  )
 
   const isDark = shouldUseDarkClass(mode, systemPrefersDark)
 
   useEffect(() => {
     applyDocumentTheme(isDark)
   }, [isDark])
+
+  // The accent goes on <html>, not only on the app's root element: pickers,
+  // menus and popovers are portalled to <body>, outside that root, and drew in
+  // the theme's stock accent instead of the one chosen.
+  useEffect(() => {
+    const root = document.documentElement.style
+    root.setProperty('--accent-color', themeConfig.accentColor)
+    root.setProperty('--color-accent-mark', themeConfig.accentColor)
+  }, [themeConfig.accentColor])
 
   // Chrome goes translucent only while a background image is set.
   useEffect(() => {
@@ -44,41 +59,7 @@ export function useTheme() {
     return () => media.removeEventListener('change', onChange)
   }, [])
 
-  const persistMode = useCallback(async (next: ThemeMode) => {
-    setMode(next)
-    setThemeConfig((prev) => ({ ...prev, mode: next }))
-    if (window.xrncal?.settings) {
-      await window.xrncal.settings.set('theme', next)
-    }
-  }, [])
+  const persistMode = useCallback((next: ThemeMode) => setSetting('theme', next), [setSetting])
 
-  const loadFromSettings = useCallback(async () => {
-    if (!window.xrncal?.settings) return
-    try {
-      const settings = await window.xrncal.settings.getAll()
-      const nextMode = (settings.theme as ThemeMode) || DEFAULT_APP_SETTINGS.theme
-      setMode(nextMode)
-      setThemeConfig({
-        mode: nextMode,
-        accentColor: settings.themeAccent || DEFAULT_ACCENT_COLOR,
-        customBgUrl: settings.themeCustomBg || '',
-        bgOverlayOpacity:
-          settings.themeOverlayOpacity !== undefined
-            ? settings.themeOverlayOpacity
-            : 0.8,
-        bgBlur: settings.themeBlur !== undefined ? settings.themeBlur : 8
-      })
-    } catch {
-      // Keep the default theme.
-    }
-  }, [])
-
-  return {
-    mode,
-    isDark,
-    themeConfig,
-    setThemeConfig,
-    persistMode,
-    loadFromSettings
-  }
+  return { mode, isDark, themeConfig, persistMode }
 }

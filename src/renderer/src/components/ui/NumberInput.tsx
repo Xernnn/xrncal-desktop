@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { Minus, Plus } from 'lucide-react'
 
 interface NumberInputProps {
@@ -26,11 +26,13 @@ export const NumberInput: React.FC<NumberInputProps> = ({
   disabled = false,
   className = ''
 }) => {
+  // What is typed, put back to the value whenever the value changes.
   const [localStr, setLocalStr] = useState(String(value ?? 0))
-
-  useEffect(() => {
+  const [typedFor, setTypedFor] = useState(value)
+  if (typedFor !== value) {
+    setTypedFor(value)
     setLocalStr(String(value ?? 0))
-  }, [value])
+  }
 
   const handleDecrement = () => {
     if (disabled) return

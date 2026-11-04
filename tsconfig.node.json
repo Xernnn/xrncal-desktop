@@ -44,6 +44,7 @@
   ],
   "exclude": [
     "tests/ui-components.test.ts",
+    "tests/editor-initial-form.test.ts",
     "tests/stale-event-error.test.ts",
     "tests/friendly-error.test.ts",
     "tests/time-picker-slots.test.ts",
@@ -54,6 +55,7 @@
     "tests/roving-index.test.ts",
     "tests/wheel-navigation.test.ts",
     "tests/account-display.test.ts",
-    "tests/time-zones.test.ts"
+    "tests/time-zones.test.ts",
+    "tests/new-event.test.ts"
   ]
 }

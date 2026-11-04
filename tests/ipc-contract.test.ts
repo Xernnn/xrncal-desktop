@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { IPC_CHANNELS, type AppLocale, type XrncalAPI } from '../src/shared/ipc-contract'
+import { DEFAULT_APP_SETTINGS, type AppSettings } from '../src/shared/settings-contract'
 
 describe('IPC Channels and Contracts', () => {
   it('should define structured and valid IPC channels', () => {
@@ -36,7 +37,10 @@ describe('IPC Channels and Contracts', () => {
         },
         getPlatform: async () => 'win32',
         pickBackgroundImage: async () => null,
-      backupDatabase: async () => ({ success: true })
+        backupDatabase: async () => ({ success: true }),
+        restoreDatabase: async () => ({ success: false, message: 'cancelled' }),
+        showLogFile: async () => true,
+        quit: async () => {}
       },
       settings: {
         getAll: async () => ({
@@ -52,13 +56,20 @@ describe('IPC Channels and Contracts', () => {
           hourBlockSize: 'medium',
           secondaryTimezone: '',
           preferredTimeZones: '',
+          zoneHistory: '',
           dragSnapMinutes: 15,
+          timePickerStepMinutes: 15,
           suggestionShowCalendarName: true,
           defaultReminderMinutes: 10,
           defaultAllDayReminderMinutes: null,
-          checkForUpdates: true
+          checkForUpdates: true,
+          autoBackup: true,
+          closeToTray: true,
+          launchAtLogin: false,
+          welcomeDone: true,
+          lastSeenZone: 'Australia/Sydney'
         }),
-        get: async () => true as any,
+        get: async <K extends keyof AppSettings>(key: K) => DEFAULT_APP_SETTINGS[key],
         set: async () => true
       },
       auth: {
@@ -69,7 +80,8 @@ describe('IPC Channels and Contracts', () => {
         connectCalDav: async () => ({ success: true }),
         disconnectCalDav: async () => true,
         listAccounts: async () => [],
-      detachAccount: async () => ({ success: true, calendarCount: 0, eventCount: 0 })
+        detachAccount: async () => ({ success: true, calendarCount: 0, eventCount: 0 }),
+        providerStatus: async () => ({ google: true, microsoft: true })
       },
       sync: {
         triggerNow: async () => ({ success: true, pulledCount: 0, pushedCount: 0, errorCount: 0 }),
@@ -188,9 +200,16 @@ describe('IPC Channels and Contracts', () => {
         restore: async () => ({}) as never,
         resolveConflict: async () => true
       },
+      print: {
+        savePdf: async () => ({ saved: true, fileName: 'xrncal 2026-11.pdf' }),
+        print: async () => ({ printed: true }),
+        showSaved: async () => true
+      },
       ics: {
         importIcs: async () => ({ success: true, importedCount: 0, errorCount: 0 }),
-        exportIcs: async () => 'BEGIN:VCALENDAR\r\nEND:VCALENDAR'
+        exportIcs: async () => ({ success: true, filePath: '/tmp/calendar.ics' }),
+        takeOpenedFiles: async () => [],
+        onFileOpened: () => () => {}
       },
       mini: {
         openMain: async () => {},

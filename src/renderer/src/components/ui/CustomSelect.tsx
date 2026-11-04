@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import React, { useState, useRef, useEffect, useMemo } from 'react'
+import React, { useState, useRef, useEffect, useEffectEvent, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown, Check, Search } from 'lucide-react'
 import { nextEnabledIndex, firstEnabledIndex } from '../../lib/roving-index'
@@ -32,6 +32,13 @@ interface CustomSelectProps {
   align?: 'left' | 'right'
 }
 
+const isOptionDisabled = (opt: SelectOption): boolean => Boolean(opt.disabled)
+
+/** The cursor, or the first option it can rest on once the list is shorter. */
+function clampCursor(cursor: number, list: SelectOption[]): number {
+  return cursor < list.length ? cursor : firstEnabledIndex(list, 'start', isOptionDisabled)
+}
+
 export const CustomSelect: React.FC<CustomSelectProps> = ({
   value,
   onChange,
@@ -57,9 +64,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   // Which option the arrow keys are resting on. The popover lives in a portal
   // at the end of <body>, so it is nowhere near the trigger in tab order -
   // walking it with a roving index is the only way the keyboard reaches it.
-  const [activeIndex, setActiveIndex] = useState(-1)
-
-  const isOptionDisabled = (opt: SelectOption): boolean => Boolean(opt.disabled)
+  const [cursor, setCursor] = useState(-1)
 
   const selectedOption = useMemo(
     () => (options || []).find((opt) => opt.value === value),
@@ -78,7 +83,10 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
     )
   }, [options, searchable, searchQuery])
 
-  const updateCoords = () => {
+  // Filtering can shrink the list out from under the cursor.
+  const activeIndex = clampCursor(cursor, filteredOptions)
+
+  const updateCoords = useCallback(() => {
     if (!containerRef.current) return
     const rect = containerRef.current.getBoundingClientRect()
     const popoverWidth = Math.max(rect.width, 220)
@@ -98,144 +106,124 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
     }
 
     setCoords({ top, left, width: popoverWidth })
+  }, [align, options.length, searchable])
+
+  // Opens on whatever is currently selected, so the first arrow press steps off
+  // the real value rather than off the top of the list, with the search empty.
+  const open = (): void => {
+    const list = options || []
+    const selected = list.findIndex((opt) => opt.value === value && !opt.disabled)
+    updateCoords()
+    setSearchQuery('')
+    setCursor(selected >= 0 ? selected : firstEnabledIndex(list, 'start', isOptionDisabled))
+    setIsOpen(true)
   }
 
-  // Open on whatever is currently selected, so the first arrow press steps off
-  // the real value rather than off the top of the list.
-  useEffect(() => {
-    if (!isOpen) return
-    const selected = filteredOptions.findIndex((opt) => opt.value === value && !opt.disabled)
-    setActiveIndex(selected >= 0 ? selected : firstEnabledIndex(filteredOptions, 'start', isOptionDisabled))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen])
-
-  // Filtering can shrink the list out from under the cursor.
-  useEffect(() => {
-    if (!isOpen) return
-    setActiveIndex((prev) =>
-      prev < filteredOptions.length ? prev : firstEnabledIndex(filteredOptions, 'start', isOptionDisabled)
-    )
-  }, [isOpen, filteredOptions])
+  const select = (opt: SelectOption): void => {
+    if (opt.disabled) return
+    onChange(opt.value)
+    setIsOpen(false)
+  }
 
   useEffect(() => {
     activeItemRef.current?.scrollIntoView({ block: 'nearest' })
   }, [activeIndex])
 
-  // Focus search input and update coordinates when opening
-  useEffect(() => {
-    if (!isOpen) {
-      setSearchQuery('')
-      return
-    }
-
-    updateCoords()
-    if (searchable) {
-      setTimeout(() => {
-        searchInputRef.current?.focus()
-      }, 50)
-    }
-
-    const handleScrollOrResize = () => {
-      updateCoords()
-    }
-    window.addEventListener('resize', handleScrollOrResize)
-    window.addEventListener('scroll', handleScrollOrResize, true)
-    return () => {
-      window.removeEventListener('resize', handleScrollOrResize)
-      window.removeEventListener('scroll', handleScrollOrResize, true)
-    }
-  }, [isOpen, searchable, align, options.length])
-
-  // Click outside & Escape key
+  // While open: follow the trigger when the page scrolls or resizes, and put
+  // the caret in the search box.
   useEffect(() => {
     if (!isOpen) return
-
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as Node
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(target) &&
-        popoverRef.current &&
-        !popoverRef.current.contains(target)
-      ) {
-        setIsOpen(false)
-      }
-    }
-
-    // Focus stays on the trigger (or the search box) while the list is open, so
-    // the list is driven from here rather than by tabbing into it.
-    const step = (delta: number) => {
-      setActiveIndex((prev) => nextEnabledIndex(filteredOptions, prev, delta, isOptionDisabled))
-    }
-
-    const edge = (from: 'start' | 'end') => {
-      const found = firstEnabledIndex(filteredOptions, from, isOptionDisabled)
-      if (found >= 0) setActiveIndex(found)
-    }
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      switch (e.key) {
-        case 'Escape':
-          // Without stopPropagation this same Escape carries on to the dialog
-          // hosting the field and closes that too.
-          e.preventDefault()
-          e.stopPropagation()
-          setIsOpen(false)
-          triggerRef.current?.focus()
-          break
-        case 'ArrowDown':
-          e.preventDefault()
-          step(1)
-          break
-        case 'ArrowUp':
-          e.preventDefault()
-          step(-1)
-          break
-        case 'Home':
-          e.preventDefault()
-          edge('start')
-          break
-        case 'End':
-          e.preventDefault()
-          edge('end')
-          break
-        case 'Enter':
-          // Not just a shortcut for clicking: preventDefault also stops the
-          // browser turning this keydown into a click on the focused trigger,
-          // which would reopen the list the moment it closed.
-          e.preventDefault()
-          if (activeIndex >= 0 && filteredOptions[activeIndex]) {
-            handleSelect(filteredOptions[activeIndex])
-            triggerRef.current?.focus()
-          }
-          break
-        case 'Tab':
-          // The list is a portal at the end of <body>; letting Tab walk into it
-          // would strand focus miles from the field. Close and hand the trigger
-          // back instead.
-          e.preventDefault()
-          setIsOpen(false)
-          triggerRef.current?.focus()
-          break
-        default:
-          break
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside)
-    document.addEventListener('keydown', handleKeyDown)
+    const focusTimer = searchable ? setTimeout(() => searchInputRef.current?.focus(), 50) : undefined
+    window.addEventListener('resize', updateCoords)
+    window.addEventListener('scroll', updateCoords, true)
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-      document.removeEventListener('keydown', handleKeyDown)
+      clearTimeout(focusTimer)
+      window.removeEventListener('resize', updateCoords)
+      window.removeEventListener('scroll', updateCoords, true)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, filteredOptions, activeIndex])
+  }, [isOpen, searchable, updateCoords])
 
-  const handleSelect = (opt: SelectOption) => {
-    if (opt.disabled) return
-    onChange(opt.value)
-    setIsOpen(false)
-  }
+  const onDocumentMouseDown = useEffectEvent((e: MouseEvent) => {
+    const target = e.target as Node
+    if (
+      containerRef.current &&
+      !containerRef.current.contains(target) &&
+      popoverRef.current &&
+      !popoverRef.current.contains(target)
+    ) {
+      setIsOpen(false)
+    }
+  })
+
+  // Focus stays on the trigger (or the search box) while the list is open, so
+  // the list is driven from here rather than by tabbing into it.
+  const onDocumentKeyDown = useEffectEvent((e: KeyboardEvent) => {
+    const step = (delta: number): void =>
+      setCursor((prev) => nextEnabledIndex(filteredOptions, clampCursor(prev, filteredOptions), delta, isOptionDisabled))
+    const edge = (from: 'start' | 'end'): void => {
+      const found = firstEnabledIndex(filteredOptions, from, isOptionDisabled)
+      if (found >= 0) setCursor(found)
+    }
+
+    switch (e.key) {
+      case 'Escape':
+        // Without stopPropagation this same Escape carries on to the dialog
+        // hosting the field and closes that too.
+        e.preventDefault()
+        e.stopPropagation()
+        setIsOpen(false)
+        triggerRef.current?.focus()
+        break
+      case 'ArrowDown':
+        e.preventDefault()
+        step(1)
+        break
+      case 'ArrowUp':
+        e.preventDefault()
+        step(-1)
+        break
+      case 'Home':
+        e.preventDefault()
+        edge('start')
+        break
+      case 'End':
+        e.preventDefault()
+        edge('end')
+        break
+      case 'Enter':
+        // Not just a shortcut for clicking: preventDefault also stops the
+        // browser turning this keydown into a click on the focused trigger,
+        // which would reopen the list the moment it closed.
+        e.preventDefault()
+        if (activeIndex >= 0 && filteredOptions[activeIndex]) {
+          select(filteredOptions[activeIndex])
+          triggerRef.current?.focus()
+        }
+        break
+      case 'Tab':
+        // The list is a portal at the end of <body>; letting Tab walk into it
+        // would strand focus miles from the field. Close and hand the trigger
+        // back instead.
+        e.preventDefault()
+        setIsOpen(false)
+        triggerRef.current?.focus()
+        break
+      default:
+        break
+    }
+  })
+
+  useEffect(() => {
+    if (!isOpen) return
+    const onMouseDown = (e: MouseEvent): void => onDocumentMouseDown(e)
+    const onKeyDown = (e: KeyboardEvent): void => onDocumentKeyDown(e)
+    document.addEventListener('mousedown', onMouseDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [isOpen])
 
   const isGhost = variant === 'ghost'
 
@@ -295,8 +283,8 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
                         type="button"
                         disabled={opt.disabled}
                         ref={isActive ? activeItemRef : undefined}
-                        onClick={() => handleSelect(opt)}
-                        onMouseEnter={() => !opt.disabled && setActiveIndex(idx)}
+                        onClick={() => select(opt)}
+                        onMouseEnter={() => !opt.disabled && setCursor(idx)}
                         className={`flex w-full items-center justify-between gap-2 px-2 py-1.5 text-xs text-left transition-colors cursor-pointer ${
                           isSelected
                             ? 'bg-hover text-primary font-medium'
@@ -362,14 +350,18 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
-        onClick={() => !disabled && setIsOpen((prev) => !prev)}
+        onClick={() => {
+          if (disabled) return
+          if (isOpen) setIsOpen(false)
+          else open()
+        }}
         onKeyDown={(e) => {
           // Only opening is handled here - once open the list is driven by the
           // document listener above, which also swallows these same keys.
           if (disabled || isOpen) return
           if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
             e.preventDefault()
-            setIsOpen(true)
+            open()
           }
         }}
         className={`gc-focus-ring flex items-center justify-between gap-2 w-full px-2.5 py-1.5 text-xs text-left transition-colors duration-100 select-none cursor-pointer outline-none focus:outline-none focus:ring-0 ${

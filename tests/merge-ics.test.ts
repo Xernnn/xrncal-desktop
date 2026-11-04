@@ -163,14 +163,24 @@ describe('mergeServerCopy', () => {
     expect(master.getFirstProperty('dtstart')!.toICALString()).toBe('DTSTART;TZID=Europe/Berlin:20261005T090000')
     // Read back, it is the same instant it was.
     expect(parseIcsContent(out, CALENDAR.id).events[0].dtStartUtc).toBe(event.dtStartUtc)
+    // The server's definition of the zone, once - not the generated one as well.
+    expect(out.match(/BEGIN:VTIMEZONE/g)).toHaveLength(1)
+    expect(out).toContain('TZNAME:CEST')
   })
 
-  it('leaves the times in UTC when the event was moved to another zone here', () => {
+  it('writes the zone the event was moved to here, with a definition of it', () => {
     const { event, exceptions } = pulled()
     const out = merged({ ...event, tzid: 'Asia/Ho_Chi_Minh' }, exceptions)
+    const [master, override] = vevents(out)
 
-    expect(vevents(out)[0].getFirstProperty('dtstart')!.getParameter('tzid')).toBeUndefined()
-    expect(out).not.toContain('VTIMEZONE')
+    expect(master.getFirstProperty('dtstart')!.toICALString()).toBe('DTSTART;TZID=Asia/Ho_Chi_Minh:20261005T140000')
+    expect(override.getFirstProperty('recurrence-id')!.getParameter('tzid')).toBe('Asia/Ho_Chi_Minh')
+    // Berlin is no longer named, so its definition goes.
+    expect(out.match(/BEGIN:VTIMEZONE/g)).toHaveLength(1)
+    expect(out).not.toContain('Europe/Berlin')
+    const reread = parseIcsContent(out, CALENDAR.id)
+    expect(reread.events[0]).toMatchObject({ dtStartUtc: event.dtStartUtc, tzid: 'Asia/Ho_Chi_Minh' })
+    expect(reread.exceptions[0].originalStartUtc).toBe(exceptions[0].originalStartUtc)
   })
 
   it('raises SEQUENCE only when the time changes, so guests hear about a move', () => {

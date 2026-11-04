@@ -163,7 +163,7 @@ export function rruleToGraphRecurrence(
     pattern = { type: 'daily', interval }
   } else if (freq === 'WEEKLY') {
     const days = byDay
-      ? byDay.split(',').map((d) => DAY_MAP_FROM_RRULE[d.toUpperCase()]).filter(Boolean) as any[]
+      ? byDay.split(',').map((d) => DAY_MAP_FROM_RRULE[d.toUpperCase()]).filter(Boolean)
       : [startDay]
     pattern = {
       type: 'weekly',

@@ -51,6 +51,7 @@ Exec="${TARGET_APPIMAGE}" --ozone-platform=x11 %U
 Icon=${ICON_DIR}/${APP_ID}.png
 Terminal=false
 Categories=Office;Calendar;
+MimeType=text/calendar;
 StartupWMClass=xrncal
 EOF
 chmod 644 "$DESKTOP_DIR/${APP_ID}.desktop"

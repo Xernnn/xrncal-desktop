@@ -1,7 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, ChevronDown, ChevronRight, Eye, MoreHorizontal, Plus, RefreshCw, Settings2, Focus } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ChevronRight, Download, Eye, MoreHorizontal, Plus, RefreshCw, Settings2, Focus } from 'lucide-react'
 import type { Calendar, CalendarAccount } from '@shared/event-model'
 import {
   classifySyncError,
@@ -12,7 +12,7 @@ import {
 } from '../../lib/account-display'
 import { CalendarRow, ColorPalette } from '../accounts/CalendarToggle'
 import ProviderMark from '../accounts/ProviderMark'
-import { showFriendlyError } from '../ui'
+import { showFriendlyError, toast } from '../ui'
 import { useSyncStatus } from '../../hooks/use-sync-status'
 
 interface SidebarCalendarsProps {
@@ -191,6 +191,15 @@ export const SidebarCalendars: React.FC<SidebarCalendarsProps> = ({
                         </MenuItem>
                       )}
                       <MenuItem
+                        icon={<Download className="h-3.5 w-3.5" />}
+                        onClick={() => {
+                          setMenuFor(null)
+                          void exportCalendar(cal.id, t)
+                        }}
+                      >
+                        {t('ics.exportCalendar')}
+                      </MenuItem>
+                      <MenuItem
                         icon={<Settings2 className="h-3.5 w-3.5" />}
                         onClick={() => {
                           setMenuFor(null)
@@ -213,6 +222,16 @@ export const SidebarCalendars: React.FC<SidebarCalendarsProps> = ({
 }
 
 const MENU_WIDTH = 224
+
+/** Save a calendar as an .ics file, to move it into another app or keep a copy. */
+async function exportCalendar(calendarId: string, t: (key: string, vars?: Record<string, unknown>) => string): Promise<void> {
+  try {
+    const result = await window.xrncal?.ics?.exportIcs(calendarId)
+    if (result?.success) toast.success(t('ics.exported'), { description: result.filePath })
+  } catch (err) {
+    showFriendlyError(err, t('ics.exportFailed'))
+  }
+}
 
 /**
  * The "⋯" on a calendar row and the menu it opens. Closes on Escape or a click

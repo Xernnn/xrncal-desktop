@@ -1,9 +1,12 @@
-import { fetchWithTimeout } from '../sync/http'
+import { escapeHtml } from '../html-escape'
+import { describeError, fetchWithTimeout } from '../sync/http'
 import http from 'http'
+import type { AddressInfo } from 'net'
 import crypto from 'crypto'
 import { shell } from 'electron'
 import type { ISqliteDatabase } from '../db/sqlite-driver'
 import { SecureStore } from '../secure-store'
+import { AccountsRepo } from '../db/repos/accounts-repo'
 import { mt } from '../i18n-main'
 
 export interface GoogleTokens {
@@ -27,9 +30,11 @@ const GOOGLE_USERINFO_ENDPOINT = 'https://www.googleapis.com/oauth2/v2/userinfo'
 
 export class GoogleOAuthManager {
   private secureStore: SecureStore
+  private accounts: AccountsRepo
 
-  constructor(private db: ISqliteDatabase) {
+  constructor(db: ISqliteDatabase) {
     this.secureStore = new SecureStore(db)
+    this.accounts = new AccountsRepo(db)
   }
 
   /**
@@ -102,24 +107,26 @@ export class GoogleOAuthManager {
           const queryState = reqUrl.searchParams.get('state')
           const queryError = reqUrl.searchParams.get('error')
 
-          if (queryError) {
+          // Only the browser coming back from this sign-in knows the state. A
+          // request without it - another page probing local ports - is turned
+          // away without ending the sign-in, and cannot put text on this page.
+          if (queryState !== state) {
             res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' })
-            res.end('<h3>' + mt('oauth.google.failed', { error: queryError }) + '</h3><p>' + mt('oauth.canCloseShort') + '</p>')
-            cleanup()
-            reject(new Error(`Google OAuth error: ${queryError}`))
+            res.end('<h3>' + escapeHtml(mt('oauth.stateError')) + '</h3>')
             return
           }
 
-          if (queryState !== state || !queryCode) {
+          if (queryError || !queryCode) {
+            const reason = queryError || 'no code'
             res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' })
-            res.end('<h3>' + mt('oauth.stateError') + '</h3>')
+            res.end('<h3>' + escapeHtml(mt('oauth.google.failed', { error: reason })) + '</h3><p>' + escapeHtml(mt('oauth.canCloseShort')) + '</p>')
             cleanup()
-            reject(new Error('Invalid OAuth state or code'))
+            reject(new Error(`Google OAuth error: ${reason}`))
             return
           }
 
           // Exchange auth code for tokens
-          const address = server.address() as any
+          const address = server.address() as AddressInfo
           const redirectUri = `http://127.0.0.1:${address.port}/oauth2callback`
 
           const tokenParams = new URLSearchParams({
@@ -159,9 +166,11 @@ export class GoogleOAuthManager {
           const userRes = await fetchWithTimeout(GOOGLE_USERINFO_ENDPOINT, {
             headers: { Authorization: `Bearer ${tokens.accessToken}` }
           })
-          const userInfo: GoogleUserInfo = userRes.ok
-            ? await userRes.json()
-            : { id: `g_${Date.now()}`, email: 'user@gmail.com', name: 'Google Account' }
+          // Without the profile there is no account id to file the tokens
+          // under: inventing one ("user@gmail.com" with a random id) made a
+          // second account on every retry and matched the wrong guest as you.
+          if (!userRes.ok) throw new Error(mt('oauth.profileFailed', { status: userRes.status }))
+          const userInfo: GoogleUserInfo = await userRes.json()
 
           // Respond to browser
           res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
@@ -170,9 +179,9 @@ export class GoogleOAuthManager {
             <html>
               <head><meta charset="utf-8"><title>xrncal Auth</title></head>
               <body style="font-family:system-ui,sans-serif;text-align:center;padding:40px;background:#2b2d31;color:#dbdee1;">
-                <h2 style="color:#6366f1;">${mt('oauth.google.success')}</h2>
-                <p style="color:#94a3b8;">${mt('oauth.account', { detail: `${userInfo.email} (${userInfo.name})` })}</p>
-                <p style="color:#64748b;">${mt('oauth.canClose')}</p>
+                <h2 style="color:#6366f1;">${escapeHtml(mt('oauth.google.success'))}</h2>
+                <p style="color:#94a3b8;">${escapeHtml(mt('oauth.account', { detail: `${userInfo.email} (${userInfo.name})` }))}</p>
+                <p style="color:#64748b;">${escapeHtml(mt('oauth.canClose'))}</p>
               </body>
             </html>
           `)
@@ -180,16 +189,7 @@ export class GoogleOAuthManager {
           cleanup()
 
           const accountId = `acc_google_${userInfo.id}`
-          const now = new Date().toISOString()
-
-          // Upsert account in DB
-          this.db
-            .prepare(
-              `INSERT INTO accounts (id, type, name, email, is_active, created_at, updated_at)
-               VALUES (?, 'google', ?, ?, 1, ?, ?)
-               ON CONFLICT(id) DO UPDATE SET name = excluded.name, email = excluded.email, is_active = 1, updated_at = excluded.updated_at`
-            )
-            .run(accountId, userInfo.name, userInfo.email, now, now)
+          this.accounts.upsert({ id: accountId, type: 'google', name: userInfo.name, email: userInfo.email })
 
           // Store tokens securely in vault
           this.secureStore.storeToken(accountId, tokens)
@@ -198,7 +198,12 @@ export class GoogleOAuthManager {
             account: { id: accountId, name: userInfo.name, email: userInfo.email },
             tokens
           })
-        } catch (err: any) {
+        } catch (err) {
+          // The browser is still waiting for this page.
+          if (!res.headersSent) {
+            res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' })
+            res.end('<h3>' + escapeHtml(mt('oauth.google.failed', { error: describeError(err) })) + '</h3><p>' + escapeHtml(mt('oauth.canCloseShort')) + '</p>')
+          }
           cleanup()
           reject(err)
         }
@@ -206,7 +211,7 @@ export class GoogleOAuthManager {
 
       // Bind exclusively to 127.0.0.1 with random port (0)
       server.listen(0, '127.0.0.1', () => {
-        const address = server.address() as any
+        const address = server.address() as AddressInfo
         const redirectUri = `http://127.0.0.1:${address.port}/oauth2callback`
 
         const authUrl = new URL(GOOGLE_AUTH_ENDPOINT)
@@ -285,7 +290,6 @@ export class GoogleOAuthManager {
    */
   disconnectAccount(accountId: string): void {
     this.secureStore.deleteToken(accountId)
-    const now = new Date().toISOString()
-    this.db.prepare('UPDATE accounts SET is_active = 0, updated_at = ? WHERE id = ?').run(now, accountId)
+    this.accounts.deactivate(accountId)
   }
 }

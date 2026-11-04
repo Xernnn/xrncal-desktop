@@ -1,23 +1,30 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DateTime } from 'luxon'
-import type { AppLocale } from '@shared/ipc-contract'
-import type { AppSettings } from '@shared/settings-contract'
-import type {
-  Calendar,
-  CalendarAccount,
-  CalendarEvent,
-  EventException,
-  ExpandedOccurrence,
-  CreateEventInput,
-  UpdateEventInput,
-  RecurringEditScope,
-  SyncConflict
-} from '@shared/event-model'
-import type { CalendarViewType } from '@shared/visible-range'
-import { sortForCursor, stepCursor, nudgedRange, resizedRange } from '@shared/keyboard-nav'
+import type { ExpandedOccurrence } from '@shared/event-model'
+import type { KeyCommand } from '@shared/keyboard-commands'
+import {
+  sortForCursor,
+  stepCursor,
+  nudgedRange,
+  resizedRange,
+  refindSelection,
+  type CursorSelection
+} from '@shared/keyboard-nav'
+import { stepAnchor, weekTitle, type CalendarViewType } from '@shared/visible-range'
+import { startOfWeek } from '@shared/week-start'
 import { useVisibleRange } from './hooks/use-visible-range'
 import { useTheme } from './hooks/use-theme'
+import { useQueryRange } from './hooks/use-query-range'
+import { useCalendarData } from './hooks/use-calendar-data'
+import { useUndoStack } from './hooks/use-undo-stack'
+import { useEventCommands } from './hooks/use-event-commands'
+import { useLastPointer } from './hooks/use-last-pointer'
+import { useZoneFollowing } from './hooks/use-zone-following'
+import { useAutoHideHeader } from './hooks/use-auto-hide-header'
+import { useIcsIntake } from './hooks/use-ics-intake'
+import { useCalendarContextMenu } from './hooks/use-calendar-context-menu'
+import { useKeyCommands } from './hooks/use-key-commands'
 import MonthView from './views/MonthView'
 import WeekView from './views/WeekView'
 import DayView from './views/DayView'
@@ -28,53 +35,57 @@ import EventEditorDialog, {
   type EventEditorDraftPreview
 } from './editor/EventEditorDialog'
 import RecurringScopeDialog from './editor/RecurringScopeDialog'
-import DropActionPopover, { type PendingDropAction } from './dnd/DropActionPopover'
+import DropActionPopover from './dnd/DropActionPopover'
 import AccountsDialog from './components/accounts/AccountsDialog'
 import type { AccountsView } from './components/accounts/accounts-nav'
 import SearchPaletteModal from './components/SearchPaletteModal'
 import SettingsPanel, { type SettingsSection } from './components/SettingsPanel'
 import KeyboardShortcutsModal from './components/KeyboardShortcutsModal'
+import PrintDialog from './print/PrintDialog'
 import SyncConflictsModal from './components/SyncConflictsModal'
 import ReminderStack from './components/ReminderStack'
 import AppHeader from './components/shell/AppHeader'
 import AppSidebar from './components/shell/AppSidebar'
 import { useEventDnD } from './dnd/use-event-dnd'
-import { singleDayRange } from './dnd/drop-target'
-import { NotionToaster, toast, showFriendlyError, isStaleEventError } from './components/ui'
-import { DisplayPreferencesProvider, type DisplayPreferences } from './context/DisplayPreferencesContext'
-import { TIME_ZONE_NAMES, parseZoneList, serializeZoneList } from './lib/time-zones'
+import { NotionToaster, toast, showFriendlyError, ContextMenu } from './components/ui'
+import { DisplayPreferencesProvider, displayPreferencesOf } from './context/DisplayPreferencesContext'
+import { SettingsProvider, useSettings, useSettingsState } from './context/SettingsContext'
+import ImportIcsDialog from './components/ImportIcsDialog'
+import WelcomeDialog, { type WelcomeNext } from './components/WelcomeDialog'
 
 export type { CalendarViewType }
 
 /** The dialog's start when nothing more specific was asked for; stable so it never resets the stack. */
 const ACCOUNTS_LIST: AccountsView[] = [{ name: 'list' }]
 
-/** How many steps Ctrl+Z can go back. */
-const UNDO_LIMIT = 20
-
-/** An occurrence put back where it was: the update a 'this'-scoped change of
- *  a recurring occurrence is undone with. */
-function occurrenceAsUpdate(occ: ExpandedOccurrence): UpdateEventInput {
-  return {
-    title: occ.title,
-    dtStartUtc: occ.startUtc,
-    dtEndUtc: occ.endUtc,
-    tzid: occ.tzid,
-    allDay: occ.allDay,
-    notes: occ.notes,
-    location: occ.location,
-    meetingUrl: occ.meetingUrl
-  }
+/** The settings are read once, here; everything below reads them from the context. */
+export const App: React.FC = () => {
+  const settingsState = useSettingsState()
+  return (
+    <SettingsProvider value={settingsState}>
+      <CalendarApp />
+    </SettingsProvider>
+  )
 }
 
-export const App: React.FC = () => {
+/**
+ * The main window: which view and date are showing, which dialog is open, and
+ * the wiring between the views and what the hooks under `hooks/` do - reading
+ * events (`useCalendarData`), changing them (`useEventCommands`), undo, the
+ * keyboard (`useKeyCommands` over `commandForKey`), the right-click menu,
+ * .ics intake and following the computer's time zone.
+ */
+const CalendarApp: React.FC = () => {
   const { t, i18n } = useTranslation()
-  const { mode, themeConfig, setThemeConfig, persistMode, loadFromSettings } = useTheme()
+  const { settings, ready, setSetting, setLanguage } = useSettings()
+  const { themeConfig } = useTheme()
+  const displayPreferences = useMemo(() => displayPreferencesOf(settings), [settings])
+  const { firstDayOfWeek, dragSnapMinutes } = displayPreferences
+
   const [currentView, setCurrentView] = useState<CalendarViewType>('week')
   const [anchorDate, setAnchorDate] = useState<DateTime>(() => DateTime.local())
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const [appVersion, setAppVersion] = useState<string>('0.1.0')
-  const [platform, setPlatform] = useState<string>('win32')
+  const [appInfo, setAppInfo] = useState({ version: '0.1.0', platform: 'win32' })
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [settingsSection, setSettingsSection] = useState<SettingsSection | null>(null)
   // The pages the accounts dialog opens on; null while it is closed. Held in
@@ -83,279 +94,69 @@ export const App: React.FC = () => {
   const [accountsDialog, setAccountsDialog] = useState<AccountsView[] | null>(null)
   const [isSearchPaletteOpen, setIsSearchPaletteOpen] = useState(false)
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false)
+  const [isPrintOpen, setIsPrintOpen] = useState(false)
   const [isConflictsModalOpen, setIsConflictsModalOpen] = useState(false)
-  const [conflicts, setConflicts] = useState<SyncConflict[]>([])
-  const [showLunar, setShowLunar] = useState(true)
-  const [showWeekNumbers, setShowWeekNumbers] = useState(true)
-  const [showMiniCalendar, setShowMiniCalendar] = useState(true)
-  const [autoHideHeader, setAutoHideHeader] = useState(true)
-  const [timeFormat, setTimeFormat] = useState<DisplayPreferences['timeFormat']>('24h')
-  const [dayStartHour, setDayStartHour] = useState(7)
-  const [hourBlockSize, setHourBlockSize] = useState<DisplayPreferences['hourBlockSize']>('medium')
-  const [secondaryTimezone, setSecondaryTimezone] = useState<string>('')
-  const [preferredTimeZones, setPreferredTimeZones] = useState<string[]>([])
-  const [suggestionShowCalendarName, setSuggestionShowCalendarName] = useState<boolean>(true)
-  const [dragSnapMinutes, setDragSnapMinutes] = useState<AppSettings['dragSnapMinutes']>(15)
-  const [defaultReminderMinutes, setDefaultReminderMinutes] =
-    useState<AppSettings['defaultReminderMinutes']>(10)
-  const [defaultAllDayReminderMinutes, setDefaultAllDayReminderMinutes] =
-    useState<AppSettings['defaultAllDayReminderMinutes']>(null)
-  const [checkForUpdates, setCheckForUpdates] = useState(true)
-  const [headerVisible, setHeaderVisible] = useState(true)
-  const headerHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [firstDayOfWeek, setFirstDayOfWeek] = useState(1)
-
-  const [calendars, setCalendars] = useState<Calendar[]>([])
-  const [accounts, setAccounts] = useState<CalendarAccount[]>([])
-  const [occurrences, setOccurrences] = useState<ExpandedOccurrence[]>([])
-  // Which occurrence the keyboard cursor is sitting on. Kept as a pair because
-  // an occurrence id is `${eventId}_${originalStartUtc}` - moving a one-off
-  // event re-keys it, and the event id is what survives that.
-  const [selection, setSelection] = useState<{ occurrenceId: string; eventId: string } | null>(null)
+  const welcomeOpen = ready && !settings.welcomeDone
 
   const [isEditorOpen, setIsEditorOpen] = useState(false)
   const [editorData, setEditorData] = useState<EventEditorInitialData | null>(null)
   // Live slot/color preview for a NEW event while its editor is open - null the rest
-  // of the time. A plain useCallback identity so the dialog's effect can depend on
-  // it safely without re-firing on every parent render.
+  // of the time.
   const [draftPreview, setDraftPreview] = useState<EventEditorDraftPreview | null>(null)
-  const handleDraftChange = useCallback((draft: EventEditorDraftPreview | null) => {
-    setDraftPreview(draft)
+  // Each opening is a new editor (see EventEditorDialog's initialForm).
+  const [editorSession, setEditorSession] = useState(0)
+  const openEditor = useCallback((data: EventEditorInitialData) => {
+    setEditorData(data)
+    setEditorSession((n) => n + 1)
+    setIsEditorOpen(true)
   }, [])
-  const [pendingRecurringScope, setPendingRecurringScope] = useState<{
-    action: 'edit' | 'delete'
-    title: string
-    eventId: string
-    occurrenceStartUtc: string
-    input?: UpdateEventInput
-  } | null>(null)
+  const closeEditor = useCallback(() => setIsEditorOpen(false), [])
 
-  const visibleRange = useVisibleRange(anchorDate, currentView, i18n.language)
+  const visibleRange = useVisibleRange(anchorDate, currentView, i18n.language, firstDayOfWeek)
+  const { queryRange, extendList } = useQueryRange(anchorDate, currentView, visibleRange)
+  // Held back until the settings are in: the week start decides the range.
+  const data = useCalendarData(queryRange, ready)
+  const { calendars, accounts, occurrences, conflicts, reload } = data
+  const undo = useUndoStack(reload)
+  const { clientXOf, lastX } = useLastPointer()
+  const commands = useEventCommands({ calendars, reload, undo, dragSnapMinutes, openEditor, closeEditor, clientXOf })
+  const { moveOccurrence, deleteOccurrence } = commands
+  const zoneMoves = useZoneFollowing()
+  const header = useAutoHideHeader(settings.autoHideHeader)
+  const ics = useIcsIntake()
+  const icsInputRef = useRef<HTMLInputElement>(null)
 
-  // Each entry undoes one move, resize, copy or delete. Only those: an edit in
-  // the editor is deliberate, and a series-wide change has no simple inverse.
-  const undoStackRef = useRef<(() => Promise<unknown>)[]>([])
-  const pushUndo = useCallback((undo: () => Promise<unknown>) => {
-    undoStackRef.current.push(undo)
-    if (undoStackRef.current.length > UNDO_LIMIT) undoStackRef.current.shift()
-  }, [])
-
-  // List view starts with a modest window and grows incrementally as the user
-  // scrolls near an edge, instead of always fetching/expanding a huge fixed range.
-  const LIST_BASE_DAYS_BEFORE = 14
-  const LIST_BASE_DAYS_AFTER = 30
-  const LIST_EXPAND_STEP_DAYS = 60
-  const [listExpand, setListExpand] = useState({ before: 0, after: 0 })
-
-  useEffect(() => {
-    setListExpand({ before: 0, after: 0 })
-  }, [currentView, anchorDate])
-
-  const handleListNearEdge = useCallback((direction: 'past' | 'future') => {
-    setListExpand((prev) =>
-      direction === 'past'
-        ? { ...prev, before: prev.before + LIST_EXPAND_STEP_DAYS }
-        : { ...prev, after: prev.after + LIST_EXPAND_STEP_DAYS }
-    )
-  }, [])
-
-  const queryRange = useMemo(() => {
-    // Year needs no special case any more: it shows exactly one year, and
-    // visibleRange already spans startOf('year') to endOf('year').
-    if (currentView !== 'list') return visibleRange
-    const start = anchorDate.minus({ days: LIST_BASE_DAYS_BEFORE + listExpand.before }).startOf('day')
-    const end = anchorDate.plus({ days: LIST_BASE_DAYS_AFTER + listExpand.after }).endOf('day')
-    return {
-      startUtc: start.toUTC().toISO() || start.toISO()!,
-      endUtc: end.toUTC().toISO() || end.toISO()!,
-      label: visibleRange.label
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentView, anchorDate, listExpand, visibleRange.label])
-
-  const loadCalendarsAndEvents = useCallback(async () => {
-    if (!window.xrncal?.calendars || !window.xrncal?.events) return
-
-    try {
-      const [cals, accs] = await Promise.all([
-        window.xrncal.calendars.list(),
-        window.xrncal.auth?.listAccounts() ?? Promise.resolve([] as CalendarAccount[])
-      ])
-      setCalendars(cals)
-      setAccounts(accs)
-
-      const activeCalIds = cals.filter((c) => c.isVisible).map((c) => c.id)
-      if (activeCalIds.length > 0) {
-        const occs = await window.xrncal.events.queryRange(
-          activeCalIds,
-          queryRange.startUtc,
-          queryRange.endUtc
-        )
-        const calColorById = new Map(cals.map((c) => [c.id, c.color]))
-        setOccurrences(
-          occs.map((occ) => ({ ...occ, color: occ.color || calColorById.get(occ.calendarId) }))
-        )
-      } else {
-        setOccurrences([])
-      }
-    } catch {
-      // Keep the calendars and events already on screen.
-    }
-
-    if (window.xrncal?.events?.listConflicts) {
-      try {
-        setConflicts(await window.xrncal.events.listConflicts())
-      } catch {
-        // Keep the last known conflicts; the next refresh tries again.
-      }
-    }
-  }, [queryRange.startUtc, queryRange.endUtc])
-
-  const handleResolveConflict = async (eventId: string, resolution: 'keepMine' | 'keepTheirs') => {
-    if (!window.xrncal?.events?.resolveConflict) return
-    try {
-      await window.xrncal.events.resolveConflict(eventId, resolution)
-      setConflicts((prev) => prev.filter((c) => c.eventId !== eventId))
-    } catch (err: any) {
-      showFriendlyError(err, t('toast.conflictResolveFailed'))
-    }
+  // Which occurrence the keyboard cursor is sitting on, found again whenever
+  // the occurrences are read again (see refindSelection) - while rendering, so
+  // the cursor never points at an occurrence that has just gone.
+  const [selection, setSelection] = useState<CursorSelection | null>(null)
+  const [selectionReadFrom, setSelectionReadFrom] = useState(occurrences)
+  if (selectionReadFrom !== occurrences) {
+    setSelectionReadFrom(occurrences)
+    setSelection((prev) => refindSelection(prev, occurrences))
   }
 
-  // A background sync can rewrite the rows under the view - including the id of
-  // an event that has just been pushed for the first time, which the provider
-  // assigns. Reloading on that signal is what keeps a drag or resize from acting
-  // on an occurrence that no longer exists.
-  //
-  // Never mid-gesture, though. The poll runs every 20s while the window is
-  // focused, so reloading the moment the signal arrives yanks the view out from
-  // under a drag that is still in the user's hand - the blocks re-render, the
-  // occurrence being dragged is replaced, and the drop lands somewhere nobody
-  // asked for. Both gesture hooks mark `is-dnd-active` on <body> for exactly as
-  // long as a drag or resize is live, so the reload waits for it to clear.
   useEffect(() => {
-    if (!window.xrncal?.sync?.onChanged) return
-
-    let pending = false
-    const isGestureActive = (): boolean => document.body.classList.contains('is-dnd-active')
-
-    const drain = (): void => {
-      if (!pending || isGestureActive()) return
-      pending = false
-      void loadCalendarsAndEvents()
-    }
-
-    // Attribute changes on <body> are the signal that a gesture ended; watching
-    // them beats polling for a class that is usually not there.
-    const observer = new MutationObserver(drain)
-    observer.observe(document.body, { attributes: true, attributeFilter: ['class'] })
-
-    const unsubscribe = window.xrncal.sync.onChanged(() => {
-      pending = true
-      drain()
-    })
-
+    const api = window.xrncal?.app
+    if (!api) return
+    let cancelled = false
+    Promise.all([api.getVersion(), api.getPlatform()])
+      .then(([version, platform]) => {
+        if (!cancelled) setAppInfo({ version: version || '0.1.0', platform: platform || 'win32' })
+      })
+      .catch(() => {
+        // Keep the built-in version and platform fallbacks.
+      })
     return () => {
-      observer.disconnect()
-      unsubscribe()
+      cancelled = true
     }
-  }, [loadCalendarsAndEvents])
+  }, [])
 
-  const handleDirectMove = useCallback(
-    async (
-      occ: ExpandedOccurrence,
-      targetStart: DateTime,
-      targetEnd: DateTime,
-      isCopy: boolean,
-      /** Undefined keeps the occurrence's current all-day-ness. */
-      targetAllDay?: boolean
-    ) => {
-      if (!window.xrncal?.events) return
-      const events = window.xrncal.events
-
-      const sourceCal = calendars.find((c) => c.id === occ.calendarId)
-      if (sourceCal?.isReadOnly && !isCopy) {
-        toast.error(t('toast.readOnlyTitle'), { description: t('toast.readOnlyMove') })
-        return
-      }
-
-      try {
-        if (isCopy) {
-          // Drag-copy makes a new event that shares a name and a calendar, not a
-          // duplicate: no recurrence, no multi-day span, and none of the
-          // original's notes, location or meeting link. Its length is kept.
-          const range = singleDayRange(targetStart, targetEnd, dragSnapMinutes)
-          const copied = await window.xrncal.events.copy({
-            sourceEventId: occ.eventId,
-            dtStartUtc: range.start.toUTC().toISO()!,
-            dtEndUtc: range.end.toUTC().toISO()!,
-            targetCalendarId: occ.calendarId,
-            copyInstanceOnly: true,
-            bare: true,
-            // Alt-dragging an all-day event onto the grid has to produce a timed
-            // copy too, or the copy keeps its all-day flag with an hour's range.
-            allDay: targetAllDay === undefined ? occ.allDay : targetAllDay
-          })
-          pushUndo(() => events.delete(copied.id))
-        } else if (occ.isRecurring) {
-          await window.xrncal.events.updateScope({
-            masterEventId: occ.eventId,
-            originalStartUtc: occ.originalStartUtc || occ.startUtc,
-            scope: 'this',
-            updateInput: {
-              title: occ.title,
-              dtStartUtc: targetStart.toUTC().toISO()!,
-              dtEndUtc: targetEnd.toUTC().toISO()!,
-              tzid: occ.tzid,
-              // Dropping one occurrence of an all-day series onto the hourly grid
-              // detaches just that occurrence as a timed event, like Google does.
-              allDay: targetAllDay === undefined ? occ.allDay : targetAllDay,
-              notes: occ.notes,
-              location: occ.location,
-              meetingUrl: occ.meetingUrl
-            }
-          })
-          pushUndo(() =>
-            events.updateScope({
-              masterEventId: occ.eventId,
-              originalStartUtc: occ.originalStartUtc || occ.startUtc,
-              scope: 'this',
-              updateInput: occurrenceAsUpdate(occ)
-            })
-          )
-        } else {
-          await window.xrncal.events.move({
-            eventId: occ.eventId,
-            dtStartUtc: targetStart.toUTC().toISO()!,
-            dtEndUtc: targetEnd.toUTC().toISO()!,
-            targetCalendarId: occ.calendarId,
-            allDay: targetAllDay === undefined ? occ.allDay : targetAllDay
-          })
-          pushUndo(() =>
-            events.move({
-              eventId: occ.eventId,
-              dtStartUtc: occ.startUtc,
-              dtEndUtc: occ.endUtc,
-              targetCalendarId: occ.calendarId,
-              allDay: occ.allDay
-            })
-          )
-        }
-        await loadCalendarsAndEvents()
-      } catch (err: any) {
-        // A sync that lands between the drag starting and the drop finishing can
-        // re-key the event, so the id in hand is already gone. Refresh instead of
-        // blaming the user for a move that was valid when they began it.
-        if (isStaleEventError(err)) {
-          await loadCalendarsAndEvents()
-          toast.error(t('friendly.staleTitle'), { description: t('friendly.staleBody') })
-          return
-        }
-        showFriendlyError(err, t('toast.moveFailed'))
-      }
-    },
-    [calendars, dragSnapMinutes, loadCalendarsAndEvents, pushUndo, t]
+  const onDndMove = useCallback(
+    (occ: ExpandedOccurrence, start: DateTime, end: DateTime, isCopy: boolean, targetAllDay?: boolean) =>
+      void moveOccurrence(occ, start, end, isCopy, targetAllDay),
+    [moveOccurrence]
   )
-
   const {
     pendingDrop,
     setPendingDrop,
@@ -367,25 +168,11 @@ export const App: React.FC = () => {
     handleDragOverTarget,
     handleDropOnDate,
     markPointerBusyEnd
-  } = useEventDnD(
-    dragSnapMinutes,
-    useCallback(
-      (
-        occ: ExpandedOccurrence,
-        start: DateTime,
-        end: DateTime,
-        isCopy: boolean,
-        targetAllDay?: boolean
-      ) => void handleDirectMove(occ, start, end, isCopy, targetAllDay),
-      [handleDirectMove]
-    )
-  )
+  } = useEventDnD(dragSnapMinutes, onDndMove)
 
   const handleResizeCommit = useCallback(
-    (occ: ExpandedOccurrence, start: DateTime, end: DateTime) => {
-      void handleDirectMove(occ, start, end, false)
-    },
-    [handleDirectMove]
+    (occ: ExpandedOccurrence, start: DateTime, end: DateTime) => void moveOccurrence(occ, start, end, false),
+    [moveOccurrence]
   )
 
   // Week view drops onto the all-day lane, which turns a timed event into an
@@ -397,514 +184,102 @@ export const App: React.FC = () => {
     [handleDropOnDate]
   )
 
+  /** A new event from 09:00 on `date`: a Month view day click (with where it
+   *  was, so the editor opens away from it), Create, N or Enter on a day. */
   const openEditorForDate = useCallback(
-    (date: DateTime) => {
+    (date: DateTime, clientX?: number) => {
       if (wasJustDragging()) return
-      setEditorData({
+      openEditor({
         initialStart: date.set({ hour: 9, minute: 0, second: 0 }),
-        initialEnd: date.set({ hour: 10, minute: 0, second: 0 })
+        initialEnd: date.set({ hour: 10, minute: 0, second: 0 }),
+        initialClientX: clientX
       })
-      setIsEditorOpen(true)
     },
-    [wasJustDragging]
+    [wasJustDragging, openEditor]
   )
 
-  useEffect(() => {
-    const initApp = async (): Promise<void> => {
-      if (window.xrncal?.app) {
-        try {
-          const version = await window.xrncal.app.getVersion()
-          const plat = await window.xrncal.app.getPlatform()
-          setAppVersion(version || '0.1.0')
-          setPlatform(plat || 'win32')
-        } catch {
-          // Keep the built-in version and platform fallbacks.
-        }
-      }
-
-      if (window.xrncal?.settings) {
-        try {
-          const settings = await window.xrncal.settings.getAll()
-          setShowLunar(settings.showLunar ?? true)
-          setShowWeekNumbers(settings.showWeekNumbers ?? true)
-          setShowMiniCalendar(settings.showMiniCalendar ?? true)
-          setAutoHideHeader(settings.autoHideHeader ?? true)
-          setTimeFormat(settings.timeFormat ?? '24h')
-          setDayStartHour(settings.dayStartHour ?? 7)
-          setHourBlockSize(settings.hourBlockSize ?? 'medium')
-          setSecondaryTimezone(settings.secondaryTimezone ?? '')
-          setPreferredTimeZones(parseZoneList(settings.preferredTimeZones))
-          setSuggestionShowCalendarName(settings.suggestionShowCalendarName ?? true)
-          setDragSnapMinutes(settings.dragSnapMinutes ?? 15)
-          setDefaultReminderMinutes(settings.defaultReminderMinutes === undefined ? 10 : settings.defaultReminderMinutes)
-          setDefaultAllDayReminderMinutes(settings.defaultAllDayReminderMinutes ?? null)
-          setCheckForUpdates(settings.checkForUpdates ?? true)
-          setFirstDayOfWeek(settings.firstDayOfWeek ?? 1)
-          const loc = settings.locale === 'vi' || settings.locale === 'en' ? settings.locale : 'en'
-          if (loc !== i18n.language) await i18n.changeLanguage(loc)
-          if (window.xrncal.app?.setLocale) await window.xrncal.app.setLocale(loc)
-        } catch {
-          // Keep the defaults already in state.
-        }
-      }
-
-      await loadFromSettings()
-      await loadCalendarsAndEvents()
-    }
-    initApp()
-  }, [i18n, loadCalendarsAndEvents, loadFromSettings])
-
-  const handleToday = () => setAnchorDate(DateTime.local())
-
-  // Taskbar-style auto-hide: the header only stays up while the pointer is near
-  // the top edge or resting on it, and slides away again after a short delay.
-  const showHeader = () => {
-    if (headerHideTimerRef.current) {
-      clearTimeout(headerHideTimerRef.current)
-      headerHideTimerRef.current = null
-    }
-    setHeaderVisible(true)
-  }
-
-  const scheduleHideHeader = () => {
-    if (headerHideTimerRef.current) clearTimeout(headerHideTimerRef.current)
-    headerHideTimerRef.current = setTimeout(() => setHeaderVisible(false), 150)
-  }
-
-  useEffect(() => {
-    scheduleHideHeader()
-    return () => {
-      if (headerHideTimerRef.current) clearTimeout(headerHideTimerRef.current)
-    }
-  }, [])
-
-  const handlePrev = useCallback(() => {
-    switch (currentView) {
-      case 'day':
-        setAnchorDate((d) => d.minus({ days: 1 }))
-        break
-      case 'week':
-        setAnchorDate((d) => d.minus({ weeks: 1 }))
-        break
-      case 'month':
-      case 'list':
-        setAnchorDate((d) => d.minus({ months: 1 }))
-        break
-      case 'year':
-        setAnchorDate((d) => d.minus({ years: 1 }))
-        break
-    }
-  }, [currentView])
-
-  const handleNext = useCallback(() => {
-    switch (currentView) {
-      case 'day':
-        setAnchorDate((d) => d.plus({ days: 1 }))
-        break
-      case 'week':
-        setAnchorDate((d) => d.plus({ weeks: 1 }))
-        break
-      case 'month':
-      case 'list':
-        setAnchorDate((d) => d.plus({ months: 1 }))
-        break
-      case 'year':
-        setAnchorDate((d) => d.plus({ years: 1 }))
-        break
-    }
-  }, [currentView])
-
-  const setLanguage = async (next: AppLocale): Promise<void> => {
-    if (next === i18n.language) return
-    await i18n.changeLanguage(next)
-    if (window.xrncal?.settings) await window.xrncal.settings.set('locale', next)
-    if (window.xrncal?.app?.setLocale) await window.xrncal.app.setLocale(next)
-  }
-
-  const toggleLanguage = () => setLanguage(i18n.language === 'vi' ? 'en' : 'vi')
-
-  const toggleLunar = async (enabled: boolean) => {
-    setShowLunar(enabled)
-    if (window.xrncal?.settings) await window.xrncal.settings.set('showLunar', enabled)
-  }
-
-  const toggleWeekNumbers = async (enabled: boolean) => {
-    setShowWeekNumbers(enabled)
-    if (window.xrncal?.settings) await window.xrncal.settings.set('showWeekNumbers', enabled)
-  }
-
-  const toggleAutoHideHeader = async (enabled: boolean) => {
-    setAutoHideHeader(enabled)
-    if (!enabled) showHeader()
-    if (window.xrncal?.settings) await window.xrncal.settings.set('autoHideHeader', enabled)
-  }
-
-  const changeTimeFormat = async (value: DisplayPreferences['timeFormat']) => {
-    setTimeFormat(value)
-    if (window.xrncal?.settings) await window.xrncal.settings.set('timeFormat', value)
-  }
-
-  const changeDayStartHour = async (value: number) => {
-    setDayStartHour(value)
-    if (window.xrncal?.settings) await window.xrncal.settings.set('dayStartHour', value)
-  }
-
-  const changeHourBlockSize = async (value: DisplayPreferences['hourBlockSize']) => {
-    setHourBlockSize(value)
-    if (window.xrncal?.settings) await window.xrncal.settings.set('hourBlockSize', value)
-  }
-
-  const changeSecondaryTimezone = async (value: string) => {
-    setSecondaryTimezone(value)
-    if (window.xrncal?.settings) await window.xrncal.settings.set('secondaryTimezone', value)
-  }
-
-  const changePreferredTimeZones = async (next: string[]) => {
-    setPreferredTimeZones(next)
-    if (window.xrncal?.settings) await window.xrncal.settings.set('preferredTimeZones', serializeZoneList(next))
-  }
-
-  const changeDragSnapMinutes = async (next: AppSettings['dragSnapMinutes']) => {
-    setDragSnapMinutes(next)
-    if (window.xrncal?.settings) await window.xrncal.settings.set('dragSnapMinutes', next)
-  }
-
-  const changeDefaultReminderMinutes = async (next: AppSettings['defaultReminderMinutes']) => {
-    setDefaultReminderMinutes(next)
-    if (window.xrncal?.settings) await window.xrncal.settings.set('defaultReminderMinutes', next)
-  }
-
-  const changeDefaultAllDayReminderMinutes = async (next: AppSettings['defaultAllDayReminderMinutes']) => {
-    setDefaultAllDayReminderMinutes(next)
-    if (window.xrncal?.settings) await window.xrncal.settings.set('defaultAllDayReminderMinutes', next)
-  }
-
-  const toggleCheckForUpdates = async (next: boolean) => {
-    setCheckForUpdates(next)
-    if (window.xrncal?.settings) await window.xrncal.settings.set('checkForUpdates', next)
-  }
-
-  const toggleSuggestionShowCalendarName = async (next: boolean) => {
-    setSuggestionShowCalendarName(next)
-    if (window.xrncal?.settings)
-      await window.xrncal.settings.set('suggestionShowCalendarName', next)
-  }
-
-  const toggleMiniCalendar = useCallback(async (enabled: boolean) => {
-    setShowMiniCalendar(enabled)
-    if (window.xrncal?.settings) await window.xrncal.settings.set('showMiniCalendar', enabled)
-  }, [])
-
-  const toggleCalendarVisibility = async (cal: Calendar) => {
-    if (window.xrncal?.calendars) {
-      const updated = await window.xrncal.calendars.update(cal.id, { isVisible: !cal.isVisible })
-      setCalendars((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
-      await loadCalendarsAndEvents()
-    }
-  }
-
-  /** Several visibility changes at once ("show only this"), then one reload. */
-  const setCalendarsVisibility = async (changes: { id: string; isVisible: boolean }[]) => {
-    if (!window.xrncal?.calendars || changes.length === 0) return
-    const api = window.xrncal.calendars
-    const updated = await Promise.all(changes.map((c) => api.update(c.id, { isVisible: c.isVisible })))
-    const byId = new Map(updated.map((c) => [c.id, c]))
-    setCalendars((prev) => prev.map((c) => byId.get(c.id) ?? c))
-    await loadCalendarsAndEvents()
-  }
-
-  const changeCalendarColor = async (cal: Calendar, color: string) => {
-    if (!window.xrncal?.calendars) return
-    const updated = await window.xrncal.calendars.update(cal.id, { color })
-    setCalendars((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
-    await loadCalendarsAndEvents()
-  }
-
-  const handleSaveEditorEvent = async (payload: {
-    isNew: boolean
-    eventId?: string
-    occurrenceStartUtc?: string
-    isRecurringOccurrence?: boolean
-    input: CreateEventInput | UpdateEventInput
-  }) => {
-    if (!window.xrncal?.events) return
-
-    try {
-      if (payload.isNew) {
-        await window.xrncal.events.create(payload.input as CreateEventInput)
-        setIsEditorOpen(false)
-        await loadCalendarsAndEvents()
-      } else if (payload.eventId) {
-        if (payload.isRecurringOccurrence && payload.occurrenceStartUtc) {
-          setIsEditorOpen(false)
-          setPendingRecurringScope({
-            action: 'edit',
-            title: (payload.input as UpdateEventInput).title || '',
-            eventId: payload.eventId,
-            occurrenceStartUtc: payload.occurrenceStartUtc,
-            input: payload.input as UpdateEventInput
-          })
-        } else {
-          await window.xrncal.events.update(payload.eventId, payload.input as UpdateEventInput)
-          setIsEditorOpen(false)
-          await loadCalendarsAndEvents()
-        }
-      }
-    } catch (err: any) {
-      showFriendlyError(err, t('toast.saveFailed'))
-    }
-  }
-
-  const handleDeleteEvent = async (
-    eventId: string,
-    occurrenceStartUtc?: string,
-    isRecurring?: boolean,
-    /** Middle-click asks for no prompt: the gesture is already the decision. */
-    options?: { confirm?: boolean; title?: string }
-  ) => {
-    if (!window.xrncal?.events) return
-    const events = window.xrncal.events
-
-    const shouldPrompt = options?.confirm !== false
-    const done = async () => {
-      setIsEditorOpen(false)
-      await loadCalendarsAndEvents()
-    }
-
-    if (isRecurring && occurrenceStartUtc) {
-      if (!shouldPrompt) {
-        // Middle-clicking picks out one occurrence, so that is what it removes.
-        // The scope prompt asks a question the gesture has already answered, and
-        // 'this' is both the literal reading and the least destructive one.
-        try {
-          const snapshot = await window.xrncal.events.getById(eventId)
-          await window.xrncal.events.deleteScope({
-            masterEventId: eventId,
-            originalStartUtc: occurrenceStartUtc,
-            scope: 'this'
-          })
-          if (snapshot) offerUndoDelete(undoForScopedDelete(snapshot, occurrenceStartUtc, 'this'))
-          await done()
-        } catch (err: any) {
-          showFriendlyError(err, t('toast.deleteFailed'))
-        }
-        return
-      }
-
-      setIsEditorOpen(false)
-      setPendingRecurringScope({
-        action: 'delete',
-        title: '',
-        eventId,
-        occurrenceStartUtc
-      })
-      return
-    }
-
-    if (shouldPrompt && !confirm(t('toast.confirmDelete'))) return
-
-    try {
-      // Taken before the delete: a synced deletion is pushed within seconds, and
-      // after that only the snapshot can bring the event back.
-      const snapshot = await window.xrncal.events.getById(eventId)
-      await window.xrncal.events.delete(eventId)
-      if (snapshot) offerUndoDelete(() => events.restore(snapshot))
-      await done()
-    } catch (err: any) {
-      showFriendlyError(err, t('toast.deleteFailed'))
-    }
-  }
-
-  /**
-   * A deleted event or occurrence can be brought back from the toast as well as
-   * with Ctrl+Z. The toast is the delete's only feedback when it was not
-   * confirmed first (middle-click), and the one destructive action worth a
-   * second chance in plain sight.
-   */
-  const offerUndoDelete = (undo: () => Promise<unknown>) => {
-    pushUndo(undo)
-    toast(t('undo.deleted'), {
-      action: {
-        label: t('undo.action'),
-        onClick: () => void runUndo(undo)
-      }
-    })
-  }
-
-  /** The inverse of deleting one, this-and-future, or all occurrences of a series. */
-  const undoForScopedDelete = (
-    snapshot: { event: CalendarEvent; exceptions: EventException[] },
-    originalStartUtc: string,
-    scope: RecurringEditScope
-  ): (() => Promise<unknown>) => {
-    const events = window.xrncal!.events
-    const master = snapshot.event
-    if (scope === 'all') return () => events.restore(snapshot)
-    // The series was capped with UNTIL; give it its old rule back.
-    if (scope === 'future') return () => events.update(master.id, { rrule: master.rrule })
-    // One occurrence was cancelled. The repo knows whether that has reached
-    // the provider yet, and so how to bring it back (see restoreOccurrence).
-    return () => events.restore(snapshot, originalStartUtc)
-  }
-
-  const runUndo = useCallback(
-    async (undo: () => Promise<unknown>) => {
-      undoStackRef.current = undoStackRef.current.filter((u) => u !== undo)
-      try {
-        await undo()
-      } catch (err) {
-        showFriendlyError(err, t('undo.failed'))
-      }
-      await loadCalendarsAndEvents()
+  /** A click or drag on an empty slot of the hour grid or the all-day lane.
+   *  `clientX` docks the editor on the side away from the slot. */
+  const openEditorForSlot = useCallback(
+    (start: DateTime, end: DateTime, allDay?: boolean, clientX?: number) => {
+      if (wasJustDragging()) return
+      openEditor({ initialStart: start, initialEnd: end, initialAllDay: allDay, initialClientX: clientX })
     },
-    [loadCalendarsAndEvents, t]
+    [wasJustDragging, openEditor]
   )
-
-  const undoLast = useCallback(() => {
-    const undo = undoStackRef.current[undoStackRef.current.length - 1]
-    if (undo) void runUndo(undo)
-  }, [runUndo])
-
-  const handleConfirmRecurringScope = async (scope: RecurringEditScope) => {
-    if (!pendingRecurringScope || !window.xrncal?.events) return
-
-    try {
-      if (pendingRecurringScope.action === 'edit' && pendingRecurringScope.input) {
-        await window.xrncal.events.updateScope({
-          masterEventId: pendingRecurringScope.eventId,
-          originalStartUtc: pendingRecurringScope.occurrenceStartUtc,
-          scope,
-          updateInput: pendingRecurringScope.input
-        })
-      } else if (pendingRecurringScope.action === 'delete') {
-        const snapshot = await window.xrncal.events.getById(pendingRecurringScope.eventId)
-        await window.xrncal.events.deleteScope({
-          masterEventId: pendingRecurringScope.eventId,
-          originalStartUtc: pendingRecurringScope.occurrenceStartUtc,
-          scope
-        })
-        if (snapshot) {
-          offerUndoDelete(undoForScopedDelete(snapshot, pendingRecurringScope.occurrenceStartUtc, scope))
-        }
-      }
-      setPendingRecurringScope(null)
-      await loadCalendarsAndEvents()
-    } catch (err: any) {
-      showFriendlyError(err, t('toast.recurringUpdateFailed'))
-    }
-  }
 
   const handleSelectOccurrence = useCallback(
     (occ: ExpandedOccurrence) => {
       if (wasJustDragging()) return
       setSelection({ occurrenceId: occ.id, eventId: occ.eventId })
-      setEditorData({ occurrence: occ })
-      setIsEditorOpen(true)
+      openEditor({ occurrence: occ, initialClientX: clientXOf(occ.id) })
     },
-    [wasJustDragging]
+    [wasJustDragging, openEditor, clientXOf]
   )
 
   // Week view middle-click gesture: delete the occurrence without opening the editor.
   const handleQuickDeleteOccurrence = useCallback(
     (occ: ExpandedOccurrence) => {
       if (wasJustDragging()) return
-      const sourceCal = calendars.find((c) => c.id === occ.calendarId)
-      if (sourceCal?.isReadOnly) {
-        toast.error(t('toast.readOnlyTitle'), { description: t('toast.readOnlyDelete') })
-        return
-      }
-      void handleDeleteEvent(occ.eventId, occ.originalStartUtc || occ.startUtc, occ.isRecurring, {
-        confirm: false,
-        title: occ.title
-      })
+      deleteOccurrence(occ, { confirm: false })
     },
-    [calendars, wasJustDragging] // eslint-disable-line react-hooks/exhaustive-deps
+    [wasJustDragging, deleteOccurrence]
   )
 
-  const handleDropMove = async (drop: PendingDropAction) => {
-    if (!window.xrncal?.events) return
-    const events = window.xrncal.events
+  const page = useCallback(
+    (direction: 1 | -1) => setAnchorDate((d) => stepAnchor(d, currentView, direction)),
+    [currentView]
+  )
+  const handlePrev = useCallback(() => page(-1), [page])
+  const handleNext = useCallback(() => page(1), [page])
+  const handleToday = useCallback(() => setAnchorDate(DateTime.local()), [])
 
-    const targetCalId = drop.targetCalendarId || drop.occurrence.calendarId
-    const targetCal = calendars.find((c) => c.id === targetCalId)
-    const sourceCal = calendars.find((c) => c.id === drop.occurrence.calendarId)
-    if (sourceCal?.isReadOnly || targetCal?.isReadOnly) {
-      toast.error(t('toast.readOnlyTitle'), { description: t('toast.readOnlyMove') })
-      setPendingDrop(null)
-      return
+  const contextMenu = useCalendarContextMenu({
+    occurrences,
+    calendars,
+    select: (occ) => setSelection({ occurrenceId: occ.id, eventId: occ.eventId }),
+    open: handleSelectOccurrence,
+    duplicate: (occ) => void commands.duplicateOccurrence(occ),
+    remove: (occ) => deleteOccurrence(occ),
+    newEventAt: openEditorForSlot,
+    openDay: (day) => {
+      setAnchorDate(day)
+      setCurrentView('day')
     }
+  })
 
+  const restoreFromBackup = async (): Promise<void> => {
+    if (!window.xrncal?.app?.restoreDatabase) return
+    if (!window.confirm(t('settings.restoreConfirm'))) return
     try {
-      if (drop.occurrence.isRecurring) {
-        setPendingDrop(null)
-        setPendingRecurringScope({
-          action: 'edit',
-          title: drop.occurrence.title,
-          eventId: drop.occurrence.eventId,
-          occurrenceStartUtc: drop.occurrence.originalStartUtc || drop.occurrence.startUtc,
-          input: {
-            dtStartUtc: drop.targetStart.toUTC().toISO()!,
-            dtEndUtc: drop.targetEnd.toUTC().toISO()!,
-            title: drop.occurrence.title
-          }
+      const result = await window.xrncal.app.restoreDatabase()
+      // On success the app restarts and nothing comes back.
+      if (!result.success && result.message && result.message !== 'cancelled') {
+        const known = ['notDatabase', 'notXrncal', 'newer'].includes(result.message)
+        toast.error(t('settings.restoreFailed'), {
+          description: known ? t(`settings.restoreProblem.${result.message}`) : result.message
         })
-        return
       }
-
-      await window.xrncal.events.move({
-        eventId: drop.occurrence.eventId,
-        dtStartUtc: drop.targetStart.toUTC().toISO()!,
-        dtEndUtc: drop.targetEnd.toUTC().toISO()!,
-        targetCalendarId: targetCalId
-      })
-      const original = drop.occurrence
-      pushUndo(() =>
-        events.move({
-          eventId: original.eventId,
-          dtStartUtc: original.startUtc,
-          dtEndUtc: original.endUtc,
-          targetCalendarId: original.calendarId,
-          allDay: original.allDay
-        })
-      )
-      setPendingDrop(null)
-      await loadCalendarsAndEvents()
-    } catch (err: any) {
-      if (isStaleEventError(err)) {
-        await loadCalendarsAndEvents()
-        toast.error(t('friendly.staleTitle'), { description: t('friendly.staleBody') })
-        setPendingDrop(null)
-        return
-      }
-      showFriendlyError(err, t('toast.moveFailed'))
+    } catch (err) {
+      showFriendlyError(err, t('settings.restoreFailed'))
     }
   }
 
-  const handleDropCopy = async (drop: PendingDropAction, copyInstanceOnly?: boolean) => {
-    if (!window.xrncal?.events) return
-    const events = window.xrncal.events
-    try {
-      // "Copy whole series" is asking for a duplicate, so it keeps everything.
-      // Every other copy is a new event that shares a name: no recurrence, no
-      // multi-day span, and none of the original's notes, location or link.
-      const bare = copyInstanceOnly === true || !drop.occurrence.isRecurring
-      const range = bare
-        ? singleDayRange(drop.targetStart, drop.targetEnd, dragSnapMinutes)
-        : { start: drop.targetStart, end: drop.targetEnd }
+  const finishWelcome = async (next: WelcomeNext, startAtLogin: boolean): Promise<void> => {
+    await setSetting('welcomeDone', true)
+    await setSetting('launchAtLogin', startAtLogin)
+    if (next === 'subscription') setAccountsDialog([{ name: 'list' }, { name: 'subscriptions' }])
+    else if (next) setAccountsDialog([{ name: 'list' }, { name: 'add' }, { name: 'connect', provider: next }])
+  }
 
-      const copied = await window.xrncal.events.copy({
-        sourceEventId: drop.occurrence.eventId,
-        dtStartUtc: range.start.toUTC().toISO()!,
-        dtEndUtc: range.end.toUTC().toISO()!,
-        targetCalendarId: drop.targetCalendarId,
-        copyInstanceOnly: copyInstanceOnly ?? bare,
-        bare
-      })
-      pushUndo(() => events.delete(copied.id))
-      setPendingDrop(null)
-      await loadCalendarsAndEvents()
-    } catch (err: any) {
-      showFriendlyError(err, t('toast.copyFailed'))
+  const syncNow = async (): Promise<void> => {
+    if (!window.xrncal?.sync?.triggerNow) return
+    try {
+      const res = await window.xrncal.sync.triggerNow()
+      await reload()
+      toast.success(t('toast.syncDone'), { description: res.message || undefined })
+    } catch (err) {
+      showFriendlyError(err, t('toast.syncFailed'))
     }
   }
 
@@ -924,24 +299,6 @@ export const App: React.FC = () => {
     [occurrences, selection]
   )
 
-  // A reload re-keys occurrences, so a keyboard move changes the very id the
-  // cursor is holding: a one-off event's id is built from the start time the
-  // move just changed. Re-find it by its event instead of dropping the cursor
-  // after every nudge - but only for one-off events. A recurring occurrence is
-  // keyed by its *original* start, which a move never touches, so matching one
-  // by event id would only ever catch the wrong instance: paging to next week
-  // would drag the cursor onto that week's copy of a weekly meeting.
-  useEffect(() => {
-    setSelection((prev) => {
-      if (!prev) return prev
-      if (occurrences.some((o) => o.id === prev.occurrenceId)) return prev
-      const sameEvent = occurrences.filter((o) => o.eventId === prev.eventId && !o.isRecurring)
-      return sameEvent.length === 1
-        ? { occurrenceId: sameEvent[0].id, eventId: prev.eventId }
-        : null
-    })
-  }, [occurrences])
-
   // Keep the cursor on screen: Week and Day scroll a 24-hour grid, List scrolls
   // weeks of events. One query from up here beats a ref in every view.
   useEffect(() => {
@@ -954,285 +311,162 @@ export const App: React.FC = () => {
     return () => cancelAnimationFrame(frame)
   }, [selection, currentView])
 
-  const moveCursor = useCallback(
-    (direction: 1 | -1) => {
-      const next = stepCursor(
-        orderedOccurrences,
-        selection?.occurrenceId ?? null,
-        direction,
-        anchorDate.toFormat('yyyy-MM-dd')
-      )
-      if (next) setSelection({ occurrenceId: next.id, eventId: next.eventId })
-    },
-    [orderedOccurrences, selection, anchorDate]
-  )
-
-  // Shift/Alt + arrows go through the same commit path as a drag or an
-  // edge-resize, so read-only calendars, recurring scope and stale-id recovery
-  // all behave exactly as they do with a mouse.
-  const nudgeSelected = useCallback(
-    (delta: { days?: number; minutes?: number }, mode: 'move' | 'resize') => {
-      if (!selectedOccurrence) return
-      const range =
-        mode === 'move'
-          ? nudgedRange(selectedOccurrence, delta)
-          : resizedRange(selectedOccurrence, delta.minutes ?? 0, dragSnapMinutes)
-      if (!range) return
-      void handleDirectMove(selectedOccurrence, range.start, range.end, false)
-    },
-    [selectedOccurrence, dragSnapMinutes, handleDirectMove]
-  )
-
-  const deleteSelected = useCallback(() => {
-    if (!selectedOccurrence) return
-    const cal = calendars.find((c) => c.id === selectedOccurrence.calendarId)
-    if (cal?.isReadOnly) {
-      toast.error(t('toast.readOnlyTitle'), { description: t('toast.readOnlyDelete') })
-      return
-    }
-    void handleDeleteEvent(
-      selectedOccurrence.eventId,
-      selectedOccurrence.originalStartUtc || selectedOccurrence.startUtc,
-      selectedOccurrence.isRecurring
-    )
-  }, [selectedOccurrence, calendars]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const syncNow = useCallback(async () => {
-    if (!window.xrncal?.sync?.triggerNow) return
-    try {
-      const res = await window.xrncal.sync.triggerNow()
-      await loadCalendarsAndEvents()
-      toast.success(t('toast.syncDone'), { description: res.message || undefined })
-    } catch (err) {
-      showFriendlyError(err, t('toast.syncFailed'))
-    }
-  }, [loadCalendarsAndEvents, t])
-
   // A layer above the calendar is taking keys: a bare letter must not reach
   // through a dialog and switch the view behind it.
   const isOverlayOpen =
     isEditorOpen ||
+    Boolean(contextMenu.menu) ||
+    Boolean(ics.files) ||
+    welcomeOpen ||
     isSettingsOpen ||
     Boolean(accountsDialog) ||
     isShortcutsModalOpen ||
+    isPrintOpen ||
     isConflictsModalOpen ||
     isSearchPaletteOpen ||
-    Boolean(pendingRecurringScope) ||
+    Boolean(commands.pendingScope) ||
     Boolean(pendingDrop)
 
   // These close themselves on Escape - the accounts dialog steps back a page
   // per press. Handling it here as well would close two layers with one press.
-  const ownsEscape = isEditorOpen || isSearchPaletteOpen || Boolean(pendingDrop) || Boolean(accountsDialog)
+  const ownsEscape =
+    isEditorOpen ||
+    isSearchPaletteOpen ||
+    Boolean(pendingDrop) ||
+    Boolean(accountsDialog) ||
+    Boolean(contextMenu.menu) ||
+    Boolean(ics.files) ||
+    welcomeOpen
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement
-      const isInput =
-        target &&
-        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
-
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-        if (isOverlayOpen && !isSearchPaletteOpen) return
-        e.preventDefault()
+  const runKeyCommand = (command: KeyCommand): void => {
+    switch (command.type) {
+      case 'toggleSearch':
         setIsSearchPaletteOpen((prev) => !prev)
-        return
-      }
-
-      if (e.key === 'Escape') {
-        if (ownsEscape) return
-        e.preventDefault()
-        if (pendingRecurringScope) setPendingRecurringScope(null)
+        break
+      case 'openSearch':
+        setIsSearchPaletteOpen(true)
+        break
+      case 'quit':
+        void window.xrncal?.app?.quit?.()
+        break
+      case 'escape':
+        if (commands.pendingScope) commands.cancelScope()
         else if (isShortcutsModalOpen) setIsShortcutsModalOpen(false)
+        else if (isPrintOpen) setIsPrintOpen(false)
         else if (isConflictsModalOpen) setIsConflictsModalOpen(false)
         else if (isSettingsOpen) setIsSettingsOpen(false)
         else setSelection(null)
-        return
-      }
-
-      if (isInput || isOverlayOpen) return
-
-      // Enter and Space belong to whatever control has focus. Claiming them
-      // here would stop Tab + Enter from pressing a button, which is the other
-      // half of getting around without a mouse.
-      if (
-        (e.key === 'Enter' || e.key === ' ') &&
-        target &&
-        ['BUTTON', 'A', 'SELECT'].includes(target.tagName)
-      ) {
-        return
-      }
-
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
-        e.preventDefault()
-        // With the mini calendar switched off there is no sidebar to collapse,
-        // so the first press is what puts one there rather than doing nothing.
-        if (showMiniCalendar) setSidebarCollapsed((v) => !v)
+        break
+      case 'toggleSidebar':
+        // With the sidebar switched off there is nothing to collapse, so the
+        // first press is what puts one there rather than doing nothing.
+        if (settings.showMiniCalendar) setSidebarCollapsed((v) => !v)
         else {
           setSidebarCollapsed(false)
-          void toggleMiniCalendar(true)
+          void setSetting('showMiniCalendar', true)
         }
-        return
+        break
+      case 'undo':
+        undo.undoLast()
+        break
+      case 'print':
+        setIsPrintOpen(true)
+        break
+      case 'nudge': {
+        // The same commit path as a drag or an edge-resize, so read-only
+        // calendars, recurring scope and stale-id recovery all behave exactly
+        // as they do with a mouse.
+        if (!selectedOccurrence) break
+        const range =
+          command.mode === 'move'
+            ? nudgedRange(selectedOccurrence, command.delta)
+            : resizedRange(selectedOccurrence, command.delta.minutes ?? 0, dragSnapMinutes)
+        if (range) void moveOccurrence(selectedOccurrence, range.start, range.end, false)
+        break
       }
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
-        e.preventDefault()
-        undoLast()
-        return
+      case 'today':
+        setAnchorDate(DateTime.local())
+        break
+      case 'page':
+        page(command.direction)
+        break
+      case 'cursor': {
+        const next = stepCursor(
+          orderedOccurrences,
+          selection?.occurrenceId ?? null,
+          command.direction,
+          anchorDate.toFormat('yyyy-MM-dd')
+        )
+        if (next) setSelection({ occurrenceId: next.id, eventId: next.eventId })
+        break
       }
-      // Anything else held with Ctrl/Cmd belongs to Electron (reload, quit…).
-      if (e.ctrlKey || e.metaKey) return
-
-      // Shift/Alt + arrows act on the event under the cursor rather than on the
-      // cursor itself: Shift moves it, Alt stretches its end.
-      if (selectedOccurrence && (e.shiftKey || e.altKey) && e.key.startsWith('Arrow')) {
-        const isResize = e.altKey && !e.shiftKey
-        let handled = true
-        switch (e.key) {
-          case 'ArrowUp':
-            nudgeSelected({ minutes: -dragSnapMinutes }, isResize ? 'resize' : 'move')
-            break
-          case 'ArrowDown':
-            nudgeSelected({ minutes: dragSnapMinutes }, isResize ? 'resize' : 'move')
-            break
-          case 'ArrowLeft':
-            if (isResize) handled = false
-            else nudgeSelected({ days: -1 }, 'move')
-            break
-          case 'ArrowRight':
-            if (isResize) handled = false
-            else nudgeSelected({ days: 1 }, 'move')
-            break
-          default:
-            handled = false
-        }
-        if (handled) {
-          e.preventDefault()
-          return
-        }
-      }
-
-      const key = e.key.length === 1 ? e.key.toLowerCase() : e.key
-
-      switch (key) {
-        // Time
-        case 't':
-          setAnchorDate(DateTime.local())
-          break
-        case 'k':
-        case 'ArrowLeft':
-        case 'PageUp':
-          handlePrev()
-          break
-        case 'j':
-        case 'ArrowRight':
-        case 'PageDown':
-          handleNext()
-          break
-
-        // The cursor. Year view draws no events, so there is nothing to walk.
-        case 'ArrowDown':
-          if (currentView === 'year') return
-          moveCursor(1)
-          break
-        case 'ArrowUp':
-          if (currentView === 'year') return
-          moveCursor(-1)
-          break
-        case 'Enter':
-          if (selectedOccurrence) handleSelectOccurrence(selectedOccurrence)
-          else openEditorForDate(anchorDate)
-          break
-        case 'Delete':
-        case 'Backspace':
-          if (!selectedOccurrence) return
-          deleteSelected()
-          break
-
-        // Views
-        case '1':
-        case 'd':
-          setCurrentView('day')
-          break
-        case '2':
-        case 'w':
-          setCurrentView('week')
-          break
-        case '3':
-        case 'm':
-          setCurrentView('month')
-          break
-        case '4':
-        case 'y':
-          setCurrentView('year')
-          break
-        case '5':
-        case 'l':
-          setCurrentView('list')
-          break
-
-        // Actions
-        case 'n':
-        case 'c':
-          openEditorForDate(anchorDate)
-          break
-        case '/':
-          setIsSearchPaletteOpen(true)
-          break
-        case '?':
-        case 'F1':
-          setIsShortcutsModalOpen((prev) => !prev)
-          break
-        case ',':
-          setSettingsSection(null)
-          setIsSettingsOpen(true)
-          break
-        case 'r':
-          void syncNow()
-          break
-        default:
-          return
-      }
-      e.preventDefault()
+      case 'openSelected':
+        if (selectedOccurrence) handleSelectOccurrence(selectedOccurrence)
+        break
+      case 'deleteSelected':
+        if (selectedOccurrence) deleteOccurrence(selectedOccurrence)
+        break
+      case 'newEvent':
+        openEditorForDate(anchorDate)
+        break
+      case 'view':
+        setCurrentView(command.view)
+        break
+      case 'toggleShortcuts':
+        setIsShortcutsModalOpen((prev) => !prev)
+        break
+      case 'openSettings':
+        setSettingsSection(null)
+        setIsSettingsOpen(true)
+        break
+      case 'sync':
+        void syncNow()
+        break
     }
+  }
 
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [
-    anchorDate,
-    currentView,
-    deleteSelected,
-    dragSnapMinutes,
-    handleNext,
-    handlePrev,
-    handleSelectOccurrence,
-    isConflictsModalOpen,
-    isOverlayOpen,
-    isSearchPaletteOpen,
-    isSettingsOpen,
-    isShortcutsModalOpen,
-    moveCursor,
-    nudgeSelected,
-    openEditorForDate,
-    ownsEscape,
-    pendingRecurringScope,
-    selectedOccurrence,
-    showMiniCalendar,
-    syncNow,
-    toggleMiniCalendar,
-    undoLast
-  ])
+  useKeyCommands(
+    {
+      overlayOpen: isOverlayOpen,
+      searchOpen: isSearchPaletteOpen,
+      overlayOwnsEscape: ownsEscape,
+      hasSelection: Boolean(selectedOccurrence),
+      view: currentView,
+      dragSnapMinutes
+    },
+    runKeyCommand
+  )
+
+  // Day view heads its column with the full date, so the bar would only repeat
+  // it. Week view's columns carry day numbers but not the month, which is what
+  // the bar says there.
+  const appHeader = (
+    <AppHeader
+      title={
+        currentView === 'day'
+          ? ''
+          : currentView === 'week'
+            ? weekTitle(startOfWeek(anchorDate, firstDayOfWeek), i18n.language)
+            : visibleRange.label
+      }
+      currentView={currentView}
+      showSidebarToggle={settings.showMiniCalendar}
+      onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
+      onPrev={handlePrev}
+      onNext={handleNext}
+      onNewEvent={() => openEditorForDate(anchorDate)}
+      onChangeView={setCurrentView}
+      onSearch={() => setIsSearchPaletteOpen(true)}
+      onOpenMenu={() => {
+        setSettingsSection(null)
+        setIsSettingsOpen(true)
+      }}
+      conflictCount={conflicts.length}
+    />
+  )
 
   return (
-    <DisplayPreferencesProvider value={{
-        timeFormat,
-        hourBlockSize,
-        dayStartHour,
-        secondaryTimezone,
-        suggestionShowCalendarName,
-        dragSnapMinutes,
-        defaultReminderMinutes,
-        defaultAllDayReminderMinutes,
-        preferredTimeZones
-      }}>
+    <DisplayPreferencesProvider value={displayPreferences}>
     <div
       className="relative flex h-screen w-screen flex-col overflow-hidden bg-app font-sans text-primary select-none"
       style={
@@ -1261,59 +495,35 @@ export const App: React.FC = () => {
         </>
       )}
 
-      {(() => {
-          // Day and week views head their own columns with the date, so the bar
-          // would only repeat it.
-          const header = (
-            <AppHeader
-              title={currentView === 'week' || currentView === 'day' ? '' : visibleRange.label}
-              currentView={currentView}
-              showSidebarToggle={showMiniCalendar}
-              onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
-              onPrev={handlePrev}
-              onNext={handleNext}
-              onChangeView={setCurrentView}
-              onSearch={() => setIsSearchPaletteOpen(true)}
-              onOpenMenu={() => {
-                setSettingsSection(null)
-                setIsSettingsOpen(true)
-              }}
-              conflictCount={conflicts.length}
-            />
-          )
+      {!settings.autoHideHeader ? (
+        // Plain, always-visible header - no collapse machinery.
+        <div className="shrink-0">{appHeader}</div>
+      ) : (
+        <>
+          {/* Thin hotspot at the very top edge - catches the pointer re-entering
+              while the header is collapsed away, taskbar-style. */}
+          <div className="fixed inset-x-0 top-0 z-20 h-1.5" onMouseEnter={header.show} />
 
-          if (!autoHideHeader) {
-            // Plain, always-visible header - no collapse machinery.
-            return <div className="shrink-0">{header}</div>
-          }
-
-          return (
-            <>
-              {/* Thin hotspot at the very top edge - catches the pointer re-entering
-                  while the header is collapsed away, taskbar-style. */}
-              <div className="fixed inset-x-0 top-0 z-20 h-1.5" onMouseEnter={showHeader} />
-
-              {/* Push-based collapse (not an overlay) - the header's own box shrinks to
-                  0, so the calendar content underneath slides down/up with it instead of
-                  ever being covered. Overflow only clips while collapsed/collapsing -
-                  once expanded it switches to visible so the view-switcher and overflow
-                  menu dropdowns (which extend below the 48px bar) aren't cut off. */}
-              <div
-                className={`shrink-0 transition-[max-height] duration-100 ease-out ${
-                  headerVisible ? 'overflow-visible' : 'overflow-hidden'
-                }`}
-                style={{ maxHeight: headerVisible ? '48px' : '0px' }}
-                onMouseEnter={showHeader}
-                onMouseLeave={scheduleHideHeader}
-              >
-                {header}
-              </div>
-            </>
-          )
-        })()}
+          {/* Push-based collapse (not an overlay) - the header's own box shrinks to
+              0, so the calendar content underneath slides down/up with it instead of
+              ever being covered. Overflow only clips while collapsed/collapsing -
+              once expanded it switches to visible so the view-switcher and overflow
+              menu dropdowns (which extend below the 48px bar) aren't cut off. */}
+          <div
+            className={`shrink-0 transition-[max-height] duration-100 ease-out ${
+              header.visible ? 'overflow-visible' : 'overflow-hidden'
+            }`}
+            style={{ maxHeight: header.visible ? '48px' : '0px' }}
+            onMouseEnter={header.show}
+            onMouseLeave={header.scheduleHide}
+          >
+            {appHeader}
+          </div>
+        </>
+      )}
 
       <div className="z-10 flex min-h-0 flex-1 overflow-hidden">
-        {showMiniCalendar && (
+        {settings.showMiniCalendar && (
           <AppSidebar
             collapsed={sidebarCollapsed}
             anchorDate={anchorDate}
@@ -1324,9 +534,9 @@ export const App: React.FC = () => {
             onNextMonth={() => setAnchorDate((d) => d.plus({ months: 1 }))}
             accounts={accounts}
             calendars={calendars}
-            onToggleCalendarVisibility={toggleCalendarVisibility}
-            onSetCalendarsVisibility={setCalendarsVisibility}
-            onChangeCalendarColor={changeCalendarColor}
+            onToggleCalendarVisibility={data.toggleCalendarVisibility}
+            onSetCalendarsVisibility={data.setCalendarsVisibility}
+            onChangeCalendarColor={data.changeCalendarColor}
             onOpenAccount={(accountId) =>
               setAccountsDialog(
                 accountId === 'subscriptions'
@@ -1340,15 +550,15 @@ export const App: React.FC = () => {
           />
         )}
 
-        <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-surface">
+        <main key={zoneMoves} className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-surface">
 
           {currentView === 'month' && (
             <MonthView
               anchorDate={anchorDate}
               occurrences={occurrences}
-              showLunar={showLunar}
-              showWeekNumbers={showWeekNumbers}
-              onSelectDate={openEditorForDate}
+              showLunar={settings.showLunar}
+              showWeekNumbers={settings.showWeekNumbers}
+              onSelectDate={(date) => openEditorForDate(date, lastX())}
               onSelectOccurrence={handleSelectOccurrence}
               onPrevMonth={handlePrev}
               onNextMonth={handleNext}
@@ -1366,19 +576,10 @@ export const App: React.FC = () => {
             <WeekView
               anchorDate={anchorDate}
               occurrences={occurrences}
-              showLunar={showLunar}
-              showWeekNumbers={showWeekNumbers}
+              showLunar={settings.showLunar}
+              showWeekNumbers={settings.showWeekNumbers}
               previewSlot={draftPreview}
-              onSelectSlot={(start, end, meta) => {
-                if (wasJustDragging()) return
-                setEditorData({
-                  initialStart: start,
-                  initialEnd: end,
-                  initialAllDay: meta?.allDay,
-                  initialClientX: meta?.clientX
-                })
-                setIsEditorOpen(true)
-              }}
+              onSelectSlot={(start, end, meta) => openEditorForSlot(start, end, meta?.allDay, meta?.clientX)}
               onSelectOccurrence={handleSelectOccurrence}
               onDeleteOccurrence={handleQuickDeleteOccurrence}
               onGoToday={handleToday}
@@ -1401,18 +602,9 @@ export const App: React.FC = () => {
             <DayView
               anchorDate={anchorDate}
               occurrences={occurrences}
-              showLunar={showLunar}
+              showLunar={settings.showLunar}
               previewSlot={draftPreview}
-              onSelectSlot={(start, end, meta) => {
-                if (wasJustDragging()) return
-                setEditorData({
-                  initialStart: start,
-                  initialEnd: end,
-                  initialAllDay: meta?.allDay,
-                  initialClientX: meta?.clientX
-                })
-                setIsEditorOpen(true)
-              }}
+              onSelectSlot={(start, end, meta) => openEditorForSlot(start, end, meta?.allDay, meta?.clientX)}
               onSelectOccurrence={handleSelectOccurrence}
               onPrevDay={handlePrev}
               onNextDay={handleNext}
@@ -1432,7 +624,7 @@ export const App: React.FC = () => {
             <YearView
               anchorDate={anchorDate}
               occurrences={occurrences}
-              showLunar={showLunar}
+              showLunar={settings.showLunar}
               onPrevYear={handlePrev}
               onNextYear={handleNext}
               onSelectMonth={(year, month) => {
@@ -1450,11 +642,11 @@ export const App: React.FC = () => {
             <ListView
               anchorDate={anchorDate}
               occurrences={occurrences}
-              showLunar={showLunar}
+              showLunar={settings.showLunar}
               selectedOccurrenceId={selection?.occurrenceId}
               onSelectOccurrence={handleSelectOccurrence}
               onAddEvent={() => openEditorForDate(anchorDate)}
-              onNearEdge={handleListNearEdge}
+              onNearEdge={extendList}
             />
           )}
         </main>
@@ -1466,8 +658,7 @@ export const App: React.FC = () => {
         calendars={calendars}
         onSelectEvent={(event, targetDate) => {
           setAnchorDate(DateTime.fromISO(targetDate))
-          setEditorData({ event })
-          setIsEditorOpen(true)
+          openEditor({ event })
         }}
       />
 
@@ -1476,36 +667,47 @@ export const App: React.FC = () => {
         onClose={() => setIsShortcutsModalOpen(false)}
       />
 
+      {isPrintOpen && (
+        <PrintDialog
+          calendars={calendars}
+          view={currentView}
+          anchorDate={anchorDate}
+          onClose={() => setIsPrintOpen(false)}
+        />
+      )}
+
       <SyncConflictsModal
         isOpen={isConflictsModalOpen}
         conflicts={conflicts}
         onClose={() => setIsConflictsModalOpen(false)}
-        onResolve={handleResolveConflict}
+        onResolve={data.resolveConflict}
       />
 
-      <EventEditorDialog
-        isOpen={isEditorOpen}
-        calendars={calendars}
-        data={editorData}
-        onSave={handleSaveEditorEvent}
-        onDelete={handleDeleteEvent}
-        onDataChanged={loadCalendarsAndEvents}
-        onClose={() => setIsEditorOpen(false)}
-        onDraftChange={handleDraftChange}
-      />
+      {isEditorOpen && (
+        <EventEditorDialog
+          key={editorSession}
+          calendars={calendars}
+          data={editorData}
+          onSave={commands.saveEvent}
+          onDelete={commands.deleteEvent}
+          onDataChanged={reload}
+          onClose={closeEditor}
+          onDraftChange={setDraftPreview}
+        />
+      )}
 
       <RecurringScopeDialog
-        isOpen={Boolean(pendingRecurringScope)}
-        title={pendingRecurringScope?.title || ''}
-        action={pendingRecurringScope?.action || 'edit'}
-        onConfirm={handleConfirmRecurringScope}
-        onCancel={() => setPendingRecurringScope(null)}
+        isOpen={Boolean(commands.pendingScope)}
+        title={commands.pendingScope?.title || ''}
+        action={commands.pendingScope?.action || 'edit'}
+        onConfirm={commands.confirmScope}
+        onCancel={commands.cancelScope}
       />
 
       <DropActionPopover
         pendingDrop={pendingDrop}
-        onMove={handleDropMove}
-        onCopy={handleDropCopy}
+        onMove={(drop) => commands.dropMove(drop, () => setPendingDrop(null))}
+        onCopy={(drop, copyInstanceOnly) => commands.dropCopy(drop, copyInstanceOnly, () => setPendingDrop(null))}
         onCancel={() => setPendingDrop(null)}
       />
 
@@ -1515,9 +717,9 @@ export const App: React.FC = () => {
         accounts={accounts}
         calendars={calendars}
         onClose={() => setAccountsDialog(null)}
-        onRefresh={loadCalendarsAndEvents}
-        onToggleVisibility={toggleCalendarVisibility}
-        onChangeColor={changeCalendarColor}
+        onRefresh={reload}
+        onToggleVisibility={data.toggleCalendarVisibility}
+        onChangeColor={data.changeCalendarColor}
       />
 
       <SettingsPanel
@@ -1525,57 +727,72 @@ export const App: React.FC = () => {
         section={settingsSection}
         onSectionChange={setSettingsSection}
         onClose={() => setIsSettingsOpen(false)}
-        language={i18n.language}
-        onToggleLanguage={toggleLanguage}
-        showLunar={showLunar}
-        onToggleLunar={toggleLunar}
-        showWeekNumbers={showWeekNumbers}
-        onToggleWeekNumbers={toggleWeekNumbers}
-        showMiniCalendar={showMiniCalendar}
-        onToggleMiniCalendar={toggleMiniCalendar}
-        timeFormat={timeFormat}
-        onChangeTimeFormat={changeTimeFormat}
-        themeMode={mode}
-        onSetThemeMode={persistMode}
-        onThemeChanged={setThemeConfig}
-        dayStartHour={dayStartHour}
-        onChangeDayStartHour={changeDayStartHour}
-        hourBlockSize={hourBlockSize}
-        onChangeHourBlockSize={changeHourBlockSize}
-        secondaryTimezone={secondaryTimezone}
-        onChangeSecondaryTimezone={changeSecondaryTimezone}
-        suggestionShowCalendarName={suggestionShowCalendarName}
-        onToggleSuggestionShowCalendarName={toggleSuggestionShowCalendarName}
-        dragSnapMinutes={dragSnapMinutes}
-        onChangeDragSnapMinutes={changeDragSnapMinutes}
-        defaultReminderMinutes={defaultReminderMinutes}
-        onChangeDefaultReminderMinutes={changeDefaultReminderMinutes}
-        defaultAllDayReminderMinutes={defaultAllDayReminderMinutes}
-        onChangeDefaultAllDayReminderMinutes={changeDefaultAllDayReminderMinutes}
-        preferredTimeZones={preferredTimeZones}
-        onChangePreferredTimeZones={changePreferredTimeZones}
-        timezoneNames={TIME_ZONE_NAMES}
-        checkForUpdates={checkForUpdates}
-        onToggleCheckForUpdates={toggleCheckForUpdates}
-        autoHideHeader={autoHideHeader}
-        onToggleAutoHideHeader={toggleAutoHideHeader}
         onManageAccounts={() => {
           setIsSettingsOpen(false)
           setAccountsDialog([{ name: 'list' }])
         }}
         onOpenShortcuts={() => setIsShortcutsModalOpen(true)}
+        onImportIcs={() => {
+          setIsSettingsOpen(false)
+          icsInputRef.current?.click()
+        }}
+        onRestoreBackup={() => void restoreFromBackup()}
+        onPrint={() => {
+          setIsSettingsOpen(false)
+          setIsPrintOpen(true)
+        }}
         conflictCount={conflicts.length}
         onOpenConflicts={() => setIsConflictsModalOpen(true)}
-        appVersion={appVersion}
-        platform={platform}
+        appVersion={appInfo.version}
+        platform={appInfo.platform}
+      />
+
+      <ContextMenu
+        at={contextMenu.menu?.at ?? null}
+        entries={contextMenu.menu?.entries ?? []}
+        label={contextMenu.menu?.label}
+        onClose={contextMenu.close}
+      />
+
+      {/* Held back while the welcome is up: a new user who opened xrncal by
+          double-clicking an invitation gets the welcome first, then the import. */}
+      <ImportIcsDialog
+        files={welcomeOpen ? null : ics.files}
+        calendars={calendars}
+        onClose={ics.clear}
+        onImported={reload}
+      />
+
+      <WelcomeDialog
+        isOpen={welcomeOpen}
+        language={i18n.language}
+        onSetLanguage={(locale) => void setLanguage(locale)}
+        showLunar={settings.showLunar}
+        onToggleLunar={(next) => void setSetting('showLunar', next)}
+        calendars={calendars}
+        onCalendarsChanged={() => void reload()}
+        onFinish={(next, startAtLogin) => void finishWelcome(next, startAtLogin)}
+      />
+
+      {/* Settings -> Import opens this; the picked files go to ImportIcsDialog. */}
+      <input
+        ref={icsInputRef}
+        type="file"
+        accept=".ics,.ical,text/calendar"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          const list = e.target.files
+          if (list && list.length > 0) ics.accept(list)
+          e.target.value = ''
+        }}
       />
 
       <ReminderStack
         calendars={calendars}
         onOpen={(occurrence) => {
           setSelection({ occurrenceId: occurrence.id, eventId: occurrence.eventId })
-          setEditorData({ occurrence })
-          setIsEditorOpen(true)
+          openEditor({ occurrence, initialClientX: clientXOf(occurrence.id) })
         }}
       />
 

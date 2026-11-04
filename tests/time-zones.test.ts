@@ -3,6 +3,7 @@ import {
   parseZoneList,
   serializeZoneList,
   zoneLabel,
+  zoneForEditing,
   zoneOptions,
   zonePickerOptions
 } from '../src/renderer/src/lib/time-zones'
@@ -48,5 +49,34 @@ describe('preferred time zones', () => {
     const { pinned, rest } = zonePickerOptions(['Asia/Ho_Chi_Minh'], 'Asia/Saigon', 'Asia/Saigon')
     expect(pinned).toEqual([{ value: 'Asia/Saigon', label: zoneLabel('Asia/Saigon'), isLocal: true }])
     expect(rest.some((o) => o.value === 'Asia/Saigon' || o.value === 'Asia/Ho_Chi_Minh')).toBe(false)
+  })
+})
+
+describe('the zone an existing event is edited in', () => {
+  // Where the user was on the event's date, or this computer's zone.
+  const here = 'Australia/Sydney'
+
+  it('keeps a zone the event was given', () => {
+    expect(zoneForEditing('Asia/Ho_Chi_Minh', false, here)).toBe('Asia/Ho_Chi_Minh')
+    expect(zoneForEditing('America/New_York', true, here)).toBe('America/New_York')
+  })
+
+  it('edits a one-off event stamped in UTC in the zone it has no name for', () => {
+    // An .ics from Google's export: DTSTART:20241215T063000Z reads back as UTC.
+    expect(zoneForEditing('UTC', false, here)).toBe(here)
+    expect(zoneForEditing('Etc/UTC', false, here)).toBe(here)
+    expect(zoneForEditing('GMT', false, here)).toBe(here)
+    expect(zoneForEditing('UTC', false, 'Asia/Ho_Chi_Minh')).toBe('Asia/Ho_Chi_Minh')
+  })
+
+  it('keeps UTC on a series, which repeats at that UTC time', () => {
+    expect(zoneForEditing('UTC', true, here)).toBe('UTC')
+  })
+
+  it('does the same for a zone it cannot resolve', () => {
+    expect(zoneForEditing('floating', false, here)).toBe(here)
+    expect(zoneForEditing('floating', true, here)).toBe(here)
+    expect(zoneForEditing('', false, here)).toBe(here)
+    expect(zoneForEditing(undefined, false, here)).toBe(here)
   })
 })

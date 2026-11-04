@@ -1,9 +1,12 @@
-import { fetchWithTimeout } from '../sync/http'
+import { escapeHtml } from '../html-escape'
+import { describeError, fetchWithTimeout } from '../sync/http'
 import http from 'http'
+import type { AddressInfo } from 'net'
 import crypto from 'crypto'
 import { shell } from 'electron'
 import type { ISqliteDatabase } from '../db/sqlite-driver'
 import { SecureStore } from '../secure-store'
+import { AccountsRepo } from '../db/repos/accounts-repo'
 import { mt } from '../i18n-main'
 
 export interface MicrosoftTokens {
@@ -27,9 +30,11 @@ const GRAPH_ME_ENDPOINT = 'https://graph.microsoft.com/v1.0/me'
 
 export class MicrosoftOAuthManager {
   private secureStore: SecureStore
+  private accounts: AccountsRepo
 
-  constructor(private db: ISqliteDatabase) {
+  constructor(db: ISqliteDatabase) {
     this.secureStore = new SecureStore(db)
+    this.accounts = new AccountsRepo(db)
   }
 
   private base64UrlEncode(buffer: Buffer): string {
@@ -95,23 +100,25 @@ export class MicrosoftOAuthManager {
           const queryState = reqUrl.searchParams.get('state')
           const queryError = reqUrl.searchParams.get('error')
 
-          if (queryError) {
+          // Only the browser coming back from this sign-in knows the state. A
+          // request without it - another page probing local ports - is turned
+          // away without ending the sign-in, and cannot put text on this page.
+          if (queryState !== state) {
             res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' })
-            res.end('<h3>' + mt('oauth.microsoft.failed', { error: queryError }) + '</h3><p>' + mt('oauth.canCloseShort') + '</p>')
-            cleanup()
-            reject(new Error(`Microsoft OAuth error: ${queryError}`))
+            res.end('<h3>' + escapeHtml(mt('oauth.stateError')) + '</h3>')
             return
           }
 
-          if (queryState !== state || !queryCode) {
+          if (queryError || !queryCode) {
+            const reason = queryError || 'no code'
             res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' })
-            res.end('<h3>' + mt('oauth.stateError') + '</h3>')
+            res.end('<h3>' + escapeHtml(mt('oauth.microsoft.failed', { error: reason })) + '</h3><p>' + escapeHtml(mt('oauth.canCloseShort')) + '</p>')
             cleanup()
-            reject(new Error('Invalid OAuth state or code'))
+            reject(new Error(`Microsoft OAuth error: ${reason}`))
             return
           }
 
-          const address = server.address() as any
+          const address = server.address() as AddressInfo
           const redirectUri = `http://127.0.0.1:${address.port}/oauth2callback`
 
           const tokenParams = new URLSearchParams({
@@ -152,9 +159,10 @@ export class MicrosoftOAuthManager {
           const userRes = await fetchWithTimeout(GRAPH_ME_ENDPOINT, {
             headers: { Authorization: `Bearer ${tokens.accessToken}` }
           })
-          const userInfo: MicrosoftUserInfo = userRes.ok
-            ? await userRes.json()
-            : { id: `ms_${Date.now()}`, displayName: 'Microsoft Account', mail: 'user@outlook.com' }
+          // Without the profile there is no account id to file the tokens
+          // under: inventing one made a second account on every retry.
+          if (!userRes.ok) throw new Error(mt('oauth.profileFailed', { status: userRes.status }))
+          const userInfo: MicrosoftUserInfo = await userRes.json()
 
           const email = userInfo.mail || userInfo.userPrincipalName || 'user@outlook.com'
           const name = userInfo.displayName || 'Microsoft User'
@@ -166,9 +174,9 @@ export class MicrosoftOAuthManager {
             <html>
               <head><meta charset="utf-8"><title>xrncal Auth</title></head>
               <body style="font-family:system-ui,sans-serif;text-align:center;padding:40px;background:#2b2d31;color:#dbdee1;">
-                <h2 style="color:#0078d4;">${mt('oauth.microsoft.success')}</h2>
-                <p style="color:#94a3b8;">${mt('oauth.account', { detail: `${email} (${name})` })}</p>
-                <p style="color:#64748b;">${mt('oauth.canClose')}</p>
+                <h2 style="color:#0078d4;">${escapeHtml(mt('oauth.microsoft.success'))}</h2>
+                <p style="color:#94a3b8;">${escapeHtml(mt('oauth.account', { detail: `${email} (${name})` }))}</p>
+                <p style="color:#64748b;">${escapeHtml(mt('oauth.canClose'))}</p>
               </body>
             </html>
           `)
@@ -176,16 +184,7 @@ export class MicrosoftOAuthManager {
           cleanup()
 
           const accountId = `acc_graph_${userInfo.id}`
-          const now = new Date().toISOString()
-
-          // Upsert account in DB
-          this.db
-            .prepare(
-              `INSERT INTO accounts (id, type, name, email, is_active, created_at, updated_at)
-               VALUES (?, 'graph', ?, ?, 1, ?, ?)
-               ON CONFLICT(id) DO UPDATE SET name = excluded.name, email = excluded.email, is_active = 1, updated_at = excluded.updated_at`
-            )
-            .run(accountId, name, email, now, now)
+          this.accounts.upsert({ id: accountId, type: 'graph', name: name, email: email })
 
           // Store tokens securely
           this.secureStore.storeToken(accountId, tokens)
@@ -194,7 +193,12 @@ export class MicrosoftOAuthManager {
             account: { id: accountId, name, email },
             tokens
           })
-        } catch (err: any) {
+        } catch (err) {
+          // The browser is still waiting for this page.
+          if (!res.headersSent) {
+            res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' })
+            res.end('<h3>' + escapeHtml(mt('oauth.microsoft.failed', { error: describeError(err) })) + '</h3><p>' + escapeHtml(mt('oauth.canCloseShort')) + '</p>')
+          }
           cleanup()
           reject(err)
         }
@@ -202,7 +206,7 @@ export class MicrosoftOAuthManager {
 
       // Bind exclusively to 127.0.0.1 on random port
       server.listen(0, '127.0.0.1', () => {
-        const address = server.address() as any
+        const address = server.address() as AddressInfo
         const redirectUri = `http://127.0.0.1:${address.port}/oauth2callback`
 
         const authUrl = new URL(MS_AUTH_ENDPOINT)
@@ -277,7 +281,6 @@ export class MicrosoftOAuthManager {
 
   disconnectAccount(accountId: string): void {
     this.secureStore.deleteToken(accountId)
-    const now = new Date().toISOString()
-    this.db.prepare('UPDATE accounts SET is_active = 0, updated_at = ? WHERE id = ?').run(now, accountId)
+    this.accounts.deactivate(accountId)
   }
 }

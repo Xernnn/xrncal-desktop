@@ -12,11 +12,16 @@ export class SecureStore {
   constructor(private db?: ISqliteDatabase) {}
 
   /**
-   * Check if OS safeStorage encryption is available
+   * Check if OS safeStorage encryption is available. On Linux without a
+   * keyring Electron falls back to 'basic_text', a key built into every copy of
+   * Chromium - encryption in name only, so it counts as unavailable here
+   * whatever isEncryptionAvailable() says.
    */
   isAvailable(): boolean {
     try {
-      return typeof safeStorage?.isEncryptionAvailable === 'function' && safeStorage.isEncryptionAvailable()
+      if (typeof safeStorage?.isEncryptionAvailable !== 'function' || !safeStorage.isEncryptionAvailable()) return false
+      if (process.platform === 'linux' && safeStorage.getSelectedStorageBackend?.() === 'basic_text') return false
+      return true
     } catch {
       return false
     }
@@ -47,7 +52,7 @@ export class SecureStore {
   /**
    * Store token for an account in SQLite encrypted
    */
-  storeToken(accountId: string, tokenData: any): void {
+  storeToken(accountId: string, tokenData: unknown): void {
     if (!this.db) {
       throw new Error('Database instance required to persist tokens')
     }
@@ -67,7 +72,7 @@ export class SecureStore {
   /**
    * Retrieve and decrypt token for an account
    */
-  getToken<T = any>(accountId: string): T | null {
+  getToken<T = unknown>(accountId: string): T | null {
     if (!this.db) return null
     const row = this.db
       .prepare('SELECT value FROM settings WHERE key = ?')

@@ -5,6 +5,7 @@ import {
   parseCalDavMultistatus,
   extractXmlText,
   extractPropHref,
+  mayCarryCredentials,
   resolveDavHref,
   type CalDavCalendarDescriptor
 } from './caldav-discover'
@@ -23,6 +24,19 @@ const MULTIGET_BATCH = 100
 const MAX_REPORT_BYTES = 200 * 1024 * 1024
 /** Time allowed for a REPORT's body once its headers are in. */
 const REPORT_BODY_TIMEOUT_MS = 120_000
+/** A calendar list or a principal lookup is a few KB; a server sending more is
+ *  not answering the question, and is not let fill memory. */
+const MAX_DISCOVERY_BYTES = 20 * 1024 * 1024
+
+/** The start of a failed response's body, for the error message - not all of
+ *  whatever a server chose to send. */
+async function failureText(res: Response): Promise<string> {
+  try {
+    return (await readTextWithin(res, res.url, 64 * 1024)).slice(0, 500)
+  } catch {
+    return ''
+  }
+}
 
 export interface CalDavCredentials {
   url: string
@@ -47,10 +61,13 @@ export class CalDavAdapter {
     body?: string,
     headers: Record<string, string> = {}
   ): Promise<Response> {
+    // Only to the account's own server (mayCarryCredentials); anywhere else the
+    // request goes without the password and fails with a 401 instead.
+    const auth: Record<string, string> = mayCarryCredentials(this.creds.url, url) ? { Authorization: this.authHeader } : {}
     return fetchWithTimeout(url, {
       method,
       headers: {
-        Authorization: this.authHeader,
+        ...auth,
         ...headers
       },
       body
@@ -65,12 +82,12 @@ export class CalDavAdapter {
     // answer it - 2 to 25 s per poll on the home server's 8,000 events, against
     // 1.6 s for the ctag alone, which is all that decides whether to pull.
     const propfindXml = `<?xml version="1.0" encoding="utf-8" ?>
-<D:propfind xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav" xmlns:CS="http://calendarserver.org/ns/">
+<D:propfind xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav" xmlns:CS="http://calendarserver.org/ns/" xmlns:I="http://apple.com/ns/ical/">
   <D:prop>
     <D:resourcetype/>
     <D:displayname/>
     <C:calendar-description/>
-    <C:calendar-color/>
+    <I:calendar-color/>
     <CS:getctag/>
     <D:current-user-privilege-set/>
   </D:prop>
@@ -82,10 +99,10 @@ export class CalDavAdapter {
     })
 
     if (!res.ok && res.status !== 207) {
-      throw new Error(`CalDAV discovery failed with HTTP ${res.status}: ${await res.text()}`)
+      throw new Error(`CalDAV discovery failed with HTTP ${res.status}: ${await failureText(res)}`)
     }
 
-    const xml = await res.text()
+    const xml = await readTextWithin(res, res.url || this.creds.url, MAX_DISCOVERY_BYTES)
     return parseCalDavMultistatus(xml, this.creds.url)
   }
 
@@ -121,18 +138,18 @@ export class CalDavAdapter {
   private async calendarsAt(url: string): Promise<CalDavCalendarDescriptor[]> {
     const res = await this.propfind(url, '1', `<D:resourcetype/>
     <D:displayname/>
-    <C:calendar-color/>
+    <I:calendar-color/>
     <CS:getctag/>
     <D:current-user-privilege-set/>`)
     if (!res) return []
-    return parseCalDavMultistatus(await res.text(), res.url || url)
+    return parseCalDavMultistatus(await readTextWithin(res, res.url || url, MAX_DISCOVERY_BYTES), res.url || url)
   }
 
   /** The absolute href a single property on `url` points at, if the server has it. */
   private async propHref(url: string, prop: 'current-user-principal' | 'calendar-home-set'): Promise<string | undefined> {
     const res = await this.propfind(url, '0', prop === 'calendar-home-set' ? '<C:calendar-home-set/>' : '<D:current-user-principal/>')
     if (!res) return undefined
-    const href = extractPropHref(await res.text(), prop)
+    const href = extractPropHref(await readTextWithin(res, res.url || url, MAX_DISCOVERY_BYTES), prop)
     return href ? resolveDavHref(href, res.url || url) : undefined
   }
 
@@ -142,7 +159,7 @@ export class CalDavAdapter {
       url,
       'PROPFIND',
       `<?xml version="1.0" encoding="utf-8" ?>
-<D:propfind xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav" xmlns:CS="http://calendarserver.org/ns/">
+<D:propfind xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav" xmlns:CS="http://calendarserver.org/ns/" xmlns:I="http://apple.com/ns/ical/">
   <D:prop>
     ${props}
   </D:prop>
@@ -150,11 +167,11 @@ export class CalDavAdapter {
       { Depth: depth, 'Content-Type': 'application/xml; charset=utf-8' }
     )
     if (res.status === 401) {
-      throw new Error(`CalDAV discovery failed with HTTP 401: ${await res.text()}`)
+      throw new Error(`CalDAV discovery failed with HTTP 401: ${await failureText(res)}`)
     }
     if (res.status === 207 || res.ok) return res
     if ([403, 404, 405, 501].includes(res.status)) return null
-    throw new Error(`CalDAV discovery failed with HTTP ${res.status}: ${await res.text()}`)
+    throw new Error(`CalDAV discovery failed with HTTP ${res.status}: ${await failureText(res)}`)
   }
 
   /**
@@ -205,7 +222,7 @@ ${refs.join('\n')}
       })
       if ([400, 403, 405, 415, 501].includes(res.status)) return null
       if (!res.ok && res.status !== 207) {
-        throw new Error(`CalDAV multiget failed with HTTP ${res.status}: ${await res.text()}`)
+        throw new Error(`CalDAV multiget failed with HTTP ${res.status}: ${await failureText(res)}`)
       }
       const xml = await readTextWithin(res, calendarUrl, MAX_REPORT_BYTES, REPORT_BODY_TIMEOUT_MS)
       items.push(...parseCalendarItems(xml, res.url || calendarUrl).filter((item) => item.ics))
@@ -233,7 +250,7 @@ ${refs.join('\n')}
     })
 
     if (!res.ok && res.status !== 207) {
-      throw new Error(`CalDAV event query failed with HTTP ${res.status}: ${await res.text()}`)
+      throw new Error(`CalDAV event query failed with HTTP ${res.status}: ${await failureText(res)}`)
     }
 
     // The request's deadline ends with the headers, and a server on a flaky link

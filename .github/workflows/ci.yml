@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+# Read-only: CI checks code and needs to change nothing on the repository.
+permissions:
+  contents: read
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -12,9 +16,9 @@ jobs:
     # first time something asks for its path, unit tests stub `electron` (see
     # tests/stubs/electron.ts), and the build only reads its package.json.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           # 22.5 added node:sqlite behind a flag; it's unflagged from 23.4 on. The DB
           # tests require() it directly (src/main/db/sqlite-driver.ts), and the repo
@@ -42,9 +46,9 @@ jobs:
     # Electron binary, and a display: xvfb-run gives it a virtual one.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -53,3 +57,30 @@ jobs:
 
       - name: UI tests
         run: xvfb-run -a npm run test:e2e
+
+  caldav:
+    # A CalDAV round trip against a real Radicale (tests/integration/, started
+    # by its radicale-server.ts). The unit tests stub fetch with what a server
+    # is believed to send; here the XML, the iCalendar it stores and hands back,
+    # its etags, ctags and preconditions are a server's own. It found the 400
+    # every series with a deleted occurrence got on push.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      # A virtualenv: the runner's Python refuses system-wide pip installs (PEP 668).
+      - name: Radicale
+        run: |
+          python3 -m venv "$RUNNER_TEMP/radicale"
+          "$RUNNER_TEMP/radicale/bin/pip" install --quiet radicale==3.9.0
+          echo "XRNCAL_RADICALE=$RUNNER_TEMP/radicale/bin/radicale" >> "$GITHUB_ENV"
+
+      - run: npm ci
+
+      - name: CalDAV round trip
+        run: npm run test:caldav

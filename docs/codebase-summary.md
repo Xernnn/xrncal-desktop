@@ -1,6 +1,6 @@
 # xrncal — Codebase Summary
 
-**Last updated:** 2026-10-11  
+**Last updated:** 2026-10-27  
 **Version:** 0.1.0  
 **Build status:** 539 tests in 62 files passing, 0 TypeScript errors, 0 lint errors, clean production build. CI (`.github/workflows/ci.yml`) runs lint + typecheck + tests + build on every push and PR; a `v*` tag runs `.github/workflows/release.yml`.
 
@@ -18,15 +18,16 @@ xrncal/
 │   │   │   ├── auth-sync-ipc.ts # OAuth connect/disconnect + sync trigger handlers
 │   │   │   ├── calendar-ipc.ts  # Calendar + event (incl. reply, restore) + ICS IPC handlers
 │   │   │   ├── holiday-ipc.ts   # Holiday subscription IPC handlers
+│   │   │   ├── print-ipc.ts     # Print the page / save it as an A4 landscape PDF, show the saved file
 │   │   │   ├── reminders-ipc.ts # Active reminders: list, dismiss, snooze (registered from index.ts)
 │   │   │   ├── settings-ipc.ts  # Settings get/set IPC handlers
 │   │   │   └── subscriptions-ipc.ts # Calendars subscribed to by .ics / webcal link
 │   │   ├── db/                  # Database layer
-│   │   │   ├── database.ts      # initDatabase, runMigrations (inline 001-021), seedDefaultData
+│   │   │   ├── database.ts      # initDatabase, runMigrations (inline 001-022), seedDefaultData
 │   │   │   ├── sqlite-driver.ts # ISqliteDatabase abstraction (node:sqlite / better-sqlite3)
 │   │   │   ├── backup.ts        # VACUUM INTO snapshot for Settings → Back up database
-│   │   │   ├── migrations/      # Reference copies of the inline migrations (001-021)
-│   │   │   └── repos/           # calendars, events, settings, sync-state, detach-account
+│   │   │   ├── migrations/      # Reference copies of the inline migrations (001-022)
+│   │   │   └── repos/           # accounts, calendars, events, settings, sync-state, detach-account
 │   │   ├── holidays/            # Generated holiday calendars, extended at startup
 │   │   ├── subscriptions/       # ics-subscription.ts: fetch, store and refresh feeds
 │   │   ├── sync/                # Provider sync engines
@@ -37,16 +38,28 @@ xrncal/
 │   │   │   ├── microsoft-event-mapper.ts # Graph event ↔ canonical CalendarEvent
 │   │   │   ├── graph-recurrence-map.ts  # Graph recurrence patterns ↔ RFC 5545 RRULE
 │   │   │   ├── caldav-sync-engine.ts    # CalDAV tsdav two-way sync
+│   │   │   ├── caldav-account-id.ts     # Which account a CalDAV sign-in belongs to (one per user per server)
 │   │   │   ├── caldav-adapter.ts        # CalDAV calendar discovery + adapter
 │   │   │   └── caldav-discover.ts       # RFC 6764 DNS/well-known server discovery
 │   │   ├── ics/                 # ICS import/export
 │   │   │   ├── parse-ics.ts     # ical.js parser → canonical events
-│   │   │   └── write-ics.ts     # Canonical events → RFC 5545 ICS file
+│   │   │   ├── write-ics.ts     # Canonical events → RFC 5545 ICS file, timed ones in their own zone
+│   │   │   └── vtimezone.ts     # VTIMEZONE blocks worked out from the zone database (Luxon)
 │   │   ├── oauth/               # OAuth flows
 │   │   ├── notifications/
 │   │   │   └── reminder-scheduler.ts # Rings reminders; keeps the active list snooze/join act on
 │   │   ├── mini-window.ts       # Frameless companion mini window
 │   │   ├── tray.ts              # System tray icon and context menu
+│   │   ├── tray-host.ts         # Whether the desktop shows tray icons (GNOME Shell without AppIndicator does not)
+│   │   ├── auto-backup.ts       # Weekly snapshot into <userData>/backups, newest four kept
+│   │   ├── log.ts               # <userData>/logs/xrncal.log: rotated, 0600, secrets redacted
+│   │   ├── app-icon.ts          # The app icon's path (unpacked from asar) for the tray and window
+│   │   ├── first-run.ts         # Welcome / existing-profile settling; the one-time "still running" notice
+│   │   ├── launch-at-login.ts   # Start at sign-in: Windows login item, Linux autostart entry
+│   │   ├── setting-effects.ts   # Settings the main process acts on (theme source, launch at login)
+│   │   ├── window-background.ts # A new window's canvas colour, in the theme about to be drawn
+│   │   ├── opened-ics-files.ts  # .ics files the OS opened xrncal with, held for the renderer
+│   │   ├── restore-database.ts  # Restore from a backup: check, set the current data aside, swap, restart
 │   │   ├── updater.ts           # electron-updater against GitHub releases (packaged builds only)
 │   │   └── secure-store.ts      # safeStorage wrapper for OAuth tokens and CalDAV credentials
 │   ├── preload/
@@ -54,7 +67,7 @@ xrncal/
 │   │   └── index.d.ts           # TypeScript declarations for preload
 │   ├── renderer/
 │   │   └── src/
-│   │       ├── App.tsx          # Root component: shell, routing, global keyboard listener
+│   │       ├── App.tsx          # Root component: view routing, modal state, wiring of the hooks below
 │   │       ├── main.tsx         # Entry: dual-mode router (App vs MiniApp via #mini hash)
 │   │       ├── views/           # Calendar view components
 │   │       │   ├── DayView.tsx
@@ -65,12 +78,15 @@ xrncal/
 │   │       ├── components/      # UI components
 │   │       │   ├── shell/       # AppHeader.tsx, AppSidebar.tsx (mini calendar + SidebarCalendars.tsx), ViewSwitcher.tsx
 │   │       │   ├── accounts/    # AccountsDialog.tsx (page stack), AccountViews.tsx, AddAccountViews.tsx, CalendarToggle.tsx, ProviderMark.tsx
-│   │       │   ├── ui/          # Primitives: TextInput, TextArea, NumberInput, CustomSelect, DatePicker, TimePicker, ToggleSwitch, Checkbox, FormRow, toast, index.ts
+│   │       │   ├── ui/          # Primitives: TextInput, TextArea, NumberInput, CustomSelect, DatePicker, TimePicker, ToggleSwitch, Checkbox, FormRow, ContextMenu, toast, index.ts
 │   │       │   ├── MiniCalendar.tsx
 │   │       │   ├── EventPill.tsx
 │   │       │   ├── TimedEventBlock.tsx
 │   │       │   ├── HourGutter.tsx       # Merged primary + secondary clock gutter
 │   │       │   ├── DayPeekPopover.tsx   # Month-view day peek
+│   │       │   ├── NowLine.tsx          # The current-time line; re-renders itself once a minute
+│   │       │   ├── WelcomeDialog.tsx    # First-run: language, basics, connect calendars
+│   │       │   ├── ImportIcsDialog.tsx  # Import picked, dropped or OS-opened .ics files into a calendar
 │   │       │   ├── SettingsPanel.tsx    # Right-side settings drawer (root list + one level)
 │   │       │   ├── AppearanceSettings.tsx
 │   │       │   ├── LunarLabel.tsx
@@ -83,31 +99,41 @@ xrncal/
 │   │       │   ├── SearchPaletteModal.tsx
 │   │       │   └── ErrorBoundary.tsx
 │   │       ├── editor/          # EventEditorDialog, RecurringScopeDialog, TitleSuggestInput, ReminderListField
+│   │       ├── print/           # PrintDialog (Ctrl+P: week or month, preview, print / save as PDF), PrintSheet (the page)
 │   │       ├── dnd/             # Drag and drop: use-event-dnd.ts, drop-target.ts, DropActionPopover.tsx
 │   │       ├── mini/            # MiniApp.tsx (companion window renderer)
-│   │       ├── hooks/           # use-theme.ts, use-visible-range.ts, use-wheel-navigation.ts
-│   │       ├── lib/             # account-display, roving-index, wheel-navigation, reminder-labels
+│   │       ├── context/         # SettingsContext (the settings, read once, written per key), DisplayPreferencesContext
+│   │       ├── hooks/           # App's parts (use-calendar-data, use-event-commands, use-undo-stack, use-key-commands,
+│   │       │                    #   use-calendar-context-menu, use-query-range, use-zone-following, use-ics-intake,
+│   │       │                    #   use-auto-hide-header, use-last-pointer) + use-theme, use-now, use-wheel-navigation, ...
+│   │       ├── lib/             # account-display, roving-index, wheel-navigation, reminder-labels, new-event, clock, time-zones
 │   │       ├── i18n/            # i18next setup, vi/en translation strings
 │   │       └── styles/          # index.css: design tokens, Tailwind layers
 │   └── shared/                  # Shared contracts (used by both main and renderer)
 │       ├── event-model.ts       # CalendarAccount, Calendar, CalendarEvent, ExpandedOccurrence, etc.
 │       ├── reminders.ts         # Reminder lists: defaults, due times, wording, per-provider merge
 │       ├── keyboard-nav.ts      # Keyboard cursor, nudge and resize maths
+│       ├── keyboard-commands.ts # Which command a key press is (commandForKey), and stepAnchor for paging
+│       ├── natural-entry.ts     # Dates, times and repeats typed into a new event's title (vi + en), and applying them
+│       ├── print-layout.ts      # A printed week or month: its days, bars, hour window, lines per cell, file name
 │       ├── all-day.ts           # Floating-date vs instant: inclusive/exclusive ends, day keys
 │       ├── occurrence-order.ts  # Within-day ordering (all-day first, then by time)
 │       ├── title-suggestions.ts # Ranking for the event-title autocomplete
 │       ├── expand-occurrences.ts # RRULE + exception expansion
+│       ├── bounded-rrule.ts     # Limits on what expanding one rule may cost
 │       ├── lunar-vietnam.ts     # Vietnamese lunar calendar conversion
 │       ├── timed-event-segments.ts # Splits multi-day timed occurrences per day
-│       ├── day-highlight.ts     # Today / selection highlight rules
 │       ├── holiday-calendars.ts # Built-in holiday subscription definitions
 │       ├── time-format.ts       # 12h/24h formatting helpers
 │       ├── settings-contract.ts # Settings keys and value types
 │       ├── theme-mode.ts        # ThemeMode enum
 │       ├── mini-calendar-grid.ts # Grid computation utilities
-│       ├── visible-range.ts     # Visible date range helpers
+│       ├── visible-range.ts     # Visible date range helpers, week title
+│       ├── week-start.ts        # First day of the week (Mon/Sun/Sat): week starts, header order, ISO row numbers
+│       ├── locale-defaults.ts   # A new profile's language, clock and week start from the computer's locale
+│       ├── zone-history.ts      # Where the user was, from when: the zone of an event saved without one; moves added as the computer's zone changes
 │       └── ipc-contract.ts      # IPC_CHANNELS constants and XrncalAPI interface
-├── tests/                       # Vitest unit tests (539 tests / 62 files)
+├── tests/                       # Vitest unit tests (~650 tests / 72 files); e2e/ drives the built app
 │   └── stubs/electron.ts        # `electron` module stub for main-process tests
 └── docs/
     ├── urd.md                   # User Requirements Document
@@ -131,7 +157,7 @@ xrncal/
 | `ipc/` | Handler modules: auth+sync, calendar+event+ICS, settings, holidays, subscriptions, reminders |
 | `db/database.ts` | `initDatabase()`, `runMigrations()`, `seedDefaultData()` |
 | `db/sqlite-driver.ts` | `ISqliteDatabase` abstraction over `node:sqlite` / `better-sqlite3` |
-| `db/repos/` | Repository pattern: CalendarsRepo, EventsRepo, SettingsRepo, SyncStateRepo, detachAccount |
+| `db/repos/` | Repository pattern: AccountsRepo, CalendarsRepo, EventsRepo, SettingsRepo, SyncStateRepo, detachAccount |
 | `sync/sync-worker.ts` | Poll loop; 20s interval on window focus, 5m when blurred; also refreshes due subscriptions |
 | `sync/*-sync-engine.ts` | Google, Microsoft Graph, CalDAV two-way sync: events, reminders, guest lists, replies |
 | `subscriptions/ics-subscription.ts` | Read-only calendars fed from an .ics / webcal link, refreshed every 6 h |
@@ -140,7 +166,9 @@ xrncal/
 | `ics/` | ICS file import (ical.js) and export (RFC 5545 writer) |
 | `secure-store.ts` | `safeStorage` wrapper; fail-closed on Linux if keyring unavailable |
 | `mini-window.ts` | Frameless 380×520 companion window; always-on-top toggle |
-| `tray.ts` | System tray icon, context menu, single-click toggle |
+| `tray.ts` | System tray icon (the app icon), context menu via `setContextMenu` (Linux panels cannot pop one up), single-click toggle |
+| `first-run.ts`, `launch-at-login.ts`, `setting-effects.ts` | First run and existing profiles; start at sign-in; settings main acts on |
+| `opened-ics-files.ts`, `restore-database.ts` | .ics files opened with xrncal; restore from backup |
 | `notifications/reminder-scheduler.ts` | Rings each occurrence's reminders (per-event list, else the defaults); keeps rung reminders for snooze / join until dismissed |
 
 ### `src/preload`
@@ -151,14 +179,14 @@ xrncal/
 
 | Namespace | Methods |
 |-----------|---------|
-| `app` | `getVersion`, `getLocale`, `setLocale`, `getPlatform`, `pickBackgroundImage`, `backupDatabase` |
+| `app` | `getVersion`, `getLocale`, `setLocale`, `getPlatform`, `pickBackgroundImage`, `backupDatabase`, `restoreDatabase`, `showLogFile`, `quit` |
 | `settings` | `getAll`, `get`, `set` |
-| `auth` | `connectGoogle`, `disconnectGoogle`, `connectMicrosoft`, `disconnectMicrosoft`, `connectCalDav`, `disconnectCalDav`, `listAccounts`, `detachAccount` |
+| `auth` | `connectGoogle`, `disconnectGoogle`, `connectMicrosoft`, `disconnectMicrosoft`, `connectCalDav`, `disconnectCalDav`, `listAccounts`, `detachAccount`, `providerStatus` |
 | `sync` | `triggerNow`, `getStatus`, `onChanged` |
 | `reminders` | `listActive`, `dismiss`, `snooze`, `onChanged` |
 | `calendars` | `list`, `create`, `update`, `delete` |
 | `events` | `queryRange`, `getById`, `create`, `update`, `delete`, `move`, `copy`, `updateScope`, `deleteScope`, `upsertException`, `materializeLunar`, `detachLunar`, `search`, `suggestTitles`, `shareIcs`, `listConflicts`, `resolveConflict`, `respond`, `restore` |
-| `ics` | `importIcs`, `exportIcs` |
+| `ics` | `importIcs`, `exportIcs` (save dialog), `takeOpenedFiles`, `onFileOpened` |
 | `mini` | `openMain`, `toggle`, `getUpcoming`, `setAlwaysOnTop` |
 | `holidays` | `subscribe`, `unsubscribe` |
 | `subscriptions` | `add`, `refresh` |
@@ -167,20 +195,67 @@ xrncal/
 
 Entry: `main.tsx` detects `#mini` URL hash to route to `MiniApp` (companion widget) vs `App` (main calendar).
 
-**`App.tsx`** orchestrates:
-- Active view routing (Day/Week/Month/Year/List)
-- Global keyboard shortcuts listener — the app is fully drivable without a mouse: a selection
-  cursor over the on-screen occurrences (`↑`/`↓`, `Enter`, `Del`, `Shift`/`Alt`+arrows to move or
-  resize), period navigation (`T`, `←`/`K`, `→`/`J`), views (`1`–`5`, `D`/`W`/`M`/`Y`/`L`) and
-  actions (`N`/`C`, `Ctrl+K`//, `Ctrl+B`, `R`, `,`, `?`/`F1`, `Esc`). Cursor maths lives in
-  `src/shared/keyboard-nav.ts`; the ring is `.gc-event.is-key-selected`.
+**`App.tsx`** owns view routing and which dialog is open, and wires together hooks that each own
+one concern:
+
+- `SettingsProvider` (`context/SettingsContext.tsx`) reads the settings once at startup and writes
+  one key at a time (`setSetting`), optimistically, reverting with a toast if the write fails.
+  Settings, Appearance and the theme read it with `useSettings()`; the views still read
+  `DisplayPreferences`, which App derives from it (`displayPreferencesOf`).
+- `useCalendarData` - calendars, accounts, occurrences and conflicts for the query range, re-read on
+  `sync.onChanged` (never mid-drag) and when the range moves; a later read always wins over an
+  earlier one still in flight. `useQueryRange` gives that range (List view grows it as it scrolls).
+- `useEventCommands` - save, delete, move, duplicate and drop, with the recurring-scope prompt;
+  `useUndoStack` holds the inverse of each.
+- `useKeyCommands` + `src/shared/keyboard-commands.ts` - the global keyboard. `commandForKey()` is
+  a pure function from a key press and the app's state to a command (tested without a DOM);
+  App's `runKeyCommand` carries it out.
+- `useCalendarContextMenu`, `useIcsIntake` (opened, picked and dropped `.ics` files),
+  `useZoneFollowing` (adds a time-zone move to Where you were), `useAutoHideHeader`,
+  `useLastPointer` (which side the editor opens on).
+
+What they do:
+- The app is fully drivable without a mouse: a selection cursor over the on-screen occurrences
+  (`↑`/`↓`, `Enter`, `Del`, `Shift`/`Alt`+arrows to move or resize), period navigation (`T`,
+  `←`/`K`, `→`/`J`), views (`1`–`5`, `D`/`W`/`M`/`Y`/`L`) and actions (`N`/`C`, `Ctrl+K`//,
+  `Ctrl+B`, `Ctrl+P`, `R`, `,`, `?`/`F1`, `Esc`). Cursor maths lives in `src/shared/keyboard-nav.ts`; the
+  ring is `.gc-event.is-key-selected`. After a reload the cursor is found again by occurrence id
+  (`refindSelection`), during render rather than in an effect.
 - An undo stack: every move, resize, copy and delete pushes its inverse, and `Ctrl+Z` runs the
   latest. A delete is undone from a snapshot taken before it (`events.restore`), because a synced
   deletion is pushed within seconds and the row is gone after that.
+- The event editor is mounted only while open, and anew for each opening (`key`): its form is
+  worked out once from what it was opened on (`initialForm()`), so a sync that replaces the
+  calendar list mid-edit leaves what was typed alone.
+- A new event's title is read for when it is (`parseEntry()` in `src/shared/natural-entry.ts`):
+  "Họp 3h chiều thứ 6", "Lunch tomorrow at 12:30", "Giỗ ông 12/8 âm lịch" fill the date, time
+  and repeat fields as they are typed, and the words are left out of the title saved. A line under
+  the title says what it read, with × to keep the title as typed. The form before the title changed
+  it is kept and put back if the words are deleted; once a date or time is changed by hand, typing
+  no longer overrides it. Only clear dates and times are taken: a bare number is never a time, a
+  period word stays in the title unless it is next to a time or a day ("Ăn tối 7h"), and "Mai" with a
+  capital is a name.
+- `Ctrl+P` (or the menu) prints the week or month on screen, or saves it as a PDF: one A4
+  landscape page, on paper colours whatever the theme. `PrintDialog` draws the page twice, scaled
+  down as a preview and full size in `.gc-print-host` at the end of `<body>`, which is all
+  `@media print` shows; main prints the sender's page (`print-ipc.ts`, `printToPDF` with the CSS
+  page size). A week sheet puts all-day events and timed ones of a day or more in bars across the
+  top (four lanes, then "+N more") and shows 08:00-18:00 widened to every event; a month sheet
+  takes only the weeks the month touches and fits as many lines a cell as the row height allows.
+  The page's millimetre sizes in `index.css` and `monthCellLines()` depend on each other.
 - The event editor is keyboard-complete too: `Ctrl+Enter` saves, `Ctrl+⌫` deletes, `Enter` in the
   title saves outright, and `CustomSelect` / `DatePicker` / `TimePicker` each drive their portalled
   popover with a roving index (`src/renderer/src/lib/roving-index.ts`, `.gc-option-active`) because
   a portal at the end of `<body>` can never be tabbed into. Keyboard focus is `.gc-focus-ring`.
+- A click on an empty slot or an event opens the editor, a side panel on the side away from it
+  (`initialClientX`; App remembers where the last pointer went down and on which event; without
+  one it opens on the right); a
+  right-click opens the `ContextMenu`
+  (Edit, Duplicate, Delete on an event; a new event or the day itself on a day). The right-click
+  handler finds the event or day through the `data-occurrence-id` and `data-day` attributes the
+  views put on their elements.
+- The first-run `WelcomeDialog` (shown while `welcomeDone` is false), the `ImportIcsDialog`
+  (files from Settings, a drop on the window, or the OS via `ics.takeOpenedFiles`), and `Ctrl+Q`.
 - Theme background layer and the `SettingsPanel` drawer
 - `ReminderStack`, the in-app half of reminders (Linux notifications cannot carry buttons)
 

@@ -1,10 +1,13 @@
-import React, { useCallback, useEffect, useMemo, useRef } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { occurrenceDateKeys } from '@shared/all-day'
 import { useTranslation } from 'react-i18next'
 import { DateTime } from 'luxon'
 import type { ExpandedOccurrence } from '@shared/event-model'
 import { TODAY_COLOR, DEFAULT_EVENT_COLOR } from '@shared/mini-calendar-grid'
+import { toLuxonWeekStart, weekdayOrder } from '@shared/week-start'
 import { weekdayShortLabels } from '../i18n/weekday-labels'
+import { useDisplayPreferences } from '../context/DisplayPreferencesContext'
+import { useToday } from '../hooks/use-now'
 import LunarLabel from '../components/LunarLabel'
 import { useWheelNavigation } from '../hooks/use-wheel-navigation'
 
@@ -48,6 +51,8 @@ interface MonthCardProps {
   weekdayHeaders: string[]
   locale: string
   todayKey: string
+  /** AppSettings.firstDayOfWeek. */
+  weekStart: number
   showLunar: boolean
   colorsByDay: Map<string, string[]>
   onSelectMonth: (year: number, month: number) => void
@@ -57,17 +62,20 @@ interface MonthCardProps {
 /** Memoized because a year is ~370 day cells, each running a lunar conversion;
  *  without it, every parent render recomputed the lot. */
 const MonthCard = React.memo<MonthCardProps>(
-  ({ year, month, weekdayHeaders, locale, todayKey, showLunar, colorsByDay, onSelectMonth, onSelectDate }) => {
+  ({ year, month, weekdayHeaders, locale, todayKey, weekStart, showLunar, colorsByDay, onSelectMonth, onSelectDate }) => {
     const cells = useMemo(() => {
       const first = DateTime.local(year, month, 1)
       const daysInMonth = first.daysInMonth || 31
       const out: (DateTime | null)[] = []
-      for (let pad = 1; pad < first.weekday; pad++) out.push(null)
+      const leading = (first.weekday - toLuxonWeekStart(weekStart) + 7) % 7
+      for (let pad = 0; pad < leading; pad++) out.push(null)
       for (let d = 1; d <= daysInMonth; d++) out.push(DateTime.local(year, month, d))
       // Pad to a whole six-row grid so short months do not stretch their cells.
       while (out.length < WEEK_ROWS * 7) out.push(null)
       return out
-    }, [year, month])
+    }, [year, month, weekStart])
+
+    const weekendColumns = useMemo(() => weekdayOrder(weekStart).map((d) => d >= 6), [weekStart])
 
     const monthLabel = useMemo(
       () => DateTime.local(year, month, 1).setLocale(locale).toFormat('MMMM'),
@@ -85,7 +93,7 @@ const MonthCard = React.memo<MonthCardProps>(
 
         <div className="mb-0.5 grid shrink-0 grid-cols-7 text-center text-[8px] font-medium text-muted sm:text-[10px]">
           {weekdayHeaders.map((h, idx) => (
-            <span key={`${h}-${idx}`} className={`truncate ${idx >= 5 ? 'text-today' : ''}`}>
+            <span key={`${h}-${idx}`} className={`truncate ${weekendColumns[idx] ? 'text-today' : ''}`}>
               {h}
             </span>
           ))}
@@ -170,11 +178,14 @@ export const YearView: React.FC<YearViewProps> = ({
   const gridRef = useRef<HTMLDivElement>(null)
 
   // Callers pass inline arrows, which change identity on every parent render
-  // and would defeat MonthCard's memo. Route them through refs.
+  // and would defeat MonthCard's memo. Route them through refs, kept current
+  // after each render (a click cannot come sooner).
   const selectMonthRef = useRef(onSelectMonth)
   const selectDateRef = useRef(onSelectDate)
-  selectMonthRef.current = onSelectMonth
-  selectDateRef.current = onSelectDate
+  useLayoutEffect(() => {
+    selectMonthRef.current = onSelectMonth
+    selectDateRef.current = onSelectDate
+  })
 
   const handleSelectMonth = useCallback(
     (y: number, m: number) => selectMonthRef.current(y, m),
@@ -188,8 +199,14 @@ export const YearView: React.FC<YearViewProps> = ({
     if (gridRef.current) gridRef.current.scrollTop = 0
   }, [year])
 
-  const weekdayHeaders = useMemo(() => weekdayShortLabels(t, 1), [t, i18n.language])
-  const todayKey = useMemo(() => DateTime.local().toFormat('yyyy-MM-dd'), [])
+  const { firstDayOfWeek } = useDisplayPreferences()
+  // react-i18next hands out a new `t` when the language changes, so `t` alone
+  // re-reads the labels in the new language.
+  const weekdayHeaders = useMemo(
+    () => weekdayShortLabels(t, firstDayOfWeek),
+    [t, firstDayOfWeek]
+  )
+  const todayKey = useToday().toFormat('yyyy-MM-dd')
 
   const colorsByDay = useMemo(() => {
     const map = new Map<string, string[]>()
@@ -242,6 +259,7 @@ export const YearView: React.FC<YearViewProps> = ({
             weekdayHeaders={weekdayHeaders}
             locale={i18n.language}
             todayKey={todayKey}
+            weekStart={firstDayOfWeek}
             showLunar={showLunar}
             colorsByDay={colorsByDay}
             onSelectMonth={handleSelectMonth}

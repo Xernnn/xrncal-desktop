@@ -56,10 +56,10 @@ export async function fetchWithTimeout(
   try {
     const res = await Promise.race([fetch(url, { ...init, signal: controller.signal }), cancelled])
     return withIdleDeadline(res, url, timeoutMs, controller)
-  } catch (err: any) {
+  } catch (err) {
     // An abort raised by our own timer is reported as a timeout; an abort that
     // came from the caller's signal is left as-is.
-    if (err?.name === 'AbortError' && !external?.aborted) {
+    if ((err as { name?: unknown } | null)?.name === 'AbortError' && !external?.aborted) {
       throw new RequestTimeoutError(url, timeoutMs)
     }
     throw err

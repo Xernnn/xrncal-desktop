@@ -86,6 +86,7 @@ export const resources = {
         dragSnap: 'Snap drag and resize to',
         dragSnapMin: '{{count}} min',
         dragSnapHour: '1 hour',
+        timePickerStep: 'Times listed in the event editor',
         suggestionShowCalendarName: 'Name the calendar in title suggestions',
         timeFormat: 'Time format',
         timeFormat24h: '24h',
@@ -103,11 +104,37 @@ export const resources = {
         preferredTimeZonesHint: 'Listed first when you pick an event\'s time zone',
         preferredTimeZonesAdd: 'Add a time zone…',
         preferredTimeZonesRemove: 'Remove {{zone}}',
+        zoneHistory: 'Where you were',
+        zoneHistoryHint:
+          'Events saved without a time zone (as Google\'s export writes them) open in the zone you were in on their date. When this computer\'s time zone changes, the move is added here.',
+        zoneHistoryFirst: 'At first',
+        zoneHistoryStart: 'Add where you were at first…',
+        zoneHistoryAdd: 'Add a move…',
+        zoneHistoryRemove: 'Remove this period',
         backup: 'Back up database…',
         backupDone: 'Backup saved',
         backupFailed: 'Backup failed',
         checkForUpdates: 'Check for updates',
-        checkForUpdatesHint: 'Looks for new releases on GitHub and installs them when you quit'
+        checkForUpdatesHint: 'Looks for new releases on GitHub and installs them when you quit',
+        autoBackup: 'Back up automatically',
+        autoBackupHint:
+          'Once a week, a copy of your data goes into xrncal\'s own folder, and the last four are kept. "Restore from backup" opens there.',
+        showLog: 'Show log file',
+        showLogFailed: 'The log file could not be opened',
+        weekStart: 'Week starts on',
+        weekStartDay: { '0': 'Sunday', '1': 'Monday', '6': 'Saturday' },
+        closeToTray: 'Keep running when the window is closed',
+        closeToTrayHint: 'Reminders and sync carry on from the tray icon. Quit from its menu, or with Ctrl+Q.',
+        launchAtLogin: 'Start when I sign in',
+        launchAtLoginHint: 'Opens quietly in the tray, so reminders ring after a restart',
+        restore: 'Restore from backup…',
+        restoreConfirm: 'Replace everything in xrncal with a backup? What is here now is saved next to your data first, and xrncal restarts.',
+        restoreFailed: 'Could not restore the backup',
+        restoreProblem: {
+          notDatabase: 'That file is not a database.',
+          notXrncal: 'That database is not an xrncal backup.',
+          newer: 'That backup was made by a newer xrncal. Update xrncal first.'
+        }
       },
       undo: {
         deleted: 'Event deleted',
@@ -163,6 +190,10 @@ export const resources = {
         newEvent: 'New event',
         editEvent: 'Edit event',
         titlePlaceholder: 'Event title…',
+        titleEntry: {
+          savesAs: 'Saved as “{{title}}”',
+          keepTyped: 'Keep the title as typed'
+        },
         calendar: 'Calendar',
         chooseCalendar: 'Choose a calendar…',
         allDay: 'All day',
@@ -330,6 +361,7 @@ export const resources = {
       },
       addAccount: {
         title: 'Add account',
+        notInThisBuild: 'Needs the official download of xrncal',
         allSet: 'Account added',
         providers: {
           google: { title: 'Google', detail: 'Gmail and Google Workspace calendars' },
@@ -467,6 +499,7 @@ export const resources = {
         createEvent: 'Create a new event',
         searchPalette: 'Open the search palette',
         toggleSidebar: 'Show or hide the sidebar',
+        print: 'Print or save as PDF',
         syncNow: 'Sync now',
         openSettings: 'Open settings',
         openShortcuts: 'Open this shortcut sheet',
@@ -482,7 +515,53 @@ export const resources = {
         pickerToday: 'Jump to today in a date picker',
         hintSave: 'Ctrl + Enter',
         hintDelete: 'Ctrl + Backspace',
-        orKey: 'or'
+        orKey: 'or',
+        quit: 'Quit xrncal (closing the window keeps it in the tray)'
+      },
+      sync: {
+        conflictsMenuItem: 'Sync conflicts ({{count}})',
+        conflictsTitle: 'Sync conflicts',
+        conflictsExplain:
+          'These events changed on the server before your edit here could be sent. Pick which version to keep.',
+        conflictsNone: 'No conflicts to resolve.',
+        conflictsUpdated: 'Last edited here: {{when}}',
+        keepMine: 'Keep mine',
+        keepTheirs: 'Keep theirs'
+      },
+      contextMenu: {
+        edit: 'Edit',
+        open: 'Open',
+        duplicate: 'Duplicate',
+        copyToMine: 'Copy to my calendar',
+        newEventHere: 'New event here',
+        openDay: 'Open this day'
+      },
+      ics: {
+        importMenu: 'Import .ics file…',
+        importTitle: 'Import events',
+        importInto: 'Add them to',
+        importHint: 'The events are copied in. Guest lists are left out, so nobody is invited again.',
+        import: 'Import',
+        imported_one: '{{count}} event added to {{calendar}}',
+        imported_other: '{{count}} events added to {{calendar}}',
+        importSkipped_one: '{{count}} event could not be read',
+        importSkipped_other: '{{count}} events could not be read',
+        importFailed: 'Could not import the file',
+        notCalendar: 'That is not a calendar (.ics) file',
+        exportCalendar: 'Export as .ics…',
+        exported: 'Calendar exported',
+        exportFailed: 'Could not export the calendar'
+      },
+      welcome: {
+        title: 'Welcome to xrncal',
+        subtitle: 'Your Google, Outlook and iCloud calendars in one place - with Vietnamese lunar dates, and anniversaries that follow the lunar calendar.',
+        lunarHint: 'The lunar date under each day; mùng 1 and rằm are marked',
+        basicsTitle: 'A few basics',
+        basicsSubtitle: 'You can change any of these later in Settings.',
+        connectTitle: 'Add your calendars',
+        connectSubtitle: 'Sign in once and xrncal keeps them in sync. Or start with a calendar on this computer.',
+        next: 'Next',
+        notNow: 'Not now'
       },
       search: {
         placeholder: 'Search events by title, location, notes… (Ctrl+K)',
@@ -500,6 +579,22 @@ export const resources = {
         empty: 'No events in this period.',
         addEvent: 'Create event',
         allDay: 'All day'
+      },
+      print: {
+        menu: 'Print or save as PDF',
+        title: 'Print',
+        savePdf: 'Save as PDF',
+        print: 'Print…',
+        saving: 'Saving…',
+        saved: 'PDF saved',
+        showInFolder: 'Show in folder',
+        saveFailed: "Couldn't save the PDF",
+        printFailed: "Couldn't print",
+        allDay: 'All day',
+        more_one: '+{{count}} more',
+        more_other: '+{{count}} more',
+        preview: 'Preview of the printed page',
+        hint: 'One A4 page, landscape. Only the calendars shown in the sidebar are printed.'
       },
       mini: {
         events: 'Events',
@@ -548,7 +643,8 @@ export const resources = {
         shareFailed: 'Share failed',
         shareError: 'Failed to share event',
         syncDone: 'Sync complete',
-        syncFailed: 'Sync failed'
+        syncFailed: 'Sync failed',
+        settingFailed: "Couldn't save the setting"
       }
     }
   },
@@ -636,6 +732,7 @@ export const resources = {
         dragSnap: 'Kéo và đổi kích thước theo bước',
         dragSnapMin: '{{count}} phút',
         dragSnapHour: '1 giờ',
+        timePickerStep: 'Các mốc giờ trong cửa sổ sự kiện',
         suggestionShowCalendarName: 'Hiện tên lịch trong gợi ý tiêu đề',
         timeFormat: 'Định dạng giờ',
         timeFormat24h: '24 giờ',
@@ -653,11 +750,37 @@ export const resources = {
         preferredTimeZonesHint: 'Hiện đầu danh sách khi chọn múi giờ cho sự kiện',
         preferredTimeZonesAdd: 'Thêm múi giờ…',
         preferredTimeZonesRemove: 'Bỏ {{zone}}',
+        zoneHistory: 'Nơi bạn đã ở',
+        zoneHistoryHint:
+          'Sự kiện lưu không kèm múi giờ (như bản xuất của Google) mở theo múi giờ nơi bạn ở vào ngày đó. Khi múi giờ của máy thay đổi, nơi mới được tự thêm vào đây.',
+        zoneHistoryFirst: 'Ban đầu',
+        zoneHistoryStart: 'Thêm nơi bạn ở ban đầu…',
+        zoneHistoryAdd: 'Thêm nơi chuyển đến…',
+        zoneHistoryRemove: 'Bỏ khoảng này',
         backup: 'Sao lưu dữ liệu…',
         backupDone: 'Đã lưu bản sao',
         backupFailed: 'Sao lưu thất bại',
         checkForUpdates: 'Kiểm tra bản cập nhật',
-        checkForUpdatesHint: 'Tìm bản phát hành mới trên GitHub và cài khi bạn thoát ứng dụng'
+        checkForUpdatesHint: 'Tìm bản phát hành mới trên GitHub và cài khi bạn thoát ứng dụng',
+        autoBackup: 'Tự động sao lưu',
+        autoBackupHint:
+          'Mỗi tuần một lần, xrncal lưu một bản sao dữ liệu vào thư mục riêng của ứng dụng và giữ lại bốn bản gần nhất. "Khôi phục từ bản sao lưu" sẽ mở thư mục đó.',
+        showLog: 'Mở tệp nhật ký',
+        showLogFailed: 'Không mở được tệp nhật ký',
+        weekStart: 'Tuần bắt đầu từ',
+        weekStartDay: { '0': 'Chủ nhật', '1': 'Thứ hai', '6': 'Thứ bảy' },
+        closeToTray: 'Vẫn chạy khi đóng cửa sổ',
+        closeToTrayHint: 'Nhắc nhở và đồng bộ vẫn chạy từ biểu tượng ở khay hệ thống. Thoát từ menu của biểu tượng, hoặc bằng Ctrl+Q.',
+        launchAtLogin: 'Khởi động cùng máy tính',
+        launchAtLoginHint: 'Mở sẵn ở khay hệ thống để nhắc nhở vẫn kêu sau khi khởi động lại máy',
+        restore: 'Khôi phục từ bản sao lưu…',
+        restoreConfirm: 'Thay toàn bộ dữ liệu trong xrncal bằng bản sao lưu? Dữ liệu hiện tại sẽ được lưu lại bên cạnh trước, rồi xrncal khởi động lại.',
+        restoreFailed: 'Không khôi phục được bản sao lưu',
+        restoreProblem: {
+          notDatabase: 'Tệp này không phải cơ sở dữ liệu.',
+          notXrncal: 'Cơ sở dữ liệu này không phải bản sao lưu của xrncal.',
+          newer: 'Bản sao lưu này được tạo bởi xrncal mới hơn. Hãy cập nhật xrncal trước.'
+        }
       },
       undo: {
         deleted: 'Đã xoá sự kiện',
@@ -713,6 +836,10 @@ export const resources = {
         newEvent: 'Sự kiện mới',
         editEvent: 'Chỉnh sửa sự kiện',
         titlePlaceholder: 'Tiêu đề sự kiện…',
+        titleEntry: {
+          savesAs: 'Lưu thành “{{title}}”',
+          keepTyped: 'Giữ nguyên tiêu đề đã gõ'
+        },
         calendar: 'Lịch',
         chooseCalendar: 'Chọn lịch…',
         allDay: 'Cả ngày',
@@ -880,6 +1007,7 @@ export const resources = {
       },
       addAccount: {
         title: 'Thêm tài khoản',
+        notInThisBuild: 'Cần bản tải chính thức của xrncal',
         allSet: 'Đã thêm tài khoản',
         providers: {
           google: { title: 'Google', detail: 'Lịch Gmail và Google Workspace' },
@@ -1017,6 +1145,7 @@ export const resources = {
         createEvent: 'Tạo sự kiện mới',
         searchPalette: 'Mở bảng tìm kiếm',
         toggleSidebar: 'Ẩn hoặc hiện thanh bên',
+        print: 'In hoặc lưu PDF',
         syncNow: 'Đồng bộ ngay',
         openSettings: 'Mở cài đặt',
         openShortcuts: 'Mở bảng phím tắt này',
@@ -1032,7 +1161,53 @@ export const resources = {
         pickerToday: 'Về hôm nay trong bộ chọn ngày',
         hintSave: 'Ctrl + Enter',
         hintDelete: 'Ctrl + Backspace',
-        orKey: 'hoặc'
+        orKey: 'hoặc',
+        quit: 'Thoát xrncal (đóng cửa sổ thì ứng dụng vẫn chạy ở khay hệ thống)'
+      },
+      sync: {
+        conflictsMenuItem: 'Xung đột đồng bộ ({{count}})',
+        conflictsTitle: 'Xung đột đồng bộ',
+        conflictsExplain:
+          'Các sự kiện này đã thay đổi trên máy chủ trước khi chỉnh sửa của bạn kịp gửi lên. Chọn phiên bản muốn giữ.',
+        conflictsNone: 'Không có xung đột nào cần xử lý.',
+        conflictsUpdated: 'Chỉnh sửa ở đây lần cuối: {{when}}',
+        keepMine: 'Giữ bản của tôi',
+        keepTheirs: 'Giữ bản trên máy chủ'
+      },
+      contextMenu: {
+        edit: 'Sửa',
+        open: 'Mở',
+        duplicate: 'Nhân bản',
+        copyToMine: 'Chép vào lịch của tôi',
+        newEventHere: 'Tạo sự kiện ở đây',
+        openDay: 'Mở ngày này'
+      },
+      ics: {
+        importMenu: 'Nhập tệp .ics…',
+        importTitle: 'Nhập sự kiện',
+        importInto: 'Thêm vào',
+        importHint: 'Sự kiện được chép vào. Danh sách khách mời được bỏ qua để không ai bị mời lại.',
+        import: 'Nhập',
+        imported_one: 'Đã thêm {{count}} sự kiện vào {{calendar}}',
+        imported_other: 'Đã thêm {{count}} sự kiện vào {{calendar}}',
+        importSkipped_one: '{{count}} sự kiện không đọc được',
+        importSkipped_other: '{{count}} sự kiện không đọc được',
+        importFailed: 'Không nhập được tệp',
+        notCalendar: 'Đây không phải tệp lịch (.ics)',
+        exportCalendar: 'Xuất ra tệp .ics…',
+        exported: 'Đã xuất lịch',
+        exportFailed: 'Không xuất được lịch'
+      },
+      welcome: {
+        title: 'Chào mừng đến với xrncal',
+        subtitle: 'Lịch Google, Outlook và iCloud ở cùng một nơi - có ngày âm lịch, và ngày giỗ tính theo âm lịch.',
+        lunarHint: 'Ngày âm lịch dưới mỗi ngày; mùng 1 và rằm được đánh dấu',
+        basicsTitle: 'Vài thiết lập cơ bản',
+        basicsSubtitle: 'Bạn có thể đổi lại bất cứ lúc nào trong Cài đặt.',
+        connectTitle: 'Thêm lịch của bạn',
+        connectSubtitle: 'Đăng nhập một lần, xrncal sẽ tự đồng bộ. Hoặc bắt đầu với một lịch trên máy này.',
+        next: 'Tiếp',
+        notNow: 'Để sau'
       },
       search: {
         placeholder: 'Tìm sự kiện theo tiêu đề, địa điểm, ghi chú… (Ctrl+K)',
@@ -1050,6 +1225,22 @@ export const resources = {
         empty: 'Không có sự kiện nào trong khoảng thời gian này.',
         addEvent: 'Tạo sự kiện',
         allDay: 'Cả ngày'
+      },
+      print: {
+        menu: 'In hoặc lưu PDF',
+        title: 'In lịch',
+        savePdf: 'Lưu PDF',
+        print: 'In…',
+        saving: 'Đang lưu…',
+        saved: 'Đã lưu PDF',
+        showInFolder: 'Mở thư mục',
+        saveFailed: 'Không lưu được PDF',
+        printFailed: 'Không in được',
+        allDay: 'Cả ngày',
+        more_one: '+{{count}} nữa',
+        more_other: '+{{count}} nữa',
+        preview: 'Bản xem trước trang in',
+        hint: 'Một trang A4 khổ ngang. Chỉ in các lịch đang hiện ở thanh bên.'
       },
       mini: {
         events: 'Sự kiện',
@@ -1098,7 +1289,8 @@ export const resources = {
         shareFailed: 'Chia sẻ thất bại',
         shareError: 'Chia sẻ sự kiện thất bại',
         syncDone: 'Đồng bộ hoàn tất',
-        syncFailed: 'Đồng bộ thất bại'
+        syncFailed: 'Đồng bộ thất bại',
+        settingFailed: 'Không lưu được cài đặt'
       }
     }
   }

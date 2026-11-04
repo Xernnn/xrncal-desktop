@@ -1,5 +1,5 @@
 import i18n from '../../i18n'
-import React, { useState, useRef, useEffect, useMemo } from 'react'
+import React, { useState, useRef, useEffect, useEffectEvent, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { DateTime } from 'luxon'
 import {
@@ -10,6 +10,10 @@ import {
   ChevronsRight,
   X
 } from 'lucide-react'
+import { startOfWeek } from '@shared/week-start'
+import { useDisplayPreferences } from '../../context/DisplayPreferencesContext'
+import { weekdayShortLabels } from '../../i18n/weekday-labels'
+import { useToday } from '../../hooks/use-now'
 
 interface DatePickerProps {
   value?: string // format: yyyy-MM-dd
@@ -41,6 +45,7 @@ export const DatePicker: React.FC<DatePickerProps> = ({
   align = 'left',
   clearable = true
 }) => {
+  const { firstDayOfWeek } = useDisplayPreferences()
   const [isOpen, setIsOpen] = useState(false)
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -59,7 +64,7 @@ export const DatePicker: React.FC<DatePickerProps> = ({
   // this cursor is what moves.
   const [activeDate, setActiveDate] = useState<DateTime | null>(null)
 
-  const updateCoords = () => {
+  const updateCoords = useCallback(() => {
     if (!containerRef.current) return
     const rect = containerRef.current.getBoundingClientRect()
     const popoverWidth = 280
@@ -81,135 +86,34 @@ export const DatePicker: React.FC<DatePickerProps> = ({
     }
 
     setCoords({ top, left })
+  }, [align])
+
+  // Opens on the chosen date (or today), with the cursor on it.
+  const open = (): void => {
+    const start = parsedValue || DateTime.local()
+    updateCoords()
+    setViewDate(start)
+    setActiveDate(start)
+    setIsOpen(true)
   }
 
+  // While open, follow the trigger when the page scrolls or resizes.
   useEffect(() => {
     if (!isOpen) return
-
-    setViewDate(parsedValue || DateTime.local())
-    setActiveDate(parsedValue || DateTime.local())
-    updateCoords()
-
-    const handleScrollOrResize = () => {
-      updateCoords()
-    }
-    window.addEventListener('resize', handleScrollOrResize)
-    window.addEventListener('scroll', handleScrollOrResize, true)
+    window.addEventListener('resize', updateCoords)
+    window.addEventListener('scroll', updateCoords, true)
     return () => {
-      window.removeEventListener('resize', handleScrollOrResize)
-      window.removeEventListener('scroll', handleScrollOrResize, true)
+      window.removeEventListener('resize', updateCoords)
+      window.removeEventListener('scroll', updateCoords, true)
     }
-  }, [isOpen, parsedValue, align])
-
-  useEffect(() => {
-    if (!isOpen) return
-
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as Node
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(target) &&
-        popoverRef.current &&
-        !popoverRef.current.contains(target)
-      ) {
-        setIsOpen(false)
-      }
-    }
-
-    // The effect re-registers whenever activeDate changes, so the value closed
-    // over here is always the current one - no updater needed, and none wanted:
-    // a second setState inside one would be a side effect in a pure function.
-    const move = (shift: (d: DateTime) => DateTime) => {
-      const next = shift(activeDate || parsedValue || DateTime.local())
-      setActiveDate(next)
-      setViewDate(next)
-    }
-
-    const close = () => {
-      setIsOpen(false)
-      triggerRef.current?.focus()
-    }
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      switch (e.key) {
-        case 'Escape':
-          // Without stopPropagation this same Escape carries on to the dialog
-          // hosting the field and closes that too.
-          e.preventDefault()
-          e.stopPropagation()
-          close()
-          break
-        case 'ArrowLeft':
-          e.preventDefault()
-          move((d) => d.minus({ days: 1 }))
-          break
-        case 'ArrowRight':
-          e.preventDefault()
-          move((d) => d.plus({ days: 1 }))
-          break
-        case 'ArrowUp':
-          e.preventDefault()
-          move((d) => d.minus({ weeks: 1 }))
-          break
-        case 'ArrowDown':
-          e.preventDefault()
-          move((d) => d.plus({ weeks: 1 }))
-          break
-        case 'PageUp':
-          e.preventDefault()
-          move((d) => (e.shiftKey ? d.minus({ years: 1 }) : d.minus({ months: 1 })))
-          break
-        case 'PageDown':
-          e.preventDefault()
-          move((d) => (e.shiftKey ? d.plus({ years: 1 }) : d.plus({ months: 1 })))
-          break
-        case 'Home':
-          e.preventDefault()
-          move((d) => d.startOf('week'))
-          break
-        case 'End':
-          e.preventDefault()
-          move((d) => d.endOf('week').startOf('day'))
-          break
-        case 't':
-        case 'T':
-          e.preventDefault()
-          move(() => DateTime.local())
-          break
-        case 'Enter':
-          // preventDefault also stops the browser replaying this keydown as a
-          // click on the still-focused trigger, which would reopen the grid.
-          e.preventDefault()
-          if (activeDate && !isOutOfRange(activeDate)) {
-            handleSelectDate(activeDate)
-            triggerRef.current?.focus()
-          }
-          break
-        case 'Tab':
-          // Portalled grid: Tab would strand focus at the end of <body>.
-          e.preventDefault()
-          close()
-          break
-        default:
-          break
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside)
-    document.addEventListener('keydown', handleKeyDown)
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, activeDate, parsedValue, minDate, maxDate])
+  }, [isOpen, updateCoords])
 
   const calendarGrid = useMemo(() => {
     const startOfMonth = viewDate.startOf('month')
     const endOfMonth = viewDate.endOf('month')
 
-    let cur = startOfMonth.startOf('week')
-    const endGrid = endOfMonth.endOf('week')
+    let cur = startOfWeek(startOfMonth, firstDayOfWeek)
+    const endGrid = startOfWeek(endOfMonth, firstDayOfWeek).plus({ days: 6 }).endOf('day')
 
     const days: DateTime[] = []
     while (cur <= endGrid || days.length < 35) {
@@ -219,7 +123,7 @@ export const DatePicker: React.FC<DatePickerProps> = ({
     }
 
     return days
-  }, [viewDate])
+  }, [viewDate, firstDayOfWeek])
 
   const isOutOfRange = (day: DateTime): boolean => {
     if (minDate) {
@@ -244,12 +148,112 @@ export const DatePicker: React.FC<DatePickerProps> = ({
     setIsOpen(false)
   }
 
+  const onDocumentMouseDown = useEffectEvent((e: MouseEvent) => {
+    const target = e.target as Node
+    if (
+      containerRef.current &&
+      !containerRef.current.contains(target) &&
+      popoverRef.current &&
+      !popoverRef.current.contains(target)
+    ) {
+      setIsOpen(false)
+    }
+  })
+
+  const onDocumentKeyDown = useEffectEvent((e: KeyboardEvent) => {
+    const move = (shift: (d: DateTime) => DateTime): void => {
+      const next = shift(activeDate || parsedValue || DateTime.local())
+      setActiveDate(next)
+      setViewDate(next)
+    }
+
+    const close = (): void => {
+      setIsOpen(false)
+      triggerRef.current?.focus()
+    }
+
+    switch (e.key) {
+      case 'Escape':
+        // Without stopPropagation this same Escape carries on to the dialog
+        // hosting the field and closes that too.
+        e.preventDefault()
+        e.stopPropagation()
+        close()
+        break
+      case 'ArrowLeft':
+        e.preventDefault()
+        move((d) => d.minus({ days: 1 }))
+        break
+      case 'ArrowRight':
+        e.preventDefault()
+        move((d) => d.plus({ days: 1 }))
+        break
+      case 'ArrowUp':
+        e.preventDefault()
+        move((d) => d.minus({ weeks: 1 }))
+        break
+      case 'ArrowDown':
+        e.preventDefault()
+        move((d) => d.plus({ weeks: 1 }))
+        break
+      case 'PageUp':
+        e.preventDefault()
+        move((d) => (e.shiftKey ? d.minus({ years: 1 }) : d.minus({ months: 1 })))
+        break
+      case 'PageDown':
+        e.preventDefault()
+        move((d) => (e.shiftKey ? d.plus({ years: 1 }) : d.plus({ months: 1 })))
+        break
+      case 'Home':
+        e.preventDefault()
+        move((d) => startOfWeek(d, firstDayOfWeek))
+        break
+      case 'End':
+        e.preventDefault()
+        move((d) => startOfWeek(d, firstDayOfWeek).plus({ days: 6 }))
+        break
+      case 't':
+      case 'T':
+        e.preventDefault()
+        move(() => DateTime.local())
+        break
+      case 'Enter':
+        // preventDefault also stops the browser replaying this keydown as a
+        // click on the still-focused trigger, which would reopen the grid.
+        e.preventDefault()
+        if (activeDate && !isOutOfRange(activeDate)) {
+          handleSelectDate(activeDate)
+          triggerRef.current?.focus()
+        }
+        break
+      case 'Tab':
+        // Portalled grid: Tab would strand focus at the end of <body>.
+        e.preventDefault()
+        close()
+        break
+      default:
+        break
+    }
+  })
+
+  useEffect(() => {
+    if (!isOpen) return
+    const onMouseDown = (e: MouseEvent): void => onDocumentMouseDown(e)
+    const onKeyDown = (e: KeyboardEvent): void => onDocumentKeyDown(e)
+    document.addEventListener('mousedown', onMouseDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onMouseDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [isOpen])
+
   const handlePrevMonth = () => setViewDate((d) => d.minus({ months: 1 }))
   const handleNextMonth = () => setViewDate((d) => d.plus({ months: 1 }))
   const handlePrevYear = () => setViewDate((d) => d.minus({ years: 1 }))
   const handleNextYear = () => setViewDate((d) => d.plus({ years: 1 }))
 
-  const today = DateTime.local()
+  const today = useToday()
 
   const displayLabel = useMemo(() => {
     if (!parsedValue) return ''
@@ -269,7 +273,7 @@ export const DatePicker: React.FC<DatePickerProps> = ({
     { label: i18n.t('ui.nextWeek'), getDt: () => today.plus({ weeks: 1 }) }
   ]
 
-  const weekHeaders = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN']
+  const weekHeaders = weekdayShortLabels((key) => i18n.t(key), firstDayOfWeek)
 
   const popover =
     isOpen && coords && typeof document !== 'undefined'
@@ -361,8 +365,8 @@ export const DatePicker: React.FC<DatePickerProps> = ({
 
             {/* Weekday Headers */}
             <div className="mb-1 grid grid-cols-7 text-center text-[10px] font-medium text-muted uppercase tracking-wider">
-              {weekHeaders.map((h) => (
-                <span key={h} className="py-1">
+              {weekHeaders.map((h, idx) => (
+                <span key={`${h}-${idx}`} className="py-1">
                   {h}
                 </span>
               ))}
@@ -444,12 +448,16 @@ export const DatePicker: React.FC<DatePickerProps> = ({
         disabled={disabled}
         aria-haspopup="dialog"
         aria-expanded={isOpen}
-        onClick={() => !disabled && setIsOpen((prev) => !prev)}
+        onClick={() => {
+          if (disabled) return
+          if (isOpen) setIsOpen(false)
+          else open()
+        }}
         onKeyDown={(e) => {
           if (disabled || isOpen) return
           if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
             e.preventDefault()
-            setIsOpen(true)
+            open()
           }
         }}
         className={`gc-focus-ring flex items-center justify-between gap-1.5 w-full text-left select-none cursor-pointer overflow-hidden transition-colors duration-100 bg-transparent border outline-none focus:outline-none focus:ring-0 ${

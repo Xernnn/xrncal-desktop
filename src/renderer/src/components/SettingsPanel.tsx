@@ -14,15 +14,21 @@ import {
   Moon,
   Monitor,
   Globe,
-  HardDriveDownload
+  HardDriveDownload,
+  HardDriveUpload,
+  FileUp,
+  FileText,
+  Printer
 } from 'lucide-react'
-import type { ThemeConfig, ThemeMode } from '@shared/theme-mode'
-import type { DisplayPreferences } from '../context/DisplayPreferencesContext'
-import { NumberInput, CustomSelect, toast } from './ui'
+import { useSettings } from '../context/SettingsContext'
+import { NumberInput, CustomSelect, DatePicker, toast } from './ui'
 import { SNAP_STEP_OPTIONS } from '../dnd/resize-math'
 import { ALL_DAY_REMINDER_PRESETS, TIMED_REMINDER_PRESETS } from '@shared/reminders'
 import { reminderLabel } from '../lib/reminder-labels'
-import { zoneLabel, zoneOptions } from '../lib/time-zones'
+import { TIME_ZONE_NAMES, parseZoneList, serializeZoneList, zoneLabel, zoneOptions } from '../lib/time-zones'
+import { WEEK_START_CHOICES } from '@shared/week-start'
+import { parseZoneHistory, serializeZoneHistory, type ZonePeriod } from '@shared/zone-history'
+import { DateTime } from 'luxon'
 import AppearanceSettings from './AppearanceSettings'
 
 /** `null` is the panel's root list; anything else is the one level below it. */
@@ -40,47 +46,16 @@ interface SettingsPanelProps {
   onSectionChange: (section: SettingsSection | null) => void
   onClose: () => void
 
-  language: string
-  onToggleLanguage: () => void
-  showLunar: boolean
-  onToggleLunar: (next: boolean) => void
-  showWeekNumbers: boolean
-  onToggleWeekNumbers: (next: boolean) => void
-  showMiniCalendar: boolean
-  onToggleMiniCalendar: (next: boolean) => void
-  timeFormat: DisplayPreferences['timeFormat']
-  onChangeTimeFormat: (next: DisplayPreferences['timeFormat']) => void
-
-  themeMode: ThemeMode
-  onSetThemeMode: (mode: ThemeMode) => void
-  onThemeChanged: (theme: ThemeConfig) => void
-
-  dayStartHour: number
-  onChangeDayStartHour: (next: number) => void
-  hourBlockSize: DisplayPreferences['hourBlockSize']
-  onChangeHourBlockSize: (next: DisplayPreferences['hourBlockSize']) => void
-  secondaryTimezone: string
-  onChangeSecondaryTimezone: (next: string) => void
-  suggestionShowCalendarName: boolean
-  onToggleSuggestionShowCalendarName: (next: boolean) => void
-  dragSnapMinutes: DisplayPreferences['dragSnapMinutes']
-  onChangeDragSnapMinutes: (next: DisplayPreferences['dragSnapMinutes']) => void
-  defaultReminderMinutes: DisplayPreferences['defaultReminderMinutes']
-  onChangeDefaultReminderMinutes: (next: DisplayPreferences['defaultReminderMinutes']) => void
-  defaultAllDayReminderMinutes: DisplayPreferences['defaultAllDayReminderMinutes']
-  onChangeDefaultAllDayReminderMinutes: (next: DisplayPreferences['defaultAllDayReminderMinutes']) => void
-  preferredTimeZones: string[]
-  onChangePreferredTimeZones: (next: string[]) => void
-  timezoneNames: string[]
-  checkForUpdates: boolean
-  onToggleCheckForUpdates: (next: boolean) => void
-  autoHideHeader: boolean
-  onToggleAutoHideHeader: (next: boolean) => void
-
   /** Opens the accounts dialog, which owns calendars and accounts now. */
   onManageAccounts: () => void
 
   onOpenShortcuts: () => void
+  /** Pick .ics files to import. */
+  onImportIcs: () => void
+  /** Print or save as PDF the week or month on screen. */
+  onPrint: () => void
+  /** Replace everything with a backup (asks first, then restarts). */
+  onRestoreBackup: () => void
   conflictCount?: number
   onOpenConflicts?: () => void
 
@@ -113,8 +88,15 @@ const Toggle: React.FC<{ on: boolean; onChange: (next: boolean) => void }> = ({ 
 }
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const { settings, setSetting, setLanguage } = useSettings()
   if (!props.isOpen) return null
+
+  const preferredTimeZones = parseZoneList(settings.preferredTimeZones)
+  const zoneHistory = parseZoneHistory(settings.zoneHistory)
+  const setPreferredTimeZones = (next: string[]) =>
+    void setSetting('preferredTimeZones', serializeZoneList(next))
+  const setZoneHistory = (next: ZonePeriod[]) => void setSetting('zoneHistory', serializeZoneHistory(next))
 
   const atRoot = props.section === null
 
@@ -209,11 +191,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
                     type="button"
                     title={t(`settings.themeMode${id[0].toUpperCase()}${id.slice(1)}`)}
                     className={`rounded-[3px] p-1.5 transition-colors ${
-                      props.themeMode === id
+                      settings.theme === id
                         ? 'bg-hover text-primary'
                         : 'text-muted hover:text-primary'
                     }`}
-                    onClick={() => props.onSetThemeMode(id)}
+                    onClick={() => void setSetting('theme', id)}
                   >
                     <Icon className="h-4 w-4" />
                   </button>
@@ -223,12 +205,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
               <button
                 type="button"
                 className="flex w-full items-center gap-2.5 rounded-[3px] px-2.5 py-2.5 text-left text-sm text-primary transition-colors hover:bg-hover"
-                onClick={props.onToggleLanguage}
+                onClick={() => void setLanguage(i18n.language === 'vi' ? 'en' : 'vi')}
               >
                 <Globe className="h-4 w-4 shrink-0 text-muted" />
                 <span className="flex-1 truncate">{t('settings.language')}</span>
                 <span className="shrink-0 text-xs text-muted">
-                  {props.language === 'vi' ? 'Tiếng Việt' : 'English'}
+                  {i18n.language === 'vi' ? 'Tiếng Việt' : 'English'}
                 </span>
               </button>
 
@@ -261,6 +243,47 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
                 <span className="flex-1 truncate">{t('settings.backup')}</span>
               </button>
 
+              <button
+                type="button"
+                className="flex w-full items-center gap-2.5 rounded-[3px] px-2.5 py-2.5 text-left text-sm text-primary transition-colors hover:bg-hover"
+                onClick={props.onRestoreBackup}
+              >
+                <HardDriveUpload className="h-4 w-4 shrink-0 text-muted" />
+                <span className="flex-1 truncate">{t('settings.restore')}</span>
+              </button>
+
+              <button
+                type="button"
+                className="flex w-full items-center gap-2.5 rounded-[3px] px-2.5 py-2.5 text-left text-sm text-primary transition-colors hover:bg-hover"
+                onClick={props.onImportIcs}
+              >
+                <FileUp className="h-4 w-4 shrink-0 text-muted" />
+                <span className="flex-1 truncate">{t('ics.importMenu')}</span>
+              </button>
+
+              <button
+                type="button"
+                className="flex w-full items-center gap-2.5 rounded-[3px] px-2.5 py-2.5 text-left text-sm text-primary transition-colors hover:bg-hover"
+                onClick={props.onPrint}
+              >
+                <Printer className="h-4 w-4 shrink-0 text-muted" />
+                <span className="flex-1 truncate">{t('print.menu')}</span>
+                <span className="shrink-0 font-mono text-[11px] text-muted">Ctrl+P</span>
+              </button>
+
+              {/* For a bug report: the log is in the profile folder, which is hidden. */}
+              <button
+                type="button"
+                className="flex w-full items-center gap-2.5 rounded-[3px] px-2.5 py-2.5 text-left text-sm text-primary transition-colors hover:bg-hover"
+                onClick={async () => {
+                  const shown = await window.xrncal?.app?.showLogFile?.()
+                  if (shown === false) toast.error(t('settings.showLogFailed'))
+                }}
+              >
+                <FileText className="h-4 w-4 shrink-0 text-muted" />
+                <span className="flex-1 truncate">{t('settings.showLog')}</span>
+              </button>
+
               <div className="px-2.5 pt-3 pb-1 font-mono text-[11px] text-muted">
                 v{props.appVersion} ({props.platform})
               </div>
@@ -275,8 +298,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
                         <button
                           key={opt}
                           type="button"
-                          className={props.timeFormat === opt ? 'gc-btn-primary' : 'gc-btn'}
-                          onClick={() => props.onChangeTimeFormat(opt)}
+                          className={settings.timeFormat === opt ? 'gc-btn-primary' : 'gc-btn'}
+                          onClick={() => void setSetting('timeFormat', opt)}
                         >
                           {opt === '24h'
                             ? t('settings.timeFormat24h')
@@ -286,16 +309,25 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
                     </div>
                   </Row>
                   <Row label={t('settings.lunar')}>
-                    <Toggle on={props.showLunar} onChange={props.onToggleLunar} />
+                    <Toggle on={settings.showLunar} onChange={(next) => void setSetting('showLunar', next)} />
                   </Row>
                   <Row label={t('settings.weekNumbers')}>
-                    <Toggle on={props.showWeekNumbers} onChange={props.onToggleWeekNumbers} />
+                    <Toggle on={settings.showWeekNumbers} onChange={(next) => void setSetting('showWeekNumbers', next)} />
                   </Row>
                   <Row label={t('settings.showMiniCalendar')}>
-                    <Toggle on={props.showMiniCalendar} onChange={props.onToggleMiniCalendar} />
+                    <Toggle on={settings.showMiniCalendar} onChange={(next) => void setSetting('showMiniCalendar', next)} />
+                  </Row>
+                  <Row label={t('settings.launchAtLogin')} hint={t('settings.launchAtLoginHint')}>
+                    <Toggle on={settings.launchAtLogin} onChange={(next) => void setSetting('launchAtLogin', next)} />
+                  </Row>
+                  <Row label={t('settings.closeToTray')} hint={t('settings.closeToTrayHint')}>
+                    <Toggle on={settings.closeToTray} onChange={(next) => void setSetting('closeToTray', next)} />
                   </Row>
                   <Row label={t('settings.checkForUpdates')} hint={t('settings.checkForUpdatesHint')}>
-                    <Toggle on={props.checkForUpdates} onChange={props.onToggleCheckForUpdates} />
+                    <Toggle on={settings.checkForUpdates} onChange={(next) => void setSetting('checkForUpdates', next)} />
+                  </Row>
+                  <Row label={t('settings.autoBackup')} hint={t('settings.autoBackupHint')}>
+                    <Toggle on={settings.autoBackup} onChange={(next) => void setSetting('autoBackup', next)} />
                   </Row>
                   {/* Full width, like the timezone list: the labels are long. */}
                   <div className="border-b border-hairline py-3">
@@ -304,14 +336,14 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
                       {t('reminders.settingsTimedHint')}
                     </div>
                     <CustomSelect
-                      value={props.defaultReminderMinutes === null ? '' : String(props.defaultReminderMinutes)}
-                      onChange={(v) => props.onChangeDefaultReminderMinutes(v === '' ? null : Number(v))}
+                      value={settings.defaultReminderMinutes === null ? '' : String(settings.defaultReminderMinutes)}
+                      onChange={(v) => void setSetting('defaultReminderMinutes', v === '' ? null : Number(v))}
                       variant="boxed"
                       options={[
                         { value: '', label: t('reminders.none') },
                         ...TIMED_REMINDER_PRESETS.map((m) => ({
                           value: String(m),
-                          label: reminderLabel(t, { minutesBefore: m }, false, props.timeFormat)
+                          label: reminderLabel(t, { minutesBefore: m }, false, settings.timeFormat)
                         }))
                       ]}
                     />
@@ -323,29 +355,29 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
                     </div>
                     <CustomSelect
                       value={
-                        props.defaultAllDayReminderMinutes === null ? '' : String(props.defaultAllDayReminderMinutes)
+                        settings.defaultAllDayReminderMinutes === null ? '' : String(settings.defaultAllDayReminderMinutes)
                       }
-                      onChange={(v) => props.onChangeDefaultAllDayReminderMinutes(v === '' ? null : Number(v))}
+                      onChange={(v) => void setSetting('defaultAllDayReminderMinutes', v === '' ? null : Number(v))}
                       variant="boxed"
                       options={[
                         { value: '', label: t('reminders.none') },
                         ...ALL_DAY_REMINDER_PRESETS.map((m) => ({
                           value: String(m),
-                          label: reminderLabel(t, { minutesBefore: m }, true, props.timeFormat)
+                          label: reminderLabel(t, { minutesBefore: m }, true, settings.timeFormat)
                         }))
                       ]}
                     />
                   </div>
                   {/* The zones the event editor lists first, so picking one there
                       is not a hunt through the whole list. */}
-                  <div className="py-3">
+                  <div className="border-b border-hairline py-3">
                     <div className="text-sm text-primary">{t('settings.preferredTimeZones')}</div>
                     <div className="mt-0.5 mb-2 text-xs leading-snug text-muted">
                       {t('settings.preferredTimeZonesHint')}
                     </div>
-                    {props.preferredTimeZones.length > 0 && (
+                    {preferredTimeZones.length > 0 && (
                       <div className="mb-2 space-y-1">
-                        {props.preferredTimeZones.map((zone) => (
+                        {preferredTimeZones.map((zone) => (
                           <div
                             key={zone}
                             className="flex items-center gap-2 rounded-[3px] bg-hover/60 px-2.5 py-1.5 text-xs"
@@ -354,7 +386,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
                             <button
                               type="button"
                               onClick={() =>
-                                props.onChangePreferredTimeZones(props.preferredTimeZones.filter((z) => z !== zone))
+                                setPreferredTimeZones(preferredTimeZones.filter((z) => z !== zone))
                               }
                               className="shrink-0 cursor-pointer text-muted transition-colors hover:text-today"
                               title={t('settings.preferredTimeZonesRemove', { zone: zone.replace(/_/g, ' ') })}
@@ -369,14 +401,75 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
                     <CustomSelect
                       value=""
                       onChange={(zone) => {
-                        if (zone && !props.preferredTimeZones.includes(zone)) {
-                          props.onChangePreferredTimeZones([...props.preferredTimeZones, zone])
+                        if (zone && !preferredTimeZones.includes(zone)) {
+                          setPreferredTimeZones([...preferredTimeZones, zone])
                         }
                       }}
                       searchable
                       variant="boxed"
                       placeholder={t('settings.preferredTimeZonesAdd')}
-                      options={zoneOptions().filter((o) => !props.preferredTimeZones.includes(o.value))}
+                      options={zoneOptions().filter((o) => !preferredTimeZones.includes(o.value))}
+                    />
+                  </div>
+                  {/* Where the user was, from when: the zone an event that names
+                      none opens in - Google's export writes one-off events as bare
+                      UTC, with nothing to say whether they were made at +7 or +11. */}
+                  <div className="py-3">
+                    <div className="text-sm text-primary">{t('settings.zoneHistory')}</div>
+                    <div className="mt-0.5 mb-2 text-xs leading-snug text-muted">{t('settings.zoneHistoryHint')}</div>
+                    {zoneHistory.length > 0 && (
+                      <div className="mb-2 space-y-1">
+                        {zoneHistory.map((period, idx) => (
+                          <div
+                            key={`${period.from ?? 'first'}-${period.zone}`}
+                            className="flex items-center gap-2 rounded-[3px] bg-hover/60 px-2.5 py-1.5 text-xs"
+                          >
+                            <div className="w-36 shrink-0">
+                              {idx === 0 ? (
+                                <span className="text-muted">{t('settings.zoneHistoryFirst')}</span>
+                              ) : (
+                                <DatePicker
+                                  compact
+                                  clearable={false}
+                                  value={period.from ?? ''}
+                                  onChange={(from) => {
+                                    if (!from) return
+                                    setZoneHistory(
+                                      zoneHistory.map((p, i) => (i === idx ? { ...p, from } : p))
+                                    )
+                                  }}
+                                />
+                              )}
+                            </div>
+                            <span className="min-w-0 flex-1 truncate text-primary">{zoneLabel(period.zone)}</span>
+                            <button
+                              type="button"
+                              onClick={() => setZoneHistory(zoneHistory.filter((_, i) => i !== idx))}
+                              className="shrink-0 cursor-pointer text-muted transition-colors hover:text-today"
+                              title={t('settings.zoneHistoryRemove')}
+                              aria-label={t('settings.zoneHistoryRemove')}
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <CustomSelect
+                      value=""
+                      onChange={(zone) => {
+                        if (!zone) return
+                        // The first is where it all started; each later one is a
+                        // move, dated today until its date is picked.
+                        setZoneHistory([
+                          ...zoneHistory,
+                          { from: zoneHistory.length === 0 ? null : DateTime.local().toISODate(), zone }
+                        ])
+                      }}
+                      searchable
+                      variant="boxed"
+                      placeholder={zoneHistory.length === 0 ? t('settings.zoneHistoryStart') : t('settings.zoneHistoryAdd')}
+                      options={zoneOptions()}
                     />
                   </div>
                 </div>
@@ -384,21 +477,31 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
 
               {props.section === 'appearance' && (
                 <div className="py-2">
-                  <AppearanceSettings
-                    mode={props.themeMode}
-                    onSetMode={props.onSetThemeMode}
-                    onThemeChanged={props.onThemeChanged}
-                  />
+                  <AppearanceSettings />
                 </div>
               )}
 
               {props.section === 'view' && (
                 <div>
+                  <Row label={t('settings.weekStart')}>
+                    <div className="flex gap-1">
+                      {WEEK_START_CHOICES.map((day) => (
+                        <button
+                          key={day}
+                          type="button"
+                          className={settings.firstDayOfWeek === day ? 'gc-btn-primary' : 'gc-btn'}
+                          onClick={() => void setSetting('firstDayOfWeek', day)}
+                        >
+                          {t(`settings.weekStartDay.${day}`)}
+                        </button>
+                      ))}
+                    </div>
+                  </Row>
                   <Row label={t('settings.dayStartHour')} hint={t('settings.dayStartHourHint')}>
                     <NumberInput
-                      value={props.dayStartHour}
+                      value={settings.dayStartHour}
                       onChange={(v) =>
-                        props.onChangeDayStartHour(Math.max(0, Math.min(23, Math.round(v))))
+                        void setSetting('dayStartHour', Math.max(0, Math.min(23, Math.round(v))))
                       }
                       min={0}
                       max={23}
@@ -411,8 +514,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
                         <button
                           key={opt}
                           type="button"
-                          className={props.hourBlockSize === opt ? 'gc-btn-primary' : 'gc-btn'}
-                          onClick={() => props.onChangeHourBlockSize(opt)}
+                          className={settings.hourBlockSize === opt ? 'gc-btn-primary' : 'gc-btn'}
+                          onClick={() => void setSetting('hourBlockSize', opt)}
                         >
                           {t(`settings.hourBlockSize${opt[0].toUpperCase()}${opt.slice(1)}`)}
                         </button>
@@ -425,8 +528,22 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
                         <button
                           key={opt}
                           type="button"
-                          className={props.dragSnapMinutes === opt ? 'gc-btn-primary' : 'gc-btn'}
-                          onClick={() => props.onChangeDragSnapMinutes(opt)}
+                          className={settings.dragSnapMinutes === opt ? 'gc-btn-primary' : 'gc-btn'}
+                          onClick={() => void setSetting('dragSnapMinutes', opt)}
+                        >
+                          {opt === 60 ? t('settings.dragSnapHour') : t('settings.dragSnapMin', { count: opt })}
+                        </button>
+                      ))}
+                    </div>
+                  </Row>
+                  <Row label={t('settings.timePickerStep')}>
+                    <div className="flex gap-1">
+                      {SNAP_STEP_OPTIONS.map((opt) => (
+                        <button
+                          key={opt}
+                          type="button"
+                          className={settings.timePickerStepMinutes === opt ? 'gc-btn-primary' : 'gc-btn'}
+                          onClick={() => void setSetting('timePickerStepMinutes', opt)}
                         >
                           {opt === 60 ? t('settings.dragSnapHour') : t('settings.dragSnapMin', { count: opt })}
                         </button>
@@ -434,12 +551,12 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
                     </div>
                   </Row>
                   <Row label={t('settings.autoHideHeader')}>
-                    <Toggle on={props.autoHideHeader} onChange={props.onToggleAutoHideHeader} />
+                    <Toggle on={settings.autoHideHeader} onChange={(next) => void setSetting('autoHideHeader', next)} />
                   </Row>
                   <Row label={t('settings.suggestionShowCalendarName')}>
                     <Toggle
-                      on={props.suggestionShowCalendarName}
-                      onChange={props.onToggleSuggestionShowCalendarName}
+                      on={settings.suggestionShowCalendarName}
+                      onChange={(next) => void setSetting('suggestionShowCalendarName', next)}
                     />
                   </Row>
                   {/* Full width: a searchable zone list needs the room. */}
@@ -449,13 +566,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
                       {t('settings.secondaryTimezoneHint')}
                     </div>
                     <CustomSelect
-                      value={props.secondaryTimezone}
-                      onChange={props.onChangeSecondaryTimezone}
+                      value={settings.secondaryTimezone}
+                      onChange={(next) => void setSetting('secondaryTimezone', next)}
                       searchable
                       placeholder={t('settings.secondaryTimezoneNone')}
                       options={[
                         { value: '', label: t('settings.secondaryTimezoneNone') },
-                        ...props.timezoneNames.map((tz) => ({
+                        ...TIME_ZONE_NAMES.map((tz) => ({
                           value: tz,
                           label: tz.replace(/_/g, ' ')
                         }))

@@ -11,10 +11,25 @@ interface ParsedIcsData {
   exceptions: (Omit<EventException, 'id' | 'createdAt' | 'updatedAt'> & { masterUid?: string })[]
 }
 
+/** What `icalTimeToIso()` reads of an ICAL.Time. `timezone` is the TZID
+ *  ical.js keeps when it could not resolve the zone, which its types omit. */
+interface IcalTimeParts {
+  isDate?: boolean
+  timezone?: string
+  zone?: { tzid: string }
+  year: number
+  month: number
+  day: number
+  hour: number
+  minute: number
+  second: number
+  toJSDate(): Date
+}
+
 /**
  * Format ICAL.Time into an ISO 8601 UTC string
  */
-function icalTimeToIso(time: any): { iso: string; allDay: boolean; tzid: string } {
+function icalTimeToIso(time: IcalTimeParts | null | undefined): { iso: string; allDay: boolean; tzid: string } {
   if (!time) {
     const now = new Date().toISOString()
     return { iso: now, allDay: false, tzid: 'UTC' }
@@ -174,11 +189,11 @@ export function parseIcsContent(icsContent: string, targetCalendarId: string): P
     return { events: [], exceptions: [] }
   }
 
-  let jcal: any[]
+  let jcal: unknown[]
   try {
     jcal = ICAL.parse(icsContent)
-  } catch (err: any) {
-    throw new Error(`Failed to parse iCalendar format: ${err.message || String(err)}`, { cause: err })
+  } catch (err) {
+    throw new Error(`Failed to parse iCalendar format: ${err instanceof Error ? err.message : String(err)}`, { cause: err })
   }
 
   const comp = new ICAL.Component(jcal)
@@ -201,7 +216,8 @@ export function parseIcsContent(icsContent: string, targetCalendarId: string): P
       // Check if this VEVENT is an occurrence exception (RECURRENCE-ID present)
       const recIdProp = vEvent.getFirstProperty('recurrence-id')
       if (recIdProp) {
-        const recIdTime = recIdProp.getFirstValue()
+        // RECURRENCE-ID is a DATE or DATE-TIME, which ical.js reads as a Time.
+        const recIdTime = recIdProp.getFirstValue() as ICAL.Time | null
         const origStartInfo = icalTimeToIso(recIdTime)
         const status = vEvent.getFirstPropertyValue('status')
         const isCancelled = String(status).toUpperCase() === 'CANCELLED'
@@ -216,7 +232,11 @@ export function parseIcsContent(icsContent: string, targetCalendarId: string): P
           location,
           dtStartUtc: startInfo.iso,
           dtEndUtc: normaliseIcsEnd(startInfo, endInfo),
-          tzid: startInfo.tzid
+          tzid: startInfo.tzid,
+          // One week of an all-day series moved to 10:00 is a timed occurrence
+          // (and the other way round). Left out, it inherited the series' flag
+          // and showed as an all-day event on the day it was moved to.
+          allDay: startInfo.allDay
         })
         continue
       }

@@ -36,8 +36,8 @@ describe('Mini calendar weekday offset', () => {
 })
 
 describe('Theme defaults', () => {
-  it('defaults application theme to the Discord-style dark palette', () => {
-    expect(DEFAULT_APP_SETTINGS.theme).toBe('dark')
+  it('follows the system theme by default, with the blurple accent', () => {
+    expect(DEFAULT_APP_SETTINGS.theme).toBe('system')
     expect(DEFAULT_APP_SETTINGS.themeAccent).toBe('#5865f2')
   })
 

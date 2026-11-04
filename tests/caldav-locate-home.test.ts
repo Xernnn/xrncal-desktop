@@ -3,6 +3,9 @@ import { CalDavAdapter } from '../src/main/sync/caldav-adapter'
 import {
   defaultCalDavName,
   extractPropHref,
+  extractXmlText,
+  mayCarryCredentials,
+  normalizeCalendarColor,
   resolveDavHref
 } from '../src/main/sync/caldav-discover'
 
@@ -161,5 +164,75 @@ describe('discovery helpers', () => {
     expect(defaultCalDavName('generic', 'https://homeserver.example.ts.net/')).toBe('homeserver.example.ts.net')
     expect(defaultCalDavName('nextcloud', 'https://cloud.example.com/remote.php/dav')).toBe('cloud.example.com')
     expect(defaultCalDavName('icloud', 'https://caldav.icloud.com')).toBe('iCloud')
+  })
+})
+
+describe('calendar colours', () => {
+  it("asks for Apple's calendar-color, which is where servers keep it", async () => {
+    // Asked for in the CalDAV namespace, Radicale answered 404 for the property
+    // and every calendar discovered later came in the default green.
+    const url = 'https://homeserver.example.ts.net/sonn/'
+    let asked = ''
+    fakeServer({
+      [url]: (_depth, body) => {
+        asked = body
+        return {
+          status: 207,
+          xml: `<?xml version="1.0"?><multistatus xmlns="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav" xmlns:I="http://apple.com/ns/ical/">${collection('/sonn/work/', '<C:calendar/>', '<displayname>Work</displayname><I:calendar-color>#039BE5</I:calendar-color>')}</multistatus>`
+        }
+      }
+    })
+    const [work] = await new CalDavAdapter(creds(url)).discoverCalendars()
+    expect(asked).toMatch(/xmlns:I="http:\/\/apple.com\/ns\/ical\/"[\s\S]*<I:calendar-color\/>/)
+    expect(work).toMatchObject({ displayName: 'Work', color: '#039be5' })
+  })
+
+  it('keeps only real colours from a server', () => {
+    expect(normalizeCalendarColor('#039BE5')).toBe('#039be5')
+    expect(normalizeCalendarColor('#7c9cbfff')).toBe('#7c9cbf')
+    expect(normalizeCalendarColor(' #abc ')).toBe('#aabbcc')
+    expect(normalizeCalendarColor('red; background-image: url(https://example.com/x)')).toBeUndefined()
+    expect(normalizeCalendarColor('url(x)')).toBeUndefined()
+    expect(normalizeCalendarColor(undefined)).toBeUndefined()
+  })
+
+  it('reads a character reference past Unicode as a replacement, not a crash', () => {
+    expect(extractXmlText('<displayname>A&#99999999;B&#x41;</displayname>', 'displayname')).toBe('A�BA')
+  })
+})
+
+describe('where the CalDAV password goes', () => {
+  it('only to the account\'s server and its own domain, never down to plain HTTP', () => {
+    const home = 'https://homeserver.tail12bde9.ts.net/sonn/'
+    expect(mayCarryCredentials(home, 'https://homeserver.tail12bde9.ts.net/sonn/work/x.ics')).toBe(true)
+    expect(mayCarryCredentials(home, 'https://other.tail12bde9.ts.net/sonn/')).toBe(true)
+    expect(mayCarryCredentials(home, 'https://evil.example/collect')).toBe(false)
+    expect(mayCarryCredentials(home, 'https://ts.net.evil.example/')).toBe(false)
+    expect(mayCarryCredentials(home, 'http://homeserver.tail12bde9.ts.net/sonn/')).toBe(false)
+    expect(mayCarryCredentials(home, 'file:///etc/passwd')).toBe(false)
+    // iCloud answers from per-user hosts in its own domain.
+    expect(mayCarryCredentials('https://caldav.icloud.com', 'https://p42-caldav.icloud.com/123/calendars/')).toBe(true)
+    // A two-label name or an address: that host only.
+    expect(mayCarryCredentials('https://example.com/dav/', 'https://cal.example.com/dav/')).toBe(false)
+    expect(mayCarryCredentials('http://192.168.1.5:5232/', 'http://192.168.1.5:5232/sonn/')).toBe(true)
+    expect(mayCarryCredentials('http://192.168.1.5:5232/', 'http://192.168.1.6:5232/sonn/')).toBe(false)
+  })
+
+  it('leaves the password off a request to a host a server named', async () => {
+    const url = 'https://homeserver.example.ts.net/sonn/'
+    const seen: Record<string, string | undefined> = {}
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (target: string, init: RequestInit) => {
+        seen[target] = (init.headers as Record<string, string>).Authorization
+        return new Response('', { status: 401 })
+      })
+    )
+    const adapter = new CalDavAdapter(creds(url))
+    // An href the server listed, pointing at another host.
+    await adapter.deleteEvent(`${url}work/`, 'x', 'https://evil.example/collect.ics').catch(() => {})
+    await adapter.deleteEvent(`${url}work/`, 'x', `${url}work/x.ics`).catch(() => {})
+    expect(seen['https://evil.example/collect.ics']).toBeUndefined()
+    expect(seen[`${url}work/x.ics`]).toMatch(/^Basic /)
   })
 })

@@ -3,7 +3,7 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: 'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --color-app: var(--color-bg-app);
   --color-surface: var(--color-bg-surface);
   --color-dialog: var(--color-bg-dialog);
@@ -19,7 +19,7 @@
 }
 
 :root {
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: 'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --color-bg-app: #f7f6f3;
   --color-bg-surface: #ffffff;
   /* Dialogs and side panels sit on top of everything and get read closely, so
@@ -543,5 +543,349 @@
 @media (min-width: 768px) and (min-height: 620px) {
   .gc-year-lunar {
     display: block;
+  }
+}
+
+/* ---- Print ------------------------------------------------------------
+   One A4 landscape page of a week or a month (print/PrintSheet.tsx), shown
+   scaled down in the print dialog and full size in .gc-print-host, which is
+   the only thing a print shows. It is paper, so it keeps a light palette of
+   its own whatever the theme, and everything is sized in millimetres. The
+   heights here are what monthCellLines() in shared/print-layout.ts counts
+   on: a 209 mm page (210 mm can spill a blank second page), 8 mm padding,
+   a 10 mm title, a 6 mm weekday row, 5 mm for a cell's date, 3.6 mm a line. */
+.gc-print-host {
+  display: none;
+}
+
+.gc-print-sheet {
+  --paper: #ffffff;
+  --ink: #37352f;
+  --ink-muted: #787774;
+  --rule: #e9e9e7;
+  --rule-strong: #d3d1cb;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: 297mm;
+  height: 209mm;
+  padding: 8mm 9mm;
+  overflow: hidden;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 2.6mm;
+  line-height: 1.25;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.gc-print-sheet *,
+.gc-print-sheet *::before,
+.gc-print-sheet *::after {
+  box-sizing: border-box;
+}
+
+.gc-print-head {
+  display: flex;
+  flex: none;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4mm;
+  height: 10mm;
+}
+
+.gc-print-head h1 {
+  margin: 0;
+  font-size: 5mm;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.gc-print-head span {
+  font-size: 2.4mm;
+  color: var(--ink-muted);
+}
+
+.gc-print-wd {
+  font-size: 2.3mm;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.gc-print-dn {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.gc-print-lunar {
+  margin-left: auto;
+  font-size: 2.1mm;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-muted);
+}
+
+.gc-print-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-muted);
+}
+
+.gc-print-more {
+  overflow: hidden;
+  padding: 0 1mm;
+  font-size: 2.1mm;
+  white-space: nowrap;
+  color: var(--ink-muted);
+}
+
+/* An event: a tint of its colour with a bar of it down the left, so it still
+   reads on a black-and-white printer. */
+.gc-print-ev {
+  overflow: hidden;
+  border-left: 0.7mm solid var(--ev);
+  border-radius: 0.6mm;
+  background: color-mix(in srgb, var(--ev) 20%, var(--paper));
+  color: var(--ink);
+}
+
+/* Week */
+.gc-print-days,
+.gc-print-band,
+.gc-print-hours {
+  display: grid;
+  grid-template-columns: 12mm repeat(7, minmax(0, 1fr));
+}
+
+.gc-print-days {
+  flex: none;
+  border-bottom: 0.25mm solid var(--rule-strong);
+}
+
+.gc-print-dayhead {
+  display: flex;
+  align-items: baseline;
+  gap: 1.2mm;
+  min-width: 0;
+  padding: 0 1.2mm 1.2mm;
+}
+
+.gc-print-dayhead .gc-print-dn {
+  font-size: 3.6mm;
+}
+
+/* Beside the day, not at the column's edge, where it read as the next day's. */
+.gc-print-dayhead .gc-print-lunar {
+  margin-left: 0.6mm;
+}
+
+.gc-print-band {
+  flex: none;
+  grid-auto-rows: 4mm;
+  row-gap: 0.6mm;
+  padding: 0.8mm 0;
+  border-bottom: 0.25mm solid var(--rule-strong);
+}
+
+.gc-print-band-label {
+  grid-column: 1;
+  padding-top: 0.6mm;
+  font-size: 2.1mm;
+  color: var(--ink-muted);
+}
+
+.gc-print-bar {
+  margin: 0 0.5mm;
+  padding: 0 1mm;
+  font-size: 2.3mm;
+  font-weight: 500;
+  line-height: 4mm;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.gc-print-band .gc-print-more {
+  line-height: 4mm;
+}
+
+.gc-print-hours {
+  flex: 1;
+  min-height: 0;
+}
+
+.gc-print-hours > .gc-print-col {
+  border-bottom: 0.25mm solid var(--rule);
+}
+
+.gc-print-gutter {
+  position: relative;
+}
+
+.gc-print-gutter span {
+  position: absolute;
+  right: 1.5mm;
+  margin-top: 0.4mm;
+  font-size: 2.1mm;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-muted);
+}
+
+.gc-print-col {
+  position: relative;
+  border-left: 0.25mm solid var(--rule);
+}
+
+.gc-print-col:last-child {
+  border-right: 0.25mm solid var(--rule);
+}
+
+.gc-print-hourline {
+  position: absolute;
+  right: 0;
+  left: 0;
+  border-top: 0.25mm solid var(--rule);
+}
+
+.gc-print-block {
+  position: absolute;
+  /* A quarter of an hour is shorter than a line when the day is long. */
+  min-height: 3mm;
+  padding: 0.4mm 0.8mm;
+  font-size: 2.3mm;
+  line-height: 1.2;
+  box-shadow: 0 0 0 0.25mm var(--paper);
+}
+
+.gc-print-block .gc-print-title {
+  font-weight: 600;
+}
+
+.gc-print-place {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--ink-muted);
+}
+
+/* Month */
+.gc-print-monthhead {
+  display: grid;
+  flex: none;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  align-items: end;
+  height: 6mm;
+  padding-bottom: 1mm;
+  border-bottom: 0.25mm solid var(--rule-strong);
+}
+
+.gc-print-monthhead span {
+  padding: 0 1.2mm;
+  font-size: 2.3mm;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.gc-print-monthgrid {
+  display: grid;
+  flex: 1;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  min-height: 0;
+}
+
+.gc-print-cell {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0 0.8mm;
+  border-right: 0.25mm solid var(--rule);
+  border-bottom: 0.25mm solid var(--rule);
+}
+
+.gc-print-cell:nth-child(7n + 1) {
+  border-left: 0.25mm solid var(--rule);
+}
+
+.gc-print-cellhead {
+  display: flex;
+  align-items: center;
+  gap: 1mm;
+  height: 5mm;
+  padding: 0 0.4mm;
+}
+
+.gc-print-cellhead .gc-print-dn {
+  font-size: 2.8mm;
+}
+
+.gc-print-cell.is-outside > * {
+  opacity: 0.45;
+}
+
+.gc-print-line,
+.gc-print-pill,
+.gc-print-cell .gc-print-more {
+  height: 3.6mm;
+  font-size: 2.3mm;
+  line-height: 3.6mm;
+  white-space: nowrap;
+}
+
+.gc-print-pill {
+  height: 3.3mm;
+  margin-bottom: 0.3mm;
+  padding: 0 1mm;
+  line-height: 3.3mm;
+  text-overflow: ellipsis;
+}
+
+.gc-print-line {
+  display: flex;
+  align-items: center;
+  gap: 0.9mm;
+  overflow: hidden;
+  padding: 0 0.4mm;
+}
+
+.gc-print-dot {
+  flex: none;
+  width: 1.4mm;
+  height: 1.4mm;
+  border-radius: 50%;
+  background: var(--ev);
+}
+
+.gc-print-line .gc-print-time {
+  flex: none;
+}
+
+.gc-print-line .gc-print-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 0;
+  }
+
+  html,
+  body {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  body > :not(.gc-print-host) {
+    display: none !important;
+  }
+
+  .gc-print-host {
+    display: block !important;
   }
 }

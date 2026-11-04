@@ -9,8 +9,9 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   {
     rules: {
-      // Provider payloads and IPC boundaries are genuinely untyped at the edge.
-      // Surfaced as a warning so it reads as debt to pay down, not a CI blocker.
+      // A warning while you type; `npm run lint` passes --max-warnings 0, so
+      // CI fails on it. Untyped data at an edge (provider JSON, IPC, a caught
+      // error) is `unknown`, narrowed where it is read.
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-unused-vars': [
         'error',
@@ -21,13 +22,15 @@ export default tseslint.config(
   {
     files: ['src/renderer/**/*.{ts,tsx}'],
     plugins: { 'react-hooks': reactHooks },
-    // The two rules the plugin recommended before v7. v7's recommended set adds
-    // the React Compiler rules (set-state-in-effect, refs, immutability, ...);
-    // meeting them means restructuring effects in App.tsx, a change of its own.
-    rules: {
-      'react-hooks/rules-of-hooks': 'error',
-      'react-hooks/exhaustive-deps': 'warn'
-    },
+    // The full set, React Compiler rules included (set-state-in-effect, refs,
+    // immutability, purity, ...). What they ask for, in this codebase:
+    // - state that follows a prop is adjusted during render (a `prev` state
+    //   compared with the prop), or derived outright - not copied in an effect;
+    // - a listener bound once reads the latest props through `useEffectEvent`;
+    // - an effect that loads data sets state only in the promise's callback
+    //   (`read().then(apply)`), never synchronously in its body;
+    // - a ref is written in an event or an effect, never during render.
+    rules: reactHooks.configs['recommended-latest'].rules,
     languageOptions: { globals: globals.browser }
   },
   {

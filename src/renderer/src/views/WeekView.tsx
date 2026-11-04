@@ -1,8 +1,9 @@
 import React, { useRef, useEffect, useMemo, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import HourGutter from '../components/HourGutter'
 import { DateTime } from 'luxon'
 import type { ExpandedOccurrence } from '@shared/event-model'
-import { TODAY_COLOR } from '@shared/mini-calendar-grid'
+import { startOfWeek } from '@shared/week-start'
 import { segmentTimedOccurrence, type TimedSegment } from '@shared/timed-event-segments'
 import { clockMinutesOfDay } from '@shared/clock-minutes'
 import LunarLabel from '../components/LunarLabel'
@@ -18,6 +19,9 @@ import { useSlotDragSelect } from '../dnd/use-slot-drag-select'
 import { useWheelNavigation } from '../hooks/use-wheel-navigation'
 import { useDisplayPreferences, HOUR_HEIGHT_BY_SIZE } from '../context/DisplayPreferencesContext'
 import type { EventEditorDraftPreview } from '../editor/EventEditorDialog'
+import { useToday } from '../hooks/use-now'
+import NowLine from '../components/NowLine'
+import { weekdayShortLabel } from '../i18n/weekday-labels'
 
 interface WeekViewProps {
   anchorDate: DateTime
@@ -83,17 +87,18 @@ export const WeekView: React.FC<WeekViewProps> = ({
   onResizeCommit,
   onResizeBusyEnd
 }) => {
+  const { t } = useTranslation()
   const scrollRef = useRef<HTMLDivElement>(null)
   const gridRef = useRef<HTMLDivElement>(null)
   const allDayScrollRef = useRef<HTMLDivElement>(null)
 
-  const { hourBlockSize, dayStartHour, dragSnapMinutes } = useDisplayPreferences()
+  const { hourBlockSize, dayStartHour, dragSnapMinutes, firstDayOfWeek } = useDisplayPreferences()
   const HOUR_HEIGHT = HOUR_HEIGHT_BY_SIZE[hourBlockSize]
   const gridColsClass = WEEK_GRID_COLS
   const dayColOffset = 2
 
-  const today = DateTime.local()
-  const weekStartKey = anchorDate.startOf('week').toISODate()
+  const today = useToday()
+  const weekStartKey = startOfWeek(anchorDate, firstDayOfWeek).toISODate()
   const weekDays = useMemo(() => {
     const start = DateTime.fromFormat(weekStartKey ?? '', 'yyyy-MM-dd').startOf('day')
     return Array.from({ length: 7 }, (_, i) => start.plus({ days: i }))
@@ -136,8 +141,10 @@ export const WeekView: React.FC<WeekViewProps> = ({
     scrollerRef: allDayScrollRef
   })
 
-  const displayOccurrences = withResizePreview(occurrences, preview)
-  const allDayOccurrences = displayOccurrences.filter((o) => o.allDay)
+  // Memoized so the all-day layout below is only redone when the events (or a
+  // resize in progress) change - a new array every render defeated its memo.
+  const displayOccurrences = useMemo(() => withResizePreview(occurrences, preview), [occurrences, preview])
+  const allDayOccurrences = useMemo(() => displayOccurrences.filter((o) => o.allDay), [displayOccurrences])
   const timedOccurrences = displayOccurrences.filter((o) => !o.allDay)
   const hours = Array.from({ length: 24 }, (_, i) => i)
   const timedSegments = timedOccurrences.flatMap(segmentTimedOccurrence)
@@ -207,7 +214,7 @@ export const WeekView: React.FC<WeekViewProps> = ({
                 <button
                   type="button"
                   onClick={() => onGoToday?.()}
-                  title="Go to today"
+                  title={t('nav.today')}
                   className="cursor-pointer rounded-md p-1 transition-colors hover:bg-hover"
                 >
                   <WeekNumber
@@ -226,9 +233,16 @@ export const WeekView: React.FC<WeekViewProps> = ({
               return (
                 <div
                   key={day.toISO()}
-                  className="flex min-w-0 flex-col items-center overflow-hidden rounded-lg px-1 py-2 text-center transition-colors"
+                  className="flex min-w-0 flex-col items-center overflow-hidden rounded-lg px-1 py-1.5 text-center transition-colors"
                   style={isDraftAllDay ? { backgroundColor: `${previewSlot!.color}1f` } : undefined}
                 >
+                  <span
+                    className={`mb-0.5 truncate text-[11px] font-medium uppercase tracking-wide ${
+                      isToday ? 'text-today' : day.weekday >= 6 ? 'text-today/80' : 'text-muted'
+                    }`}
+                  >
+                    {weekdayShortLabel(t, day.weekday)}
+                  </span>
                   <span
                     className={`truncate rounded-full text-lg font-bold tracking-wide ${
                       isToday
@@ -246,7 +260,7 @@ export const WeekView: React.FC<WeekViewProps> = ({
                       day={day.day}
                       month={day.month}
                       year={day.year}
-                      forceMonth={day.weekday === 1}
+                      forceMonth={day.hasSame(weekDays[0], 'day')}
                       className="mt-1 leading-none"
                     />
                   )}
@@ -275,6 +289,8 @@ export const WeekView: React.FC<WeekViewProps> = ({
                   return (
                     <div
                       key={dayStr}
+                      data-day={dayStr}
+                      data-all-day-slot
                       onDragOver={(e) => {
                         prepareDropEvent(e)
                         onDragOverTarget?.({ dateKey: dayStr })
@@ -326,6 +342,7 @@ export const WeekView: React.FC<WeekViewProps> = ({
                       className="h-full"
                       isDragging={draggedOccurrenceId === l.occ.id}
                       isSelected={selectedOccurrenceId === l.occ.id}
+                      occurrenceId={l.occ.id}
                       title={l.occ.title}
                       color={l.occ.color}
                       onDragStart={(e) => onDragStart?.(e, l.occ)}
@@ -366,6 +383,8 @@ export const WeekView: React.FC<WeekViewProps> = ({
               return (
                 <div
                   key={dayKey}
+                  data-day={dayKey}
+                  data-hour-height={HOUR_HEIGHT}
                   className={`relative min-w-0 cursor-pointer overflow-visible ${
                     isToday ? 'bg-today/5' : ''
                   }`}
@@ -429,15 +448,7 @@ export const WeekView: React.FC<WeekViewProps> = ({
                     />
                   )}
 
-                  {isToday && (
-                    <div
-                      className="pointer-events-none absolute right-0 left-0 z-20 flex items-center"
-                      style={{ top: `${((today.hour * 60 + today.minute) / 60) * HOUR_HEIGHT}px` }}
-                    >
-                      <div className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: TODAY_COLOR }} />
-                      <div className="h-0.5 flex-1" style={{ backgroundColor: TODAY_COLOR }} />
-                    </div>
-                  )}
+                  {isToday && <NowLine hourHeight={HOUR_HEIGHT} dotClassName="h-2.5 w-2.5" />}
 
                   {timedLayouts.map((layout) => (
                     <TimedEventBlock

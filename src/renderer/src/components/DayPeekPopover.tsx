@@ -107,6 +107,7 @@ export const DayPeekPopover: React.FC<DayPeekPopoverProps> = ({
   const renderPill = (occ: ExpandedOccurrence): React.ReactNode => (
     <EventPill
       key={occ.id}
+      occurrenceId={occ.id}
       title={occ.title}
       color={occ.color}
       time={

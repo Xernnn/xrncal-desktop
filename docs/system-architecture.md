@@ -1,6 +1,6 @@
 # xrncal — System Architecture
 
-**Last updated:** 2026-10-11
+**Last updated:** 2026-10-27
 
 ---
 
@@ -12,9 +12,11 @@ xrncal follows Electron's multi-process model with strict security boundaries.
 ┌─────────────────────────────────────────────────────────────┐
 │  Renderer Process (sandboxed, contextIsolation, no Node.js) │
 │                                                             │
-│  React App (App.tsx - one useState container, no store lib) │
+│  React App (App.tsx + hooks/, SettingsContext; no store lib)│
 │  ├── Views: Day / Week / Month / Year / List                │
 │  ├── Editor: full form, reminders, invitation replies       │
+│  ├── Right-click menu: edit, duplicate, delete, new event   │
+│  ├── Welcome (first run), .ics import, clock (use-now)      │
 │  ├── DnD: use-event-dnd + DropActionPopover, edge resize    │
 │  ├── Sidebar: mini calendar + calendar list (by account)    │
 │  ├── Dialogs: Accounts (page stack), Search, Settings,      │
@@ -31,14 +33,14 @@ xrncal follows Electron's multi-process model with strict security boundaries.
 │  exposes window.xrncal (XrncalAPI), typed IPC_CHANNELS      │
 └───────────────────────┬─────────────────────────────────────┘
                         │ ipcRenderer.invoke / ipcMain.handle
-                        │ + two push channels: SYNC.CHANGED,
-                        │   REMINDERS.CHANGED
+                        │ + three push channels: SYNC.CHANGED,
+                        │   REMINDERS.CHANGED, ICS.FILE_OPENED
 ┌───────────────────────▼─────────────────────────────────────┐
 │  Main Process                                               │
 │                                                             │
 │  index.ts - lifecycle, single-instance lock, showMainWindow │
 │  ├── ipc.ts → registers the IPC handler groups              │
-│  ├── DB: sqlite-driver, database.ts (migrations 001-021),   │
+│  ├── DB: sqlite-driver, database.ts (migrations 001-022),   │
 │  │       repos/ (calendars, events, settings, sync-state)   │
 │  ├── Sync: sync-worker.ts → Google, Graph, CalDAV engines,  │
 │  │         and due .ics subscriptions                       │
@@ -47,7 +49,9 @@ xrncal follows Electron's multi-process model with strict security boundaries.
 │  ├── Secure Store (safeStorage, fails closed)               │
 │  ├── Reminders: reminder-scheduler.ts + reminders-ipc.ts    │
 │  ├── Updater: electron-updater (packaged builds only)       │
-│  ├── System Tray (tray.ts)                                  │
+│  ├── System Tray (tray.ts) - closing the window keeps the  │
+│  │   app here; launch-at-login.ts starts it in the tray     │
+│  ├── first-run.ts, setting-effects.ts, opened-ics-files.ts │
 │  └── Mini Window (mini-window.ts, frameless BrowserWindow)  │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -60,8 +64,8 @@ xrncal follows Electron's multi-process model with strict security boundaries.
 
 ```
 User navigates to Week view
-  → App.tsx computes the visible range
-  → window.xrncal.events.queryRange(calendarIds, startUtc, endUtc)
+  → App.tsx computes the visible range (useQueryRange)
+  → useCalendarData: window.xrncal.events.queryRange(calendarIds, startUtc, endUtc)
   → EventsRepo.queryEventsByRange() → SQLite SELECT + RRULE / lunar expansion
   → ExpandedOccurrence[] → App state → React re-renders
 ```
@@ -83,7 +87,9 @@ SyncWorker: every 20 s while the window has focus, 5 min otherwise
   → Google, Graph, CalDAV and due subscriptions run concurrently, each with its own .catch
   → per calendar: replies (rsvp_pending) → dirty pushes → pull
       Google: incremental via syncToken
-      Graph:  changes since the last poll; a full listing every 10 min removes deleted events
+      Graph:  changes since the last poll; a full listing every 10 min removes deleted events;
+              a changed series (and every series each 6 h) is read for its changed and
+              cancelled occurrences
       CalDAV: skipped when the ctag is unchanged and nothing was pushed
   → SYNC.CHANGED to every window when rows changed
 ```
@@ -150,7 +156,7 @@ settings (key, value, updated_at)
 ```
 
 `sync_state.sync_token` holds whatever a calendar's engine uses to skip work:
-Google's syncToken, a CalDAV ctag, Graph's `{since, fullAt}`, or a hash of a
+Google's syncToken, a CalDAV ctag, Graph's `{since, fullAt, overridesPending, overridesAt}`, or a hash of a
 subscribed feed.
 
 ### Key indexes
@@ -161,11 +167,49 @@ subscribed feed.
 
 ---
 
+## Lifecycle
+
+- **Start:** credentials (`load-credentials.ts`), the computer's defaults for settings nobody
+  chose (`setSystemDefaults(defaultsForSystem(...))`), the database, holiday refresh, and - for a
+  profile already in use - `settleExistingProfile()`, which pins the values it has been showing
+  and skips the welcome. `nativeTheme.themeSource` is set from the theme setting, so the first
+  paint is in the right theme. Then IPC, tray, and the main window - unless started at login
+  with `--hidden` and a tray to come back from.
+- **Close:** the main window is destroyed, and the app stays in the tray (`closeToTray`); a
+  one-time notification says so. Without a tray, or with the setting off, it quits. A real quit
+  (tray menu, `Ctrl+Q` → `APP.QUIT`, an update) sets `isQuitting` first; the database closes in
+  `will-quit`.
+- **Second launch:** brings the window back and hands over any `.ics` path from its command line.
+- **Restore:** `restore-database.ts` checks the chosen backup on a copy, saves the current data
+  in `<userData>/backups`, swaps the files with the database closed, and relaunches. Its file
+  dialog opens in that folder when it holds automatic backups.
+- **Automatic backups:** `auto-backup.ts` checks two minutes after start and every six hours,
+  and when the newest `xrncal-auto-*.sqlite` (dated by its name) is a week old it takes a
+  `VACUUM INTO` snapshot and keeps the newest four (`autoBackup` setting). Every snapshot,
+  manual ones included, is created `0600` before SQLite writes into it.
+- **Log:** `log.ts` appends to `<userData>/logs/xrncal.log` (rotated to `xrncal.old.log` at
+  1 MB, `0600`): startup, the database failing to open, sync failures per account when they
+  start, change or end (`accountErrorChanges()`, not every poll), feed failures (without the
+  link: a private feed's address is its password), automatic backups, update errors, crashed
+  windows and helper processes, unhandled rejections. `redactSecrets()` runs over every line.
+  Never log event text or a credential. Settings → *Show log file* opens it (`APP.SHOW_LOG_FILE`).
+- **Tray on GNOME:** GNOME Shell shows tray icons only with the AppIndicator extension, and
+  Electron creates a `Tray` either way. `tray-host.ts` asks the session bus (`gdbus`) whether a
+  StatusNotifier host is registered - on GNOME Shell only, at startup and whenever the main window
+  takes focus - and `hasTray()` is false without one, so closing the window quits and launch at
+  login opens the window instead of leaving an unreachable app. Other desktops are not asked:
+  some have only an XEmbed tray, which that query cannot see.
+
 ## IPC Contract
 
 All IPC channels are constants in `src/shared/ipc-contract.ts`. The `XrncalAPI` interface mirrors `window.xrncal` and is the single source of truth for the preload bridge.
 
-**Namespace groups:** `APP`, `SETTINGS`, `AUTH`, `SYNC`, `REMINDERS`, `CALENDAR`, `EVENT`, `ICS`, `MINI`, `HOLIDAYS`, `SUBSCRIPTIONS`
+**Namespace groups:** `APP`, `SETTINGS`, `AUTH`, `SYNC`, `REMINDERS`, `CALENDAR`, `EVENT`, `ICS`, `PRINT`, `MINI`, `HOLIDAYS`, `SUBSCRIPTIONS`
+
+`PRINT` prints the page that asks, as it is: the renderer puts the sheet in `.gc-print-host` and
+`@media print` hides everything else. A file name from the renderer is only a suggestion for the
+save dialog (`pdfFileName()` strips folders and odd characters), and "show in folder" shows the
+file saved last, so the renderer never names a path.
 
 ---
 
@@ -189,8 +233,9 @@ so a list that was never fetched cannot erase a meeting's guests.
 
 The only place both main and renderer import. Zero Node.js and zero DOM
 dependencies. Key contracts: `event-model.ts` (domain types),
-`ipc-contract.ts`, `settings-contract.ts`, `reminders.ts`, `expand-occurrences.ts`,
-`lunar-vietnam.ts`, `keyboard-nav.ts`.
+`ipc-contract.ts`, `settings-contract.ts`, `reminders.ts`, `expand-occurrences.ts` (with
+`bounded-rrule.ts`, which caps what one recurrence rule may cost), `lunar-vietnam.ts`,
+`keyboard-nav.ts`.
 
 ---
 

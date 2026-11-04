@@ -9,7 +9,10 @@ const xrncalApi: XrncalAPI = {
     setLocale: (locale: AppLocale) => ipcRenderer.invoke(IPC_CHANNELS.APP.SET_LOCALE, locale),
     getPlatform: () => ipcRenderer.invoke(IPC_CHANNELS.APP.GET_PLATFORM),
     pickBackgroundImage: () => ipcRenderer.invoke(IPC_CHANNELS.APP.PICK_BACKGROUND_IMAGE),
-    backupDatabase: () => ipcRenderer.invoke(IPC_CHANNELS.APP.BACKUP_DATABASE)
+    backupDatabase: () => ipcRenderer.invoke(IPC_CHANNELS.APP.BACKUP_DATABASE),
+    restoreDatabase: () => ipcRenderer.invoke(IPC_CHANNELS.APP.RESTORE_DATABASE),
+    showLogFile: () => ipcRenderer.invoke(IPC_CHANNELS.APP.SHOW_LOG_FILE),
+    quit: () => ipcRenderer.invoke(IPC_CHANNELS.APP.QUIT)
   },
   settings: {
     getAll: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS.GET_ALL),
@@ -25,7 +28,8 @@ const xrncalApi: XrncalAPI = {
     disconnectCalDav: (accountId) => ipcRenderer.invoke(IPC_CHANNELS.AUTH.DISCONNECT_CALDAV, accountId),
     listAccounts: () => ipcRenderer.invoke(IPC_CHANNELS.AUTH.LIST_ACCOUNTS),
     detachAccount: (accountId: string) =>
-      ipcRenderer.invoke(IPC_CHANNELS.AUTH.DETACH_ACCOUNT, accountId)
+      ipcRenderer.invoke(IPC_CHANNELS.AUTH.DETACH_ACCOUNT, accountId),
+    providerStatus: () => ipcRenderer.invoke(IPC_CHANNELS.AUTH.PROVIDER_STATUS)
   },
   sync: {
     triggerNow: () => ipcRenderer.invoke(IPC_CHANNELS.SYNC.TRIGGER_NOW),
@@ -85,11 +89,22 @@ const xrncalApi: XrncalAPI = {
     restore: (snapshot, occurrenceStartUtc) =>
       ipcRenderer.invoke(IPC_CHANNELS.EVENT.RESTORE, snapshot, occurrenceStartUtc)
   },
+  print: {
+    savePdf: (suggestedName: string) => ipcRenderer.invoke(IPC_CHANNELS.PRINT.SAVE_PDF, suggestedName),
+    print: () => ipcRenderer.invoke(IPC_CHANNELS.PRINT.PRINT),
+    showSaved: () => ipcRenderer.invoke(IPC_CHANNELS.PRINT.SHOW_SAVED)
+  },
   ics: {
     importIcs: (targetCalendarId: string, icsContent: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.ICS.IMPORT, targetCalendarId, icsContent),
     exportIcs: (calendarId: string) =>
-      ipcRenderer.invoke(IPC_CHANNELS.ICS.EXPORT, calendarId)
+      ipcRenderer.invoke(IPC_CHANNELS.ICS.EXPORT, calendarId),
+    takeOpenedFiles: () => ipcRenderer.invoke(IPC_CHANNELS.ICS.TAKE_OPENED),
+    onFileOpened: (callback: () => void) => {
+      const listener = (): void => callback()
+      ipcRenderer.on(IPC_CHANNELS.ICS.FILE_OPENED, listener)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.ICS.FILE_OPENED, listener)
+    }
   },
   mini: {
     openMain: () => ipcRenderer.invoke(IPC_CHANNELS.MINI.OPEN_MAIN),

@@ -19,6 +19,7 @@ export const safeStorage = {
 }
 
 export const app = {
+  isPackaged: false,
   getPath: () => '/tmp',
   getName: () => 'xrncal',
   getVersion: () => '0.0.0-test',
@@ -76,6 +77,7 @@ export const nativeImage = {
 
 export const nativeTheme = {
   shouldUseDarkColors: false,
+  themeSource: 'system' as 'system' | 'light' | 'dark',
   on: () => undefined
 }
 

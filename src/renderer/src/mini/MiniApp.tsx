@@ -8,6 +8,16 @@ import { DEFAULT_APP_SETTINGS } from '@shared/settings-contract'
 import { formatClockTime, type TimeFormatPref } from '@shared/time-format'
 import i18n from '../i18n'
 
+/** The next events, or null when they could not be read (the list stays as it was). */
+function readUpcoming(): Promise<ExpandedOccurrence[] | null> {
+  const mini = window.xrncal?.mini
+  if (!mini?.getUpcoming) return Promise.resolve(null)
+  return mini.getUpcoming(15).then(
+    (res) => res.occurrences || [],
+    () => null
+  )
+}
+
 export const MiniApp: React.FC = () => {
   const { t } = useTranslation()
   const [occurrences, setOccurrences] = useState<ExpandedOccurrence[]>([])
@@ -15,23 +25,22 @@ export const MiniApp: React.FC = () => {
   const [isAlwaysOnTop, setIsAlwaysOnTop] = useState<boolean>(true)
   const [timeFormat, setTimeFormat] = useState<TimeFormatPref>(DEFAULT_APP_SETTINGS.timeFormat)
 
-  const loadData = async () => {
-    setIsLoading(true)
-    try {
-      if (window.xrncal?.mini?.getUpcoming) {
-        const res = await window.xrncal.mini.getUpcoming(15)
-        setOccurrences(res.occurrences || [])
-      }
-    } catch {
-      // The list stays as it was; the next refresh tries again.
-    } finally {
+  // The spinner shows from the first frame (isLoading starts true) and while a
+  // refresh asked for with the button runs; the minute's own refresh is silent.
+  const loadData = () =>
+    readUpcoming().then((found) => {
+      if (found) setOccurrences(found)
       setIsLoading(false)
-    }
+    })
+
+  const refresh = () => {
+    setIsLoading(true)
+    void loadData()
   }
 
   useEffect(() => {
-    loadData()
-    const interval = setInterval(loadData, 60000)
+    void loadData()
+    const interval = setInterval(() => void loadData(), 60000)
     const loadTheme = async () => {
       try {
         const settings = await window.xrncal?.settings?.getAll()
@@ -101,7 +110,7 @@ export const MiniApp: React.FC = () => {
           className="flex items-center gap-1.5"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
-          <button type="button" onClick={loadData} className="gc-icon-btn p-1" title={t('mini.refresh')}>
+          <button type="button" onClick={refresh} className="gc-icon-btn p-1" title={t('mini.refresh')}>
             <RotateCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
           </button>
           <button

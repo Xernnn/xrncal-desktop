@@ -37,40 +37,54 @@ export const SearchPaletteModal: React.FC<SearchPaletteModalProps> = ({
 
   const calendarMap = new Map(calendars.map((c) => [c.id, c]))
 
+  /** An empty search shows nothing, not what the last one found. */
+  function changeQuery(next: string): void {
+    setQuery(next)
+    if (!next.trim()) setResults([])
+  }
+
+  // Opening starts at the top; closing forgets the search. Adjusted while
+  // rendering rather than in an effect, so neither shows for a frame.
+  const [wasOpen, setWasOpen] = useState(isOpen)
+  if (wasOpen !== isOpen) {
+    setWasOpen(isOpen)
+    if (isOpen) setSelectedIndex(0)
+    else changeQuery('')
+  }
+
   useEffect(() => {
-    if (isOpen) {
-      setTimeout(() => inputRef.current?.focus(), 50)
-      setSelectedIndex(0)
-    } else {
-      setQuery('')
-      setResults([])
-    }
+    if (!isOpen) return
+    const timer = setTimeout(() => inputRef.current?.focus(), 50)
+    return () => clearTimeout(timer)
   }, [isOpen])
 
   // Real-time search query
   useEffect(() => {
-    if (!isOpen) return
     const trimmed = query.trim()
-    if (!trimmed) {
-      setResults([])
-      return
-    }
+    if (!isOpen || !trimmed) return
 
+    // A search still running when the query changes must not land after the
+    // newer one.
+    let stale = false
     const timer = setTimeout(async () => {
       if (!window.xrncal?.events?.search) return
       setIsLoading(true)
       try {
         const res = await window.xrncal.events.search(trimmed, 30)
+        if (stale) return
         setResults(res)
         setSelectedIndex(0)
       } catch {
         // Keep the previous results; the next keystroke searches again.
       } finally {
-        setIsLoading(false)
+        if (!stale) setIsLoading(false)
       }
     }, 150)
 
-    return () => clearTimeout(timer)
+    return () => {
+      stale = true
+      clearTimeout(timer)
+    }
   }, [query, isOpen])
 
   // Keyboard navigation
@@ -126,14 +140,14 @@ export const SearchPaletteModal: React.FC<SearchPaletteModalProps> = ({
             ref={inputRef}
             type="text"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => changeQuery(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={t('search.placeholder')}
             className="w-full bg-transparent border-none text-slate-800 dark:text-slate-100 text-sm placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-hidden"
           />
           {query && (
             <button
-              onClick={() => setQuery('')}
+              onClick={() => changeQuery('')}
               className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-md cursor-pointer"
             >
               <X className="h-4 w-4" />

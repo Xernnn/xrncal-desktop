@@ -1,5 +1,5 @@
 import i18n from '../../i18n'
-import React, { useState, useRef, useEffect, useMemo } from 'react'
+import React, { useState, useRef, useEffect, useMemo, useCallback, useEffectEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Clock, ChevronDown } from 'lucide-react'
 import { formatClockTimeStr } from '@shared/time-format'
@@ -132,10 +132,10 @@ export const TimePicker: React.FC<TimePickerProps> = ({
   className = '',
   align = 'left'
 }) => {
-  const { timeFormat, dragSnapMinutes } = useDisplayPreferences()
-  // Same grid the calendar snaps to unless a caller insists otherwise, so the
-  // times offered here match the ones a drag can produce.
-  const step = stepMinutes ?? dragSnapMinutes
+  const { timeFormat, timePickerStepMinutes } = useDisplayPreferences()
+  // Its own setting, not the drag step: some want a short list here and fine
+  // steps on the grid, or the reverse.
+  const step = stepMinutes ?? timePickerStepMinutes
   const [isOpen, setIsOpen] = useState(false)
   const [inputValue, setInputValue] = useState(value ? formatClockTimeStr(value, timeFormat) : '')
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null)
@@ -153,11 +153,15 @@ export const TimePicker: React.FC<TimePickerProps> = ({
     [step, startTime]
   )
 
-  useEffect(() => {
-    setInputValue(value ? formatClockTimeStr(value, timeFormat) : '')
-  }, [value, timeFormat])
+  // A new value (or clock format) from outside replaces what the box shows.
+  const shown = value ? formatClockTimeStr(value, timeFormat) : ''
+  const [shownFor, setShownFor] = useState(shown)
+  if (shownFor !== shown) {
+    setShownFor(shown)
+    setInputValue(shown)
+  }
 
-  const updateCoords = () => {
+  const updateCoords = useCallback(() => {
     if (!containerRef.current) return
     const rect = containerRef.current.getBoundingClientRect()
     const popoverWidth = 200
@@ -177,73 +181,35 @@ export const TimePicker: React.FC<TimePickerProps> = ({
     }
 
     setCoords({ top, left })
+  }, [align])
+
+  /** Open the list with no slot under the cursor (or on `cursor`). */
+  const openList = (cursor = -1): void => {
+    if (isOpen) return
+    updateCoords()
+    setActiveIndex(cursor)
+    setIsOpen(true)
   }
 
-  // Scroll active item into view and update coordinates when opening
+  // While open: the chosen slot scrolled to the middle of the list, and the
+  // list following the field when the page scrolls or resizes.
   useEffect(() => {
-    if (!isOpen) {
-      setActiveIndex(-1)
-      return
-    }
-
-    updateCoords()
-    setTimeout(() => {
+    if (!isOpen) return
+    const centre = setTimeout(() => {
       if (activeItemRef.current && listRef.current) {
         const list = listRef.current
         const item = activeItemRef.current
         list.scrollTop = item.offsetTop - list.clientHeight / 2 + item.clientHeight / 2
       }
     }, 50)
-
-    const handleScrollOrResize = () => {
-      updateCoords()
-    }
-    window.addEventListener('resize', handleScrollOrResize)
-    window.addEventListener('scroll', handleScrollOrResize, true)
+    window.addEventListener('resize', updateCoords)
+    window.addEventListener('scroll', updateCoords, true)
     return () => {
-      window.removeEventListener('resize', handleScrollOrResize)
-      window.removeEventListener('scroll', handleScrollOrResize, true)
+      clearTimeout(centre)
+      window.removeEventListener('resize', updateCoords)
+      window.removeEventListener('scroll', updateCoords, true)
     }
-  }, [isOpen, align])
-
-  // Click outside & Escape listener
-  useEffect(() => {
-    if (!isOpen) return
-
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as Node
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(target) &&
-        popoverRef.current &&
-        !popoverRef.current.contains(target)
-      ) {
-        commitInput()
-        setIsOpen(false)
-      }
-    }
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        // Without stopPropagation this same Escape carries on to the dialog
-        // hosting the field and closes that too.
-        e.stopPropagation()
-        setInputValue(value ? formatClockTimeStr(value, timeFormat) : '')
-        setIsOpen(false)
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside)
-    document.addEventListener('keydown', handleKeyDown)
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [isOpen, value, inputValue, timeFormat])
-
-  useEffect(() => {
-    if (activeIndex >= 0) activeItemRef.current?.scrollIntoView({ block: 'nearest' })
-  }, [activeIndex])
+  }, [isOpen, updateCoords])
 
   const commitInput = () => {
     const parsed = parseSmartTime(inputValue)
@@ -261,6 +227,55 @@ export const TimePicker: React.FC<TimePickerProps> = ({
     setIsOpen(false)
   }
 
+  // What a click outside and Escape do, with the input as it is when they
+  // happen - the listeners stay bound while the list is open, not re-bound on
+  // every keystroke.
+  const closeKeepingInput = useEffectEvent(() => {
+    commitInput()
+    setIsOpen(false)
+  })
+  const closeDiscardingInput = useEffectEvent(() => {
+    setInputValue(value ? formatClockTimeStr(value, timeFormat) : '')
+    setIsOpen(false)
+  })
+
+  // Click outside & Escape listener
+  useEffect(() => {
+    if (!isOpen) return
+
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(target) &&
+        popoverRef.current &&
+        !popoverRef.current.contains(target)
+      ) {
+        closeKeepingInput()
+      }
+    }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        // Without stopPropagation this same Escape carries on to the dialog
+        // hosting the field and closes that too.
+        e.stopPropagation()
+        closeDiscardingInput()
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isOpen])
+
+  useEffect(() => {
+    if (activeIndex >= 0) activeItemRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [activeIndex])
+
   /** Index of the slot matching the committed value, or 0 as a starting point. */
   const slotIndexForValue = (): number => {
     const found = timeSlots.indexOf(value)
@@ -269,8 +284,7 @@ export const TimePicker: React.FC<TimePickerProps> = ({
 
   const stepActive = (delta: number) => {
     if (!isOpen) {
-      setIsOpen(true)
-      setActiveIndex(slotIndexForValue())
+      openList(slotIndexForValue())
       return
     }
     setActiveIndex((prev) =>
@@ -385,7 +399,7 @@ export const TimePicker: React.FC<TimePickerProps> = ({
 
       {/* Input / Trigger — matching DatePicker ghost styling */}
       <div
-        onClick={() => !disabled && setIsOpen(true)}
+        onClick={() => !disabled && openList()}
         className={`gc-focus-ring flex items-center justify-between gap-1 w-full text-left select-none cursor-pointer overflow-hidden transition-colors duration-100 bg-transparent border ${
           isOpen ? 'border-accent bg-hover/50' : 'border-transparent hover:border-hairline hover:bg-hover/30'
         } px-2.5 py-1.5 text-xs ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -402,7 +416,7 @@ export const TimePicker: React.FC<TimePickerProps> = ({
             disabled={disabled}
             value={inputValue}
             placeholder={placeholder}
-            onFocus={() => !disabled && setIsOpen(true)}
+            onFocus={() => !disabled && openList()}
             onChange={(e) => {
               setInputValue(e.target.value)
               setActiveIndex(-1)

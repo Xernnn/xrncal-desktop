@@ -10,7 +10,8 @@ import {
   type GoogleCalendarApiEvent
 } from './google-event-mapper'
 import { mergePulledReminders, parseRemindersJson, serializeReminders } from '@shared/reminders'
-import { EventsRepo } from '../db/repos/events-repo'
+import { AccountsRepo } from '../db/repos/accounts-repo'
+import { EventsRepo, type EventRow } from '../db/repos/events-repo'
 import { SyncStateRepo } from '../db/repos/sync-state-repo'
 import type { CalendarEvent, EventException, SyncResult } from '@shared/event-model'
 
@@ -45,6 +46,13 @@ const GOOGLE_API_BASE = 'https://www.googleapis.com/calendar/v3'
 const PAGE_SIZE = 250
 /** Safety stop so a pathological calendar cannot spin forever. */
 const MAX_SYNC_PAGES = 200
+
+/** One page of an events listing; the sync token comes on the last. */
+interface GoogleEventsPage {
+  items?: GoogleCalendarApiEvent[]
+  nextPageToken?: string
+  nextSyncToken?: string
+}
 
 export class GoogleSyncEngine {
   private oauthManager: GoogleOAuthManager
@@ -161,7 +169,7 @@ export class GoogleSyncEngine {
         throw new Error(`Google event pull failed for ${calendarId}: ${await res.text()}`)
       }
 
-      const data = await res.json()
+      const data: GoogleEventsPage = await res.json()
       pulledCount += this.applyPulledPage(calendarId, data)
 
       pageToken = data.nextPageToken
@@ -173,8 +181,8 @@ export class GoogleSyncEngine {
   }
 
   /** Apply one page of listing results. Returns how many rows it touched. */
-  private applyPulledPage(calendarId: string, data: any): number {
-    const items: GoogleCalendarApiEvent[] = data.items || []
+  private applyPulledPage(calendarId: string, data: GoogleEventsPage): number {
+    const items = data.items || []
     let pulledCount = 0
 
     // Database transaction to apply batch updates
@@ -324,7 +332,7 @@ export class GoogleSyncEngine {
   ): Promise<{ pushedCount: number; errorCount: number; lastError: string | null }> {
     const dirtyRows = this.db
       .prepare('SELECT * FROM events WHERE calendar_id = ? AND dirty = 1 AND has_conflict = 0')
-      .all<any>(calendarId)
+      .all<EventRow>(calendarId)
 
     let pushedCount = 0
     let errorCount = 0
@@ -412,19 +420,18 @@ export class GoogleSyncEngine {
             calendarId: row.calendar_id,
             uid: row.uid,
             title: row.title,
-            notes: row.notes,
-            location: row.location,
+            notes: row.notes ?? undefined,
+            location: row.location ?? undefined,
             dtStartUtc: row.dtstart_utc,
             dtEndUtc: row.dtend_utc,
             tzid: row.tzid,
             allDay: row.all_day === 1,
-            rrule: row.rrule,
-            color: row.color,
-            meetingUrl: row.meeting_url,
+            rrule: row.rrule ?? undefined,
+            color: row.color ?? undefined,
+            meetingUrl: row.meeting_url ?? undefined,
             reminders: parseRemindersJson(row.reminders),
-            attendees: attendees ?? undefined,
-            etag: row.etag
-          } as any)
+            attendees: attendees ?? undefined
+          })
 
           let putRes: Response
           if (row.etag) {
@@ -705,9 +712,7 @@ export class GoogleSyncEngine {
    * Sync all Google accounts
    */
   async syncAll(clientId?: string, clientSecret?: string): Promise<SyncResult> {
-    const activeGoogleAccounts = this.db
-      .prepare("SELECT * FROM accounts WHERE type = 'google' AND is_active = 1")
-      .all<any>()
+    const activeGoogleAccounts = new AccountsRepo(this.db).listActive('google')
 
     if (activeGoogleAccounts.length === 0) {
       return { success: true, pulledCount: 0, pushedCount: 0, errorCount: 0, message: 'No Google accounts connected' }
@@ -751,7 +756,7 @@ export class GoogleSyncEngine {
             } else {
               this.syncStateRepo.recordSuccess(calId, pullRes.pulledCount)
             }
-          } catch (calErr: any) {
+          } catch (calErr) {
             this.syncStateRepo.recordFailure(calId, calErr)
             totalErrors++
           }

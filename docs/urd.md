@@ -35,7 +35,9 @@ Not in scope: mobile users, macOS users, on-prem Exchange admins.
 2. **Full editor, no quick-add.** Blank-slot click opens the complete event form (One Calendar-style).
 3. **Explicit drop.** Drag-and-drop offers Move / Copy / Cancel.
 4. **Same chrome on Windows and Linux.** No OS-only live tiles or lock-screen appointments.
-5. **YAGNI on native extras.** No print, maps, Facebook, or One Task clone.
+5. **YAGNI on native extras.** No maps, Facebook, or One Task clone. Printing is in, as one page:
+   the week or month, printed or saved as PDF (it was out until 0.2.0, the most-asked missing
+   feature of a desktop calendar).
 
 ## 4. Constraints (non-negotiable)
 
@@ -99,7 +101,6 @@ Full product vision is One Calendar-class desktop. First installable build is **
 Explicit **out** for this product (do not sneak back in without a URD change):
 
 - macOS, iOS, Android
-- Print
 - Lock screen / live tiles
 - Maps, routing, navigation
 - Facebook events
@@ -132,10 +133,24 @@ IDs are stable for plans and tests.
 |----|-------------|---------|
 | UR-EDIT-01 | Clicking an empty slot (month cell, week/day grid, week all-day) opens the **full** editor, not a title-only popover. | R1 |
 | UR-EDIT-02 | Editor fields: summary, calendar, start, end, all-day, timezone, recurrence, attendees, reminders, notes, location, event color, meeting URL. | R1 (attendees write-back may no-op until R2 invite) |
-| UR-EDIT-03 | Opening an existing event loads the same editor for update/delete. | R1 |
+| UR-EDIT-03 | Opening an existing event loads the same editor for update/delete. Right-click on an event offers Edit, Duplicate and Delete; on a day, a new event there. | R1 (right-click 0.2.0) |
 | UR-EDIT-04 | Recurring edit asks this event / this and future / all, then persists according to RFC 5545 + provider rules. | R1 |
 | UR-EDIT-05 | Validation: end ≥ start; required summary (or explicit untitled placeholder); timezone required when not all-day. | R1 |
 | UR-EDIT-06 | Cancel discards unsaved changes after confirm if dirty. | R1 |
+
+### 7.2a Everyday use (0.2.0)
+
+| ID | Requirement | Release |
+|----|-------------|---------|
+| UR-DAILY-01 | The header always shows previous/next, the period's name, Create, search, the view switcher and Settings. | 0.2.0 |
+| UR-DAILY-02 | "Today" and the current-time line follow the clock while the app stays open, across midnight. | 0.2.0 |
+| UR-DAILY-03 | Closing the window keeps the app running in the tray so reminders ring; Ctrl+Q and the tray menu quit. A setting turns this off. | 0.2.0 |
+| UR-DAILY-04 | The app can start at sign-in, in the tray (Windows login item, Linux autostart entry). | 0.2.0 |
+| UR-DAILY-05 | A first-run welcome sets language, lunar dates, holidays and start-at-login, and offers to connect accounts. | 0.2.0 |
+| UR-DAILY-06 | A new install follows the computer's language, clock and first day of the week; the week can start on Monday, Sunday or Saturday. An existing profile keeps what it showed. | 0.2.0 |
+| UR-DAILY-07 | .ics files import from Settings, by dropping them on the window, or with "Open with xrncal"; each calendar exports to .ics. | 0.2.0 |
+| UR-DAILY-08 | A backup can be restored from Settings; the data it replaces is saved first. | 0.2.0 |
+| UR-DAILY-09 | Official builds sign in to Google and Microsoft with no setup; a build without an OAuth client says so before opening the browser. | 0.2.0 |
 
 ### 7.3 Drag and drop
 
@@ -206,7 +221,7 @@ keyboard shortcuts, theme mode, appearance, language, settings.
 
 R3: Mini/tray window (upcoming list)
 Settings: language, week numbers, lunar, theme, notification, accounts
-Default theme: light. Dark and system remain available.
+Default theme: follow the system (since 0.2.0). Light and dark remain available.
 ```
 
 ## 9. Data (logical)

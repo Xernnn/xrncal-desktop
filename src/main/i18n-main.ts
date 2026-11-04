@@ -4,6 +4,7 @@
  * and sync status text. The renderer owns the full i18next catalog.
  */
 import { getDatabase } from './db/database'
+import { SettingsRepo } from './db/repos/settings-repo'
 
 type MainLocale = 'en' | 'vi'
 
@@ -14,6 +15,8 @@ const STRINGS: Record<MainLocale, Record<string, string>> = {
     'tray.openMain': 'Open xrncal',
     'tray.miniWindow': 'Mini window (upcoming events)',
     'tray.quit': 'Quit',
+    'tray.stillRunningTitle': 'xrncal is still running',
+    'tray.stillRunningBody': 'Reminders will still ring. Open it again from its tray icon or your app menu; quit from the tray menu or with Ctrl+Q.',
     'notify.now': 'Starting now',
     'notify.inMinutes': 'In {n} min, at {time}',
     'notify.todayAt': 'Today at {time}',
@@ -33,6 +36,7 @@ const STRINGS: Record<MainLocale, Record<string, string>> = {
     'oauth.google.failed': 'Google sign-in failed: {error}',
     'oauth.microsoft.failed': 'Microsoft sign-in failed: {error}',
     'oauth.canCloseShort': 'You can close this tab.',
+    'oauth.profileFailed': 'Signed in, but your account details could not be read (HTTP {status}). Please try again.',
     'oauth.timeout.google': 'Google authentication timed out (5 minutes). Please try again.',
     'oauth.timeout.microsoft': 'Microsoft authentication timed out (5 minutes). Please try again.'
   },
@@ -40,6 +44,8 @@ const STRINGS: Record<MainLocale, Record<string, string>> = {
     'tray.openMain': 'Mở xrncal',
     'tray.miniWindow': 'Cửa sổ Mini (sự kiện sắp tới)',
     'tray.quit': 'Thoát',
+    'tray.stillRunningTitle': 'xrncal vẫn đang chạy',
+    'tray.stillRunningBody': 'Nhắc nhở vẫn sẽ kêu. Mở lại từ biểu tượng ở khay hệ thống hoặc menu ứng dụng; thoát từ menu của biểu tượng hoặc bằng Ctrl+Q.',
     'notify.now': 'Đang bắt đầu',
     'notify.inMinutes': 'Còn {n} phút, lúc {time}',
     'notify.todayAt': 'Hôm nay lúc {time}',
@@ -59,6 +65,7 @@ const STRINGS: Record<MainLocale, Record<string, string>> = {
     'oauth.google.failed': 'Đăng nhập Google thất bại: {error}',
     'oauth.microsoft.failed': 'Đăng nhập Microsoft thất bại: {error}',
     'oauth.canCloseShort': 'Bạn có thể đóng tab này.',
+    'oauth.profileFailed': 'Đã đăng nhập nhưng không đọc được thông tin tài khoản (HTTP {status}). Vui lòng thử lại.',
     'oauth.timeout.google': 'Quá thời gian xác thực Google (5 phút). Vui lòng thử lại.',
     'oauth.timeout.microsoft': 'Quá thời gian xác thực Microsoft (5 phút). Vui lòng thử lại.'
   }
@@ -72,16 +79,10 @@ export function getMainLocale(): MainLocale {
   return currentLocale
 }
 
-/** Load the persisted locale from the settings table (call once after DB init). */
+/** Load the locale - the chosen one, else the computer's (call once after DB init). */
 export function loadMainLocaleFromDb(): void {
   try {
-    const row = getDatabase()
-      .prepare('SELECT value FROM settings WHERE key = ?')
-      .get<{ value: string }>('locale')
-    if (row) {
-      const parsed = JSON.parse(row.value)
-      if (parsed === 'en' || parsed === 'vi') currentLocale = parsed
-    }
+    setMainLocale(new SettingsRepo(getDatabase()).getSetting('locale'))
   } catch {
     // keep default
   }
@@ -91,7 +92,8 @@ export function mt(key: string, vars?: Record<string, string | number>): string 
   let s = STRINGS[currentLocale][key] ?? STRINGS.en[key] ?? key
   if (vars) {
     for (const [k, v] of Object.entries(vars)) {
-      s = s.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v))
+      // A function, so a `$&` or `$1` in the value is text, not a replacement pattern.
+      s = s.replace(new RegExp(`\\{${k}\\}`, 'g'), () => String(v))
     }
   }
   return s

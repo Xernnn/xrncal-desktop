@@ -90,9 +90,25 @@ export function extractXmlText(xml: string, tagName: string): string | undefined
   if (raw === undefined) return undefined
   const cdata = raw.match(/^<!\[CDATA\[([\s\S]*)\]\]>$/)
   if (cdata) return cdata[1]
-  return raw.replace(/&(?:#(\d+)|#x([0-9a-fA-F]+)|(lt|gt|quot|apos|amp));/g, (_, dec, hex, name) =>
-    dec ? String.fromCodePoint(Number(dec)) : hex ? String.fromCodePoint(parseInt(hex, 16)) : XML_ENTITIES[name]
-  )
+  return raw.replace(/&(?:#(\d+)|#x([0-9a-fA-F]+)|(lt|gt|quot|apos|amp));/g, (_, dec, hex, name) => {
+    if (name) return XML_ENTITIES[name]
+    // A reference past Unicode (&#99999999;) made fromCodePoint throw, and one
+    // such character from a server stopped calendar discovery.
+    const code = dec ? Number(dec) : parseInt(hex, 16)
+    return code <= 0x10ffff ? String.fromCodePoint(code) : '\uFFFD'
+  })
+}
+
+/**
+ * A calendar colour as the server gives it (`#039BE5`, Apple's `#7C9CBFFF`
+ * with alpha, `#abc`) as `#rrggbb`; anything else is dropped. The value ends up
+ * in style attributes, so a server does not get to put arbitrary text there.
+ */
+export function normalizeCalendarColor(value: string | undefined): string | undefined {
+  const hex = value?.trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i)?.[1]
+  if (!hex) return undefined
+  const rgb = hex.length === 3 ? hex.replace(/./g, (c) => c + c) : hex.slice(0, 6)
+  return `#${rgb.toLowerCase()}`
 }
 
 /**
@@ -132,7 +148,8 @@ export function parseCalDavMultistatus(xml: string, baseUrl: string): CalDavCale
     if (!isCalendar) continue
 
     const displayName = extractXmlText(resp, 'displayname') || 'CalDAV Calendar'
-    const color = extractXmlText(resp, 'calendar-color') || extractXmlText(resp, 'color')
+    // Apple's calendar-color, which every server that has colours uses.
+    const color = normalizeCalendarColor(extractXmlText(resp, 'calendar-color'))
     const ctag = extractXmlText(resp, 'getctag')
     const syncToken = extractXmlText(resp, 'sync-token')
 
@@ -162,4 +179,35 @@ export function parseCalDavMultistatus(xml: string, baseUrl: string): CalDavCale
   }
 
   return calendars
+}
+
+/**
+ * Whether the account's password may go with a request to `requestUrl`.
+ *
+ * A server hands back addresses of its own - the calendar home, each event's
+ * href - and the adapter used to send the password to whatever they named, so
+ * a hostile or tampered-with server could point one at another host and
+ * collect it. It goes to the account's host and to others in the same domain
+ * (iCloud answers from pNN-caldav.icloud.com), and never over plain HTTP when
+ * the account is HTTPS.
+ */
+export function mayCarryCredentials(accountUrl: string, requestUrl: string): boolean {
+  let account: URL
+  let target: URL
+  try {
+    account = new URL(accountUrl)
+    target = new URL(requestUrl)
+  } catch {
+    return false
+  }
+  if (target.protocol !== 'https:' && target.protocol !== 'http:') return false
+  if (account.protocol === 'https:' && target.protocol !== 'https:') return false
+  const host = account.hostname.toLowerCase()
+  const other = target.hostname.toLowerCase()
+  if (host === other) return true
+  // An address, or a two-label name like example.com or nas.local: that host only.
+  const labels = host.split('.')
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(host) || host.includes(':') || labels.length < 3) return false
+  const domain = labels.slice(1).join('.')
+  return other === domain || other.endsWith(`.${domain}`)
 }

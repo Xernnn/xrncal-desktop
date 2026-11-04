@@ -4,7 +4,8 @@ import type { Calendar } from '@shared/event-model'
 import { CalendarsRepo } from '../db/repos/calendars-repo'
 import { EventsRepo } from '../db/repos/events-repo'
 import { SyncStateRepo } from '../db/repos/sync-state-repo'
-import { fetchWithTimeout, readTextWithin, ResponseTooLargeError } from '../sync/http'
+import { describeError, fetchWithTimeout, readTextWithin, ResponseTooLargeError } from '../sync/http'
+import { log } from '../log'
 import { MAX_ICS_SIZE_BYTES, parseIcsContent } from '../ics/parse-ics'
 
 /**
@@ -195,7 +196,11 @@ export async function refreshDueSubscriptions(
   for (const calendar of due) {
     try {
       pulledCount += await refreshSubscription(db, calendar.id)
-    } catch {
+    } catch (err) {
+      // The link stays out of the log: a private feed's address is its password
+      // (Google's "secret address in iCal format").
+      const reason = describeError(err).split(calendar.subscriptionUrl!).join('<calendar link>')
+      log('warn', `Feed ${calendar.id} could not be refreshed: ${reason}`)
       // Recorded in sync_state by refreshSubscription. Not retried until it is
       // due again: a dead link should not be hit every poll.
       db.prepare('UPDATE calendars SET subscription_refreshed_at = ? WHERE id = ?').run(

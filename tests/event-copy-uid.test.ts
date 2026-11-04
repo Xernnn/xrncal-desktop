@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { createSqliteDriver } from '../src/main/db/sqlite-driver'
+import { createSqliteDriver, type ISqliteDatabase } from '../src/main/db/sqlite-driver'
 import { runMigrations, seedDefaultData } from '../src/main/db/database'
 import { CalendarsRepo } from '../src/main/db/repos/calendars-repo'
 import { EventsRepo } from '../src/main/db/repos/events-repo'
 
 describe('Event Copy and Move Operations', () => {
-  let db: any
+  let db: ISqliteDatabase
   let calendarsRepo: CalendarsRepo
   let eventsRepo: EventsRepo
   let testCalId: string

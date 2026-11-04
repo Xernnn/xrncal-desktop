@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from 'react'
 import { DateTime } from 'luxon'
 import type { ExpandedOccurrence } from '@shared/event-model'
 import {
@@ -35,7 +35,6 @@ export function useEventResize(options: {
   // Read through a ref: the pointermove listener is registered once and must
   // see the current step without being torn down and rebuilt on every change.
   const snapStepRef = useRef(dragSnapMinutes)
-  snapStepRef.current = dragSnapMinutes
   const [preview, setPreview] = useState<ResizePreview | null>(null)
   const sessionRef = useRef<{
     occ: ExpandedOccurrence
@@ -48,9 +47,14 @@ export function useEventResize(options: {
   const onCommitRef = useRef(onCommit)
   const onBusyEndRef = useRef(onBusyEnd)
 
-  getGeometryRef.current = getGeometry
-  onCommitRef.current = onCommit
-  onBusyEndRef.current = onBusyEnd
+  // Kept current after each render (never during one), before any pointer
+  // event can read them.
+  useLayoutEffect(() => {
+    snapStepRef.current = dragSnapMinutes
+    getGeometryRef.current = getGeometry
+    onCommitRef.current = onCommit
+    onBusyEndRef.current = onBusyEnd
+  })
 
   const clearSession = useCallback((commit: boolean) => {
     const session = sessionRef.current

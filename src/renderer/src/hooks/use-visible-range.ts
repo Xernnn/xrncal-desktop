@@ -8,7 +8,11 @@ export { getVisibleRange }
 export function useVisibleRange(
   anchorDate: DateTime,
   view: CalendarViewType,
-  locale: string = 'vi'
+  locale: string = 'vi',
+  firstDayOfWeek: number = 1
 ): VisibleRange {
-  return useMemo(() => getVisibleRange(anchorDate, view, locale), [anchorDate, view, locale])
+  return useMemo(
+    () => getVisibleRange(anchorDate, view, locale, firstDayOfWeek),
+    [anchorDate, view, locale, firstDayOfWeek]
+  )
 }

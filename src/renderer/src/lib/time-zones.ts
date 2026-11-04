@@ -1,4 +1,5 @@
 import { DateTime, IANAZone } from 'luxon'
+import { isUtcZone } from '@shared/utc-zone'
 
 /** Every zone this runtime knows, for the zone pickers. */
 export const TIME_ZONE_NAMES: string[] = (() => {
@@ -84,4 +85,21 @@ export function zonePickerOptions(
   }))
   const rest = zoneOptions().filter((o) => !byCanonical.has(canonicalZone(o.value)))
   return { pinned, rest }
+}
+
+/**
+ * The zone a timed event is shown and edited in: its own, or `zoneWithout` -
+ * where the user was on its date, else this computer's zone - when it names
+ * none worth keeping. That is a zone the runtime cannot resolve ('floating'),
+ * and UTC on an event that does not repeat: how a time written as a bare
+ * instant reads back (an .ics with `...Z` times, as Google's export writes
+ * every one-off event), not a zone anyone picked. Opened in UTC, every such
+ * event showed a clock time seven to eleven hours off. A series keeps UTC: it
+ * repeats at that UTC time, and moving it to another zone would shift its
+ * occurrences across summer time.
+ */
+export function zoneForEditing(tzid: string | null | undefined, repeats: boolean, zoneWithout: string): string {
+  if (!tzid || !IANAZone.isValidZone(tzid)) return zoneWithout
+  if (!repeats && isUtcZone(tzid)) return zoneWithout
+  return tzid
 }

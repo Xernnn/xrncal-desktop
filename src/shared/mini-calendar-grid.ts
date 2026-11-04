@@ -1,19 +1,19 @@
 import { DateTime } from 'luxon'
+import { toLuxonWeekStart } from './week-start'
 
-/** 0 = Sunday, 1 = Monday (matches AppSettings.firstDayOfWeek). */
+export { toLuxonWeekStart }
+
+/** 0 = Sunday, 1 = Monday, 6 = Saturday (matches AppSettings.firstDayOfWeek). */
 
 const WEEKDAY_LABELS_MON: string[] = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN']
 const WEEKDAY_LABELS_SUN: string[] = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7']
 
-export function weekdayHeaders(firstDayOfWeek: number): string[] {
-  return firstDayOfWeek === 0 ? WEEKDAY_LABELS_SUN : WEEKDAY_LABELS_MON
-}
+const WEEKDAY_LABELS_SAT: string[] = ['T7', 'CN', 'T2', 'T3', 'T4', 'T5', 'T6']
 
-/**
- * Convert settings firstDayOfWeek (0=Sun, 1=Mon) to Luxon weekday (1=Mon..7=Sun).
- */
-export function toLuxonWeekStart(firstDayOfWeek: number): number {
-  return firstDayOfWeek === 0 ? 7 : 1
+export function weekdayHeaders(firstDayOfWeek: number): string[] {
+  if (firstDayOfWeek === 0) return WEEKDAY_LABELS_SUN
+  if (firstDayOfWeek === 6) return WEEKDAY_LABELS_SAT
+  return WEEKDAY_LABELS_MON
 }
 
 /**
