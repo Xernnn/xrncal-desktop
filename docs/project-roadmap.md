@@ -152,6 +152,15 @@ Built to make xrncal usable by someone who is not its developer:
 - ✅ **One CalDAV account per user** (2026-11): every account on an https server was stored under
   one id, so adding a second replaced the first one's password. Accounts already merged that way
   are separated the next time either is connected.
+- ✅ **Type the when into the title** (2026-11): "Họp 3h chiều thứ 6", "Lunch tomorrow at
+  12:30", "Giỗ ông 12/8 âm lịch" fill a new event's date, time and repeat (or lunar
+  anniversary), in Vietnamese and English, and the title is saved without them.
+- ✅ **Print or save as PDF** (2026-11): `Ctrl+P` prints the week or month on one A4 landscape
+  page, with lunar dates, on paper colours whatever the theme.
+- ✅ **Deleting one week of a CalDAV series** (2026-11): the deleted week went up as a
+  cancelled override with no start, which the server refused, so the whole series stopped
+  syncing; it now goes up as an `EXDATE`, and undoing the delete works after the sync. Found by
+  the new CI job that syncs with a real Radicale server.
 - ✅ **Sign-in ready for release builds:** OAuth client ids baked in from repository secrets; a
   build without them says so instead of failing in the browser. The credentials file accepts only
   the four sign-in keys, and installed builds no longer read a `.env` from the working directory.
