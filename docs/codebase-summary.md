@@ -133,7 +133,8 @@ xrncal/
 │       ├── locale-defaults.ts   # A new profile's language, clock and week start from the computer's locale
 │       ├── zone-history.ts      # Where the user was, from when: the zone of an event saved without one; moves added as the computer's zone changes
 │       └── ipc-contract.ts      # IPC_CHANNELS constants and XrncalAPI interface
-├── tests/                       # Vitest unit tests (~650 tests / 72 files); e2e/ drives the built app
+├── tests/                       # Vitest unit tests (~930 tests / 88 files); e2e/ drives the built app
+│   ├── integration/             # CalDAV sync against a real Radicale (`npm run test:caldav`, not in `npm run test`)
 │   └── stubs/electron.ts        # `electron` module stub for main-process tests
 └── docs/
     ├── urd.md                   # User Requirements Document
@@ -317,6 +318,7 @@ Applied by `runMigrations()` from the inline constants in `src/main/db/database.
 | 019 | `events_fts` rebuilt as an external-content index by rowid: 002's contentless one never matched and scanned itself on every update |
 | 020 | `event_sources`: the CalDAV server's copy of each event, so an edit here keeps what other clients stored (`merge-ics.ts`) |
 | 021 | `reminder_state`: reminder cards on screen and snoozes survive a restart |
+| 022 | Moved occurrences of all-day series pulled before their own `all_day` was read: set to timed |
 
 ## Test Coverage
 
@@ -335,7 +337,9 @@ tests/
 └── undo-restore.test.ts           # Bringing a deleted event back, before and after its push
 ```
 
-**Total: 539 tests across 62 files. All passing.**
+**Total: 932 unit tests across 88 files, all passing**, plus 19 Playwright tests in `e2e/` that
+drive the built app and 12 in `tests/integration/` that sync with a real Radicale server
+(`docs/deployment-guide.md`, "Running Tests").
 
 Main-process tests run in plain Node; the `electron` module is aliased to
 `tests/stubs/electron.ts` in `vitest.config.ts` so they do not need the Electron
