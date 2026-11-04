@@ -499,6 +499,7 @@ export const resources = {
         createEvent: 'Create a new event',
         searchPalette: 'Open the search palette',
         toggleSidebar: 'Show or hide the sidebar',
+        print: 'Print or save as PDF',
         syncNow: 'Sync now',
         openSettings: 'Open settings',
         openShortcuts: 'Open this shortcut sheet',
@@ -578,6 +579,22 @@ export const resources = {
         empty: 'No events in this period.',
         addEvent: 'Create event',
         allDay: 'All day'
+      },
+      print: {
+        menu: 'Print or save as PDF',
+        title: 'Print',
+        savePdf: 'Save as PDF',
+        print: 'Print…',
+        saving: 'Saving…',
+        saved: 'PDF saved',
+        showInFolder: 'Show in folder',
+        saveFailed: "Couldn't save the PDF",
+        printFailed: "Couldn't print",
+        allDay: 'All day',
+        more_one: '+{{count}} more',
+        more_other: '+{{count}} more',
+        preview: 'Preview of the printed page',
+        hint: 'One A4 page, landscape. Only the calendars shown in the sidebar are printed.'
       },
       mini: {
         events: 'Events',
@@ -1128,6 +1145,7 @@ export const resources = {
         createEvent: 'Tạo sự kiện mới',
         searchPalette: 'Mở bảng tìm kiếm',
         toggleSidebar: 'Ẩn hoặc hiện thanh bên',
+        print: 'In hoặc lưu PDF',
         syncNow: 'Đồng bộ ngay',
         openSettings: 'Mở cài đặt',
         openShortcuts: 'Mở bảng phím tắt này',
@@ -1207,6 +1225,22 @@ export const resources = {
         empty: 'Không có sự kiện nào trong khoảng thời gian này.',
         addEvent: 'Tạo sự kiện',
         allDay: 'Cả ngày'
+      },
+      print: {
+        menu: 'In hoặc lưu PDF',
+        title: 'In lịch',
+        savePdf: 'Lưu PDF',
+        print: 'In…',
+        saving: 'Đang lưu…',
+        saved: 'Đã lưu PDF',
+        showInFolder: 'Mở thư mục',
+        saveFailed: 'Không lưu được PDF',
+        printFailed: 'Không in được',
+        allDay: 'Cả ngày',
+        more_one: '+{{count}} nữa',
+        more_other: '+{{count}} nữa',
+        preview: 'Bản xem trước trang in',
+        hint: 'Một trang A4 khổ ngang. Chỉ in các lịch đang hiện ở thanh bên.'
       },
       mini: {
         events: 'Sự kiện',

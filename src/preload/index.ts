@@ -89,6 +89,11 @@ const xrncalApi: XrncalAPI = {
     restore: (snapshot, occurrenceStartUtc) =>
       ipcRenderer.invoke(IPC_CHANNELS.EVENT.RESTORE, snapshot, occurrenceStartUtc)
   },
+  print: {
+    savePdf: (suggestedName: string) => ipcRenderer.invoke(IPC_CHANNELS.PRINT.SAVE_PDF, suggestedName),
+    print: () => ipcRenderer.invoke(IPC_CHANNELS.PRINT.PRINT),
+    showSaved: () => ipcRenderer.invoke(IPC_CHANNELS.PRINT.SHOW_SAVED)
+  },
   ics: {
     importIcs: (targetCalendarId: string, icsContent: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.ICS.IMPORT, targetCalendarId, icsContent),

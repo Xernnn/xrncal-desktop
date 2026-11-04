@@ -17,7 +17,8 @@ import {
   HardDriveDownload,
   HardDriveUpload,
   FileUp,
-  FileText
+  FileText,
+  Printer
 } from 'lucide-react'
 import { useSettings } from '../context/SettingsContext'
 import { NumberInput, CustomSelect, DatePicker, toast } from './ui'
@@ -51,6 +52,8 @@ interface SettingsPanelProps {
   onOpenShortcuts: () => void
   /** Pick .ics files to import. */
   onImportIcs: () => void
+  /** Print or save as PDF the week or month on screen. */
+  onPrint: () => void
   /** Replace everything with a backup (asks first, then restarts). */
   onRestoreBackup: () => void
   conflictCount?: number
@@ -256,6 +259,16 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
               >
                 <FileUp className="h-4 w-4 shrink-0 text-muted" />
                 <span className="flex-1 truncate">{t('ics.importMenu')}</span>
+              </button>
+
+              <button
+                type="button"
+                className="flex w-full items-center gap-2.5 rounded-[3px] px-2.5 py-2.5 text-left text-sm text-primary transition-colors hover:bg-hover"
+                onClick={props.onPrint}
+              >
+                <Printer className="h-4 w-4 shrink-0 text-muted" />
+                <span className="flex-1 truncate">{t('print.menu')}</span>
+                <span className="shrink-0 font-mono text-[11px] text-muted">Ctrl+P</span>
               </button>
 
               {/* For a bug report: the log is in the profile folder, which is hidden. */}

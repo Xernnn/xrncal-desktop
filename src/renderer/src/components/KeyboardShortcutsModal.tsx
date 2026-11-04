@@ -78,6 +78,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
         { keys: ['Ctrl + K', '/'], description: t('shortcuts.searchPalette') },
         { keys: ['Ctrl + B'], description: t('shortcuts.toggleSidebar') },
         { keys: ['R'], description: t('shortcuts.syncNow') },
+        { keys: ['Ctrl + P'], description: t('shortcuts.print') },
         { keys: [','], description: t('shortcuts.openSettings') },
         { keys: ['?'], description: t('shortcuts.openShortcuts') },
         { keys: ['Esc'], description: t('shortcuts.closeDialog') },

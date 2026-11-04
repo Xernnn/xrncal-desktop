@@ -18,6 +18,7 @@ xrncal/
 │   │   │   ├── auth-sync-ipc.ts # OAuth connect/disconnect + sync trigger handlers
 │   │   │   ├── calendar-ipc.ts  # Calendar + event (incl. reply, restore) + ICS IPC handlers
 │   │   │   ├── holiday-ipc.ts   # Holiday subscription IPC handlers
+│   │   │   ├── print-ipc.ts     # Print the page / save it as an A4 landscape PDF, show the saved file
 │   │   │   ├── reminders-ipc.ts # Active reminders: list, dismiss, snooze (registered from index.ts)
 │   │   │   ├── settings-ipc.ts  # Settings get/set IPC handlers
 │   │   │   └── subscriptions-ipc.ts # Calendars subscribed to by .ics / webcal link
@@ -98,6 +99,7 @@ xrncal/
 │   │       │   ├── SearchPaletteModal.tsx
 │   │       │   └── ErrorBoundary.tsx
 │   │       ├── editor/          # EventEditorDialog, RecurringScopeDialog, TitleSuggestInput, ReminderListField
+│   │       ├── print/           # PrintDialog (Ctrl+P: week or month, preview, print / save as PDF), PrintSheet (the page)
 │   │       ├── dnd/             # Drag and drop: use-event-dnd.ts, drop-target.ts, DropActionPopover.tsx
 │   │       ├── mini/            # MiniApp.tsx (companion window renderer)
 │   │       ├── context/         # SettingsContext (the settings, read once, written per key), DisplayPreferencesContext
@@ -113,6 +115,7 @@ xrncal/
 │       ├── keyboard-nav.ts      # Keyboard cursor, nudge and resize maths
 │       ├── keyboard-commands.ts # Which command a key press is (commandForKey), and stepAnchor for paging
 │       ├── natural-entry.ts     # Dates, times and repeats typed into a new event's title (vi + en), and applying them
+│       ├── print-layout.ts      # A printed week or month: its days, bars, hour window, lines per cell, file name
 │       ├── all-day.ts           # Floating-date vs instant: inclusive/exclusive ends, day keys
 │       ├── occurrence-order.ts  # Within-day ordering (all-day first, then by time)
 │       ├── title-suggestions.ts # Ranking for the event-title autocomplete
@@ -215,7 +218,7 @@ What they do:
 - The app is fully drivable without a mouse: a selection cursor over the on-screen occurrences
   (`↑`/`↓`, `Enter`, `Del`, `Shift`/`Alt`+arrows to move or resize), period navigation (`T`,
   `←`/`K`, `→`/`J`), views (`1`–`5`, `D`/`W`/`M`/`Y`/`L`) and actions (`N`/`C`, `Ctrl+K`//,
-  `Ctrl+B`, `R`, `,`, `?`/`F1`, `Esc`). Cursor maths lives in `src/shared/keyboard-nav.ts`; the
+  `Ctrl+B`, `Ctrl+P`, `R`, `,`, `?`/`F1`, `Esc`). Cursor maths lives in `src/shared/keyboard-nav.ts`; the
   ring is `.gc-event.is-key-selected`. After a reload the cursor is found again by occurrence id
   (`refindSelection`), during render rather than in an effect.
 - An undo stack: every move, resize, copy and delete pushes its inverse, and `Ctrl+Z` runs the
@@ -232,6 +235,14 @@ What they do:
   no longer overrides it. Only clear dates and times are taken: a bare number is never a time, a
   period word stays in the title unless it is next to a time or a day ("Ăn tối 7h"), and "Mai" with a
   capital is a name.
+- `Ctrl+P` (or the menu) prints the week or month on screen, or saves it as a PDF: one A4
+  landscape page, on paper colours whatever the theme. `PrintDialog` draws the page twice, scaled
+  down as a preview and full size in `.gc-print-host` at the end of `<body>`, which is all
+  `@media print` shows; main prints the sender's page (`print-ipc.ts`, `printToPDF` with the CSS
+  page size). A week sheet puts all-day events and timed ones of a day or more in bars across the
+  top (four lanes, then "+N more") and shows 08:00-18:00 widened to every event; a month sheet
+  takes only the weeks the month touches and fits as many lines a cell as the row height allows.
+  The page's millimetre sizes in `index.css` and `monthCellLines()` depend on each other.
 - The event editor is keyboard-complete too: `Ctrl+Enter` saves, `Ctrl+⌫` deletes, `Enter` in the
   title saves outright, and `CustomSelect` / `DatePicker` / `TimePicker` each drive their portalled
   popover with a roving index (`src/renderer/src/lib/roving-index.ts`, `.gc-option-active`) because

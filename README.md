@@ -201,8 +201,10 @@ If something goes wrong, **Settings → Show log file** opens the folder with `x
 - Click an empty slot or an event for the full editor, or Create in the header; right-click an event to edit, duplicate or delete it, or a day to start an event there
 - Drag and drop, edge resize, drag-select a range
 - Snap step of 15 / 30 / 60 minutes, and a separate step for the editor's time lists
+- Type the when into the title: "Lunch tomorrow at 12:30", "Họp 3h chiều thứ 6", "Standup every monday 9:15" fill the date, time and repeat, and the title is saved without them
 - Recurring edits: this one / this and future / all
 - `Ctrl+Z` undoes a move, resize, copy or delete
+- Print the week or month, or save it as a PDF: one A4 page, with the lunar dates
 - Multi-day and all-day events, ISO week numbers; weeks start on Monday, Sunday or Saturday
 - A second timezone gutter for cross-border schedules
 
@@ -211,7 +213,7 @@ If something goes wrong, **Settings → Show log file** opens the folder with `x
 
 **Vietnam & languages**
 - Lunar dates in every view; mùng 1, rằm and Tết marked
-- Anniversaries recurring by lunar year, leap months handled, with a reminder the day before
+- Anniversaries recurring by lunar year, leap months handled, with a reminder the day before - or just type "Giỗ ông 12/8 âm lịch"
 - Vietnamese and international holiday calendars, one click
 - Interface in Vietnamese and English - a new install follows your computer's language, clock and first day of the week
 
@@ -269,6 +271,7 @@ events on screen; everything else acts on whichever one it is sitting on.
 | `N` or `C` | New event |
 | `Ctrl+K` or `/` | Search |
 | `Ctrl+B` | Show or hide the sidebar |
+| `Ctrl+P` | Print or save as PDF |
 | `R` | Sync now |
 | `,` | Settings |
 | `?` or `F1` | Shortcut reference |

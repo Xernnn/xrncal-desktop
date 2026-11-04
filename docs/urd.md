@@ -35,7 +35,9 @@ Not in scope: mobile users, macOS users, on-prem Exchange admins.
 2. **Full editor, no quick-add.** Blank-slot click opens the complete event form (One Calendar-style).
 3. **Explicit drop.** Drag-and-drop offers Move / Copy / Cancel.
 4. **Same chrome on Windows and Linux.** No OS-only live tiles or lock-screen appointments.
-5. **YAGNI on native extras.** No print, maps, Facebook, or One Task clone.
+5. **YAGNI on native extras.** No maps, Facebook, or One Task clone. Printing is in, as one page:
+   the week or month, printed or saved as PDF (it was out until 0.2.0, the most-asked missing
+   feature of a desktop calendar).
 
 ## 4. Constraints (non-negotiable)
 
@@ -99,7 +101,6 @@ Full product vision is One Calendar-class desktop. First installable build is **
 Explicit **out** for this product (do not sneak back in without a URD change):
 
 - macOS, iOS, Android
-- Print
 - Lock screen / live tiles
 - Maps, routing, navigation
 - Facebook events

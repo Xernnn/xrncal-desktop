@@ -28,7 +28,7 @@ People on Windows and Linux need one native window that unifies Google Calendar,
 | Linux self-hoster | Nextcloud/Synology/generic CalDAV two-way sync |
 | Microsoft 365 user | Outlook.com / 365 via Graph API |
 
-**Out of scope:** macOS, mobile, Exchange on-prem, print, maps, lock-screen widgets, One Task clone.
+**Out of scope:** macOS, mobile, Exchange on-prem, maps, lock-screen widgets, One Task clone.
 
 ---
 

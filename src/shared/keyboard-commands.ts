@@ -44,6 +44,7 @@ export type KeyCommand =
   | { type: 'escape' }
   | { type: 'toggleSidebar' }
   | { type: 'undo' }
+  | { type: 'print' }
   | { type: 'nudge'; delta: { days?: number; minutes?: number }; mode: 'move' | 'resize' }
   | { type: 'today' }
   | { type: 'page'; direction: 1 | -1 }
@@ -88,6 +89,7 @@ export function commandForKey(input: KeyInput, ctx: KeyContext): KeyCommand | nu
 
   if (input.ctrl && lower === 'b') return { type: 'toggleSidebar' }
   if (input.ctrl && !input.shift && lower === 'z') return { type: 'undo' }
+  if (input.ctrl && !input.shift && lower === 'p') return { type: 'print' }
   // Anything else held with Ctrl/Cmd belongs to Electron (reload, zoom...).
   if (input.ctrl) return null
 

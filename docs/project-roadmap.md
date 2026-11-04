@@ -201,9 +201,7 @@ The following ideas are outside the current URD scope and require a URD change b
 | Multi-year cache expansion | Currently pulls a bounded window. Full history requires a configurable cache depth. |
 | `.deb` / Fedora RPM packaging | Follow-on after AppImage is validated. |
 | CalDAV self-signed TLS UI | Planned in the URD, never implemented: self-signed servers are simply refused by Node's TLS. |
-| Natural-language quick add | "Họp 3pm thứ 6", "giỗ ông 12/8 âm lịch" - deferred. |
 | Code signing | The release workflow signs once a certificate is configured (`docs/deployment-guide.md`); none is yet, so SmartScreen still warns. |
-| Printing | Out of scope by URD principle 5; the most-asked feature of regular calendars that is still missing. |
 | Per-occurrence reminders | Reminders belong to the series; a `this`-scoped reminder change applies to all occurrences. |
 | Moving an Outlook event between calendars | Graph has no move endpoint and the push does not recreate the event, so it returns to its original calendar at the next full listing (it used to leave a duplicate). |
 

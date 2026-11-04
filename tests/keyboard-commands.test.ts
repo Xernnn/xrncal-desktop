@@ -114,9 +114,12 @@ describe('commandForKey', () => {
     expect(commandForKey(key('w', { onControl: true }), calm)).toEqual({ type: 'view', view: 'week' })
   })
 
-  it('handles Ctrl+B and Ctrl+Z and leaves other Ctrl keys to Electron', () => {
+  it('handles Ctrl+B, Ctrl+Z and Ctrl+P and leaves other Ctrl keys to Electron', () => {
     expect(commandForKey(key('b', { ctrl: true }), calm)).toEqual({ type: 'toggleSidebar' })
     expect(commandForKey(key('z', { ctrl: true }), calm)).toEqual({ type: 'undo' })
+    expect(commandForKey(key('p', { ctrl: true }), calm)).toEqual({ type: 'print' })
+    expect(commandForKey(key('p', { ctrl: true }), { ...calm, overlayOpen: true })).toBeNull()
+    expect(commandForKey(key('p', { ctrl: true, inTextField: true }), calm)).toBeNull()
     expect(commandForKey(key('z', { ctrl: true, shift: true }), calm)).toBeNull()
     expect(commandForKey(key('r', { ctrl: true }), calm)).toBeNull()
     expect(commandForKey(key('d', { ctrl: true }), calm)).toBeNull()

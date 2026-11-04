@@ -41,6 +41,7 @@ import type { AccountsView } from './components/accounts/accounts-nav'
 import SearchPaletteModal from './components/SearchPaletteModal'
 import SettingsPanel, { type SettingsSection } from './components/SettingsPanel'
 import KeyboardShortcutsModal from './components/KeyboardShortcutsModal'
+import PrintDialog from './print/PrintDialog'
 import SyncConflictsModal from './components/SyncConflictsModal'
 import ReminderStack from './components/ReminderStack'
 import AppHeader from './components/shell/AppHeader'
@@ -93,6 +94,7 @@ const CalendarApp: React.FC = () => {
   const [accountsDialog, setAccountsDialog] = useState<AccountsView[] | null>(null)
   const [isSearchPaletteOpen, setIsSearchPaletteOpen] = useState(false)
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false)
+  const [isPrintOpen, setIsPrintOpen] = useState(false)
   const [isConflictsModalOpen, setIsConflictsModalOpen] = useState(false)
   const welcomeOpen = ready && !settings.welcomeDone
 
@@ -319,6 +321,7 @@ const CalendarApp: React.FC = () => {
     isSettingsOpen ||
     Boolean(accountsDialog) ||
     isShortcutsModalOpen ||
+    isPrintOpen ||
     isConflictsModalOpen ||
     isSearchPaletteOpen ||
     Boolean(commands.pendingScope) ||
@@ -349,6 +352,7 @@ const CalendarApp: React.FC = () => {
       case 'escape':
         if (commands.pendingScope) commands.cancelScope()
         else if (isShortcutsModalOpen) setIsShortcutsModalOpen(false)
+        else if (isPrintOpen) setIsPrintOpen(false)
         else if (isConflictsModalOpen) setIsConflictsModalOpen(false)
         else if (isSettingsOpen) setIsSettingsOpen(false)
         else setSelection(null)
@@ -364,6 +368,9 @@ const CalendarApp: React.FC = () => {
         break
       case 'undo':
         undo.undoLast()
+        break
+      case 'print':
+        setIsPrintOpen(true)
         break
       case 'nudge': {
         // The same commit path as a drag or an edge-resize, so read-only
@@ -660,6 +667,15 @@ const CalendarApp: React.FC = () => {
         onClose={() => setIsShortcutsModalOpen(false)}
       />
 
+      {isPrintOpen && (
+        <PrintDialog
+          calendars={calendars}
+          view={currentView}
+          anchorDate={anchorDate}
+          onClose={() => setIsPrintOpen(false)}
+        />
+      )}
+
       <SyncConflictsModal
         isOpen={isConflictsModalOpen}
         conflicts={conflicts}
@@ -721,6 +737,10 @@ const CalendarApp: React.FC = () => {
           icsInputRef.current?.click()
         }}
         onRestoreBackup={() => void restoreFromBackup()}
+        onPrint={() => {
+          setIsSettingsOpen(false)
+          setIsPrintOpen(true)
+        }}
         conflictCount={conflicts.length}
         onOpenConflicts={() => setIsConflictsModalOpen(true)}
         appVersion={appInfo.version}

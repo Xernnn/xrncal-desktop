@@ -104,6 +104,11 @@ export const IPC_CHANNELS = {
     /** Main -> renderer: an opened file is waiting. */
     FILE_OPENED: 'xrncal:ics:file-opened'
   },
+  PRINT: {
+    SAVE_PDF: 'xrncal:print:save-pdf',
+    PRINT: 'xrncal:print:print',
+    SHOW_SAVED: 'xrncal:print:show-saved'
+  },
   MINI: {
     OPEN_MAIN: 'xrncal:mini:open-main',
     TOGGLE: 'xrncal:mini:toggle',
@@ -145,6 +150,19 @@ export interface IcsImportResult {
   importedCount: number
   errorCount: number
   message?: string
+}
+
+/** Printing prints the window's print sheet (`.gc-print-host`); the rest of the window is hidden for print. */
+export interface PdfExportResult {
+  saved: boolean
+  /** The name it was saved under (the folder is not handed back). */
+  fileName?: string
+}
+
+export interface PrintResult {
+  printed: boolean
+  /** Why it did not print; absent when the dialog was cancelled. */
+  error?: string
 }
 
 export interface IcsExportResult {
@@ -284,6 +302,14 @@ export interface XrncalAPI {
     /** Fires when an opened file is waiting. Returns an unsubscribe. */
     onFileOpened: (callback: () => void) => () => void
   },
+  print: {
+    /** Save the print sheet as an A4 landscape PDF where the user picks. */
+    savePdf: (suggestedName: string) => Promise<PdfExportResult>
+    /** The system print dialog, for the print sheet. */
+    print: () => Promise<PrintResult>
+    /** Show the PDF saved last in the file manager. False when there is none. */
+    showSaved: () => Promise<boolean>
+  }
   mini: {
     openMain: () => Promise<void>
     toggle: () => Promise<void>

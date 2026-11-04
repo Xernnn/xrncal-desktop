@@ -201,8 +201,10 @@ Khi có sự cố, **Cài đặt → Mở tệp nhật ký** mở thư mục ch�
 - Bấm vào ô trống hoặc sự kiện để mở cửa sổ sự kiện đầy đủ, hoặc nút Tạo trên thanh tiêu đề; chuột phải vào sự kiện để sửa, nhân bản hoặc xoá, hoặc vào một ngày để tạo sự kiện ở đó
 - Kéo-thả, resize mép, quét chọn khoảng giờ
 - Bước snap 15 / 30 / 60 phút, và bước riêng cho danh sách giờ trong cửa sổ sự kiện
+- Gõ thời gian ngay vào tiêu đề: "Họp 3h chiều thứ 6", "Ăn trưa mai 12h30", "Chạy bộ 6h sáng hàng ngày" tự điền ngày, giờ và lặp lại, tiêu đề lưu không kèm những chữ đó
 - Lặp lại: lần này / từ đây trở đi / cả chuỗi
 - `Ctrl+Z` hoàn tác lần di chuyển, đổi độ dài, sao chép hoặc xoá
+- In tuần hoặc tháng, hay lưu thành PDF: một trang A4, có cả âm lịch
 - Sự kiện nhiều ngày, cả ngày, số tuần ISO; tuần bắt đầu từ Thứ hai, Chủ nhật hoặc Thứ bảy
 - Cột giờ múi thứ hai cho lịch xuyên quốc gia
 
@@ -211,7 +213,7 @@ Khi có sự cố, **Cài đặt → Mở tệp nhật ký** mở thư mục ch�
 
 **Việt Nam & ngôn ngữ**
 - Âm lịch trên mọi view; đánh dấu mùng 1, rằm và Tết
-- Giỗ lặp theo năm âm, xử lý tháng nhuận, nhắc trước một ngày
+- Giỗ lặp theo năm âm, xử lý tháng nhuận, nhắc trước một ngày - hoặc chỉ cần gõ "Giỗ ông 12/8 âm lịch"
 - Lịch lễ Việt Nam và quốc tế, subscribe 1 cú bấm
 - Giao diện tiếng Việt và English — bản mới cài theo ngôn ngữ, kiểu giờ và ngày đầu tuần của máy
 
@@ -269,6 +271,7 @@ các sự kiện đang hiển thị; mọi phím còn lại tác động lên s�
 | `N` hoặc `C` | Tạo sự kiện |
 | `Ctrl+K` hoặc `/` | Tìm kiếm |
 | `Ctrl+B` | Ẩn / hiện thanh bên |
+| `Ctrl+P` | In hoặc lưu PDF |
 | `R` | Đồng bộ ngay |
 | `,` | Cài đặt |
 | `?` hoặc `F1` | Bảng phím tắt |

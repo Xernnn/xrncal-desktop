@@ -204,7 +204,12 @@ subscribed feed.
 
 All IPC channels are constants in `src/shared/ipc-contract.ts`. The `XrncalAPI` interface mirrors `window.xrncal` and is the single source of truth for the preload bridge.
 
-**Namespace groups:** `APP`, `SETTINGS`, `AUTH`, `SYNC`, `REMINDERS`, `CALENDAR`, `EVENT`, `ICS`, `MINI`, `HOLIDAYS`, `SUBSCRIPTIONS`
+**Namespace groups:** `APP`, `SETTINGS`, `AUTH`, `SYNC`, `REMINDERS`, `CALENDAR`, `EVENT`, `ICS`, `PRINT`, `MINI`, `HOLIDAYS`, `SUBSCRIPTIONS`
+
+`PRINT` prints the page that asks, as it is: the renderer puts the sheet in `.gc-print-host` and
+`@media print` hides everything else. A file name from the renderer is only a suggestion for the
+save dialog (`pdfFileName()` strips folders and odd characters), and "show in folder" shows the
+file saved last, so the renderer never names a path.
 
 ---
 

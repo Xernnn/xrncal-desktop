@@ -27,6 +27,20 @@ interface CalendarDataRead {
   conflicts?: SyncConflict[]
 }
 
+/** The occurrences the visible ones of `calendars` have in a span, each with its colour resolved. */
+export async function readVisibleOccurrences(
+  calendars: Calendar[],
+  startUtc: string,
+  endUtc: string
+): Promise<ExpandedOccurrence[]> {
+  const api = window.xrncal?.events
+  const visible = calendars.filter((c) => c.isVisible).map((c) => c.id)
+  if (!api || visible.length === 0) return []
+  const colorById = new Map(calendars.map((c) => [c.id, c.color]))
+  const occs = await api.queryRange(visible, startUtc, endUtc)
+  return occs.map((occ) => ({ ...occ, color: occ.color || colorById.get(occ.calendarId) }))
+}
+
 async function readCalendarData(startUtc: string, endUtc: string): Promise<CalendarDataRead> {
   const api = window.xrncal
   const found: CalendarDataRead = {}
@@ -39,10 +53,7 @@ async function readCalendarData(startUtc: string, endUtc: string): Promise<Calen
     ])
     found.calendars = cals
     found.accounts = accs
-    const activeCalIds = cals.filter((c) => c.isVisible).map((c) => c.id)
-    const occs = activeCalIds.length > 0 ? await api.events.queryRange(activeCalIds, startUtc, endUtc) : []
-    const calColorById = new Map(cals.map((c) => [c.id, c.color]))
-    found.occurrences = occs.map((occ) => ({ ...occ, color: occ.color || calColorById.get(occ.calendarId) }))
+    found.occurrences = await readVisibleOccurrences(cals, startUtc, endUtc)
   } catch {
     // Keep the events already on screen.
   }

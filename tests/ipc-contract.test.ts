@@ -200,6 +200,11 @@ describe('IPC Channels and Contracts', () => {
         restore: async () => ({}) as never,
         resolveConflict: async () => true
       },
+      print: {
+        savePdf: async () => ({ saved: true, fileName: 'xrncal 2026-11.pdf' }),
+        print: async () => ({ printed: true }),
+        showSaved: async () => true
+      },
       ics: {
         importIcs: async () => ({ success: true, importedCount: 0, errorCount: 0 }),
         exportIcs: async () => ({ success: true, filePath: '/tmp/calendar.ics' }),

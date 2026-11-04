@@ -8,6 +8,7 @@ import { registerSettingsIpcHandlers } from './ipc/settings-ipc'
 import { registerAuthSyncIpcHandlers } from './ipc/auth-sync-ipc'
 import { registerHolidayIpcHandlers } from './ipc/holiday-ipc'
 import { registerSubscriptionIpcHandlers } from './ipc/subscriptions-ipc'
+import { registerPrintIpcHandlers } from './ipc/print-ipc'
 import { setMainLocale, loadMainLocaleFromDb, getMainLocale } from './i18n-main'
 import { getDatabase } from './db/database'
 import { backupDatabaseTo, defaultBackupFileName } from './db/backup'
@@ -126,5 +127,6 @@ export function registerIpcHandlers(): void {
   registerAuthSyncIpcHandlers()
   registerHolidayIpcHandlers()
   registerSubscriptionIpcHandlers()
+  registerPrintIpcHandlers()
 }
 
