@@ -331,10 +331,12 @@ npm run dev            # chạy app, hot-reload renderer
 npm run typecheck      # tsc cho main + renderer (chạy trước khi commit)
 npm run lint           # ESLint 10 flat config
 npm run test           # Vitest — chạy trong Node, không cần Electron binary
+npm run test:e2e       # build, rồi Playwright chạy thử app thật
+npm run test:caldav    # đồng bộ CalDAV với một Radicale thật (pip install radicale)
 npm run build          # bundle production -> out/
 ```
 
-Chạy một file test: `npx vitest run tests/expand-occurrences.test.ts`. CI chạy lint + typecheck + test + build trên mọi push và PR, và chạy thử bản build bằng Playwright (`npm run test:e2e`).
+Chạy một file test: `npx vitest run tests/expand-occurrences.test.ts`. CI chạy lint + typecheck + test + build trên mọi push và PR, chạy thử bản build bằng Playwright, và đồng bộ với một máy chủ Radicale thật.
 
 | Tài liệu | Nội dung |
 | --- | --- |

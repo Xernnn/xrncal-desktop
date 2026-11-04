@@ -47,7 +47,7 @@ npm run typecheck:web    # Renderer (tsconfig.web.json)
 
 ```bash
 npm run test
-# Runs: vitest run (the whole suite, ~650 tests)
+# Runs: vitest run (the whole suite, ~930 tests)
 ```
 
 Test files live in `tests/` at the project root and use `:memory:` SQLite for database tests.
@@ -68,9 +68,29 @@ xrncal is neither touched nor in the way) with `TZ=Asia/Ho_Chi_Minh` and an `en_
 profile takes its clock and first day of the week from the computer), and checks a fresh start and the first-run welcome,
 the settings IPC, search without diacritics, an edit in another time zone, creating and opening
 an event from the grid, the editor's own time step, the right-click menu, the zone an event saved
-without one opens in, a change of the computer's zone being recorded, and that closing the window leaves the app in the tray. `launchApp()` marks the welcome done unless a test passes `{ welcome: true }`. These need
+without one opens in, a change of the computer's zone being recorded, keyboard commands with undo, a setting surviving a
+relaunch, a sync landing mid-edit, dates read from a new event's title, saving the week and month as one-page PDFs, and that
+closing the window leaves the app in the tray. `launchApp()` marks the welcome done unless a test passes `{ welcome: true }`. These need
 the real Electron binary and a display; on a Linux machine without one, run them under
 `xvfb-run -a`.
+
+### CalDAV against a real server
+
+```bash
+pip install radicale        # or: XRNCAL_RADICALE=/path/to/venv/bin/radicale
+npm run test:caldav
+# Runs: vitest run --config vitest.integration.config.ts
+```
+
+`tests/integration/` connects to a real Radicale that `radicale-server.ts` starts on a free local
+port with a throwaway store, and goes through the app's own code: the connect handler (from the
+server address alone), then `CalDavSyncEngine.syncAll()` as each poll runs it. It checks an event made
+here reaching the server with its zone, reminder and Vietnamese text, edits each way, an event another
+client created under a name of its own, deletions each way, a series with a moved and a deleted week
+as a second computer reads it back, undoing that delete, a conflict, and that an unchanged calendar
+costs one PROPFIND. `npm run test` leaves it out: unit tests need no network. Set
+`XRNCAL_RADICALE_LOG=info` to see what the server makes of each request (and the body of any PUT it
+refuses).
 
 ---
 
@@ -84,7 +104,8 @@ the real Electron binary and a display; on a Linux machine without one, run them
 4. `npm run test` — full Vitest suite
 5. `npm run build` — production bundle
 
-A second job, `ui`, installs Electron and runs `xvfb-run -a npm run test:e2e`.
+A second job, `ui`, installs Electron and runs `xvfb-run -a npm run test:e2e`. A third, `caldav`,
+installs Radicale 3.9 in a virtualenv and runs `npm run test:caldav`.
 
 ---
 

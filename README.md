@@ -331,10 +331,12 @@ npm run dev            # run the app with renderer hot reload
 npm run typecheck      # tsc for main + renderer (run before committing)
 npm run lint           # ESLint 10 flat config
 npm run test           # Vitest — runs in Node, no Electron binary needed
+npm run test:e2e       # build, then Playwright drives the real app
+npm run test:caldav    # CalDAV sync against a real Radicale (pip install radicale)
 npm run build          # production bundle -> out/
 ```
 
-Run a single test file: `npx vitest run tests/expand-occurrences.test.ts`. CI runs lint + typecheck + test + build on every push and pull request, and drives the built app with Playwright (`npm run test:e2e`).
+Run a single test file: `npx vitest run tests/expand-occurrences.test.ts`. CI runs lint + typecheck + test + build on every push and pull request, drives the built app with Playwright, and syncs with a real Radicale server.
 
 | Document | Contents |
 | --- | --- |

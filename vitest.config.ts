@@ -1,5 +1,5 @@
 import { resolve } from 'node:path'
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 
 export default defineConfig({
   resolve: {
@@ -16,6 +16,8 @@ export default defineConfig({
     environment: 'node',
     globals: true,
     // e2e/ is Playwright's (npm run test:e2e), run against the built app.
-    include: ['tests/**/*.test.ts']
+    include: ['tests/**/*.test.ts'],
+    // tests/integration/ talks to a real CalDAV server: npm run test:caldav.
+    exclude: [...configDefaults.exclude, 'tests/integration/**']
   }
 })
