@@ -17,10 +17,13 @@ export interface RunningApp {
  * (CI) run it under xvfb-run.
  *
  * A fresh profile opens on the first-run welcome; it is marked done unless a
- * test asks to see it (`{ welcome: true }`).
+ * test asks to see it (`{ welcome: true }`). A test that relaunches passes its
+ * own `profile` (from `newProfile()`), which closing leaves for it to remove.
  */
-export async function launchApp(options: { welcome?: boolean; args?: string[] } = {}): Promise<RunningApp> {
-  const profile = mkdtempSync(join(tmpdir(), 'xrncal-e2e-'))
+export async function launchApp(
+  options: { welcome?: boolean; args?: string[]; profile?: string } = {}
+): Promise<RunningApp> {
+  const profile = options.profile ?? newProfile()
   const app = await electron.launch({
     // CI runners cannot start Chromium's OS sandbox for an unpacked Electron
     // (no setuid helper, user namespaces restricted); the window sandboxes stay.
@@ -57,9 +60,14 @@ export async function launchApp(options: { welcome?: boolean; args?: string[] } 
     errors,
     close: async () => {
       await app.close()
-      rmSync(profile, { recursive: true, force: true })
+      if (!options.profile) rmSync(profile, { recursive: true, force: true })
     }
   }
+}
+
+/** An empty profile directory, for a test that launches the app more than once. */
+export function newProfile(): string {
+  return mkdtempSync(join(tmpdir(), 'xrncal-e2e-'))
 }
 
 /** The main window, not the tray's mini window (`#mini`). */
