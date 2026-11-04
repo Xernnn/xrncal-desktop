@@ -77,24 +77,9 @@ describe('UI Components SSR Render & Lifecycle', () => {
     expect(renderToString(React.createElement(Checkbox, { checked: true, onChange: () => {} }))).toBeTruthy()
   })
 
-  it('renders EventEditorDialog when closed (isOpen=false)', () => {
+  it('renders EventEditorDialog on cell click data', () => {
     const html = renderToString(
       React.createElement(EventEditorDialog, {
-        isOpen: false,
-        calendars: [],
-        data: null,
-        onSave: () => {},
-        onDelete: () => {},
-        onClose: () => {}
-      })
-    )
-    expect(html).toBe('')
-  })
-
-  it('renders EventEditorDialog when open (isOpen=true) on cell click data', () => {
-    const html = renderToString(
-      React.createElement(EventEditorDialog, {
-        isOpen: true,
         calendars: [
           {
             id: 'cal1',

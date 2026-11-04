@@ -239,9 +239,11 @@ export const MonthView: React.FC<MonthViewProps> = ({
   const handleWheel = useWheelNavigation({ onPrev: onPrevMonth, onNext: onNextMonth })
 
   // Dragging an event out of the peek should dismiss it.
-  useEffect(() => {
+  const [dragSeen, setDragSeen] = useState(draggedOccurrenceId)
+  if (dragSeen !== draggedOccurrenceId) {
+    setDragSeen(draggedOccurrenceId)
     if (draggedOccurrenceId) setPeek(null)
-  }, [draggedOccurrenceId])
+  }
 
   // Fit as many events as the row's actual height allows instead of a hardcoded cap.
   useEffect(() => {

@@ -1,8 +1,10 @@
-import React, { useEffect, useState } from 'react'
+import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { Image as ImageIcon, Sliders, Check, RotateCcw } from 'lucide-react'
-import type { ThemeConfig, ThemeMode } from '@shared/theme-mode'
+import type { ThemeMode } from '@shared/theme-mode'
+import { DEFAULT_ACCENT_COLOR } from '@shared/mini-calendar-grid'
 import { TextInput } from './ui'
+import { useSettings } from '../context/SettingsContext'
 
 /**
  * Everything that changes how the app looks, in one panel.
@@ -11,12 +13,6 @@ import { TextInput } from './ui'
  * light/dark toggle lived in Settings, so "change the appearance" meant two
  * different dialogs. It is now the Appearance tab of Settings.
  */
-interface AppearanceSettingsProps {
-  mode: ThemeMode
-  onSetMode: (mode: ThemeMode) => void
-  onThemeChanged: (theme: ThemeConfig) => void
-}
-
 const ACCENT_COLORS = [
   { hex: '#2383E2', name: 'Notion Blue' },
   { hex: '#52B788', name: 'Sage Green' },
@@ -50,55 +46,19 @@ const PRESET_WALLPAPERS = [
 
 const THEME_MODES: ThemeMode[] = ['system', 'light', 'dark']
 
-export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
-  mode,
-  onSetMode,
-  onThemeChanged
-}) => {
+export const AppearanceSettings: React.FC = () => {
   const { t } = useTranslation()
-  const [accentColor, setAccentColor] = useState('#2383E2')
-  const [customBgUrl, setCustomBgUrl] = useState('')
-  const [bgOverlayOpacity, setBgOverlayOpacity] = useState(0.8)
-  const [bgBlur, setBgBlur] = useState(8)
+  const { settings, setSetting } = useSettings()
+  const mode = settings.theme
+  const accentColor = settings.themeAccent || DEFAULT_ACCENT_COLOR
+  const customBgUrl = settings.themeCustomBg || ''
+  const bgOverlayOpacity = settings.themeOverlayOpacity ?? 0.8
+  const bgBlur = settings.themeBlur ?? 8
 
-  useEffect(() => {
-    if (!window.xrncal?.settings) return
-    window.xrncal.settings.getAll().then((st) => {
-      if (st.themeAccent) setAccentColor(st.themeAccent)
-      if (st.themeCustomBg !== undefined) setCustomBgUrl(st.themeCustomBg)
-      if (st.themeOverlayOpacity !== undefined) setBgOverlayOpacity(st.themeOverlayOpacity)
-      if (st.themeBlur !== undefined) setBgBlur(st.themeBlur)
-    })
-  }, [])
-
-  const applyTheme = async (config: {
-    accent: string
-    bgUrl: string
-    opacity: number
-    blur: number
-  }): Promise<void> => {
-    setAccentColor(config.accent)
-    setCustomBgUrl(config.bgUrl)
-    setBgOverlayOpacity(config.opacity)
-    setBgBlur(config.blur)
-
-    if (window.xrncal?.settings) {
-      await window.xrncal.settings.set('themeAccent', config.accent)
-      await window.xrncal.settings.set('themeCustomBg', config.bgUrl)
-      await window.xrncal.settings.set('themeOverlayOpacity', config.opacity)
-      await window.xrncal.settings.set('themeBlur', config.blur)
-    }
-
-    onThemeChanged({
-      mode,
-      accentColor: config.accent,
-      customBgUrl: config.bgUrl || undefined,
-      bgOverlayOpacity: config.opacity,
-      bgBlur: config.blur
-    })
-  }
-
-  const current = { accent: accentColor, bgUrl: customBgUrl, opacity: bgOverlayOpacity, blur: bgBlur }
+  // Each control stores only its own setting; the app's theme is read from
+  // the settings, so it follows by itself.
+  const setAccent = (hex: string) => void setSetting('themeAccent', hex)
+  const setBackground = (url: string) => void setSetting('themeCustomBg', url)
 
   return (
     <div className="space-y-5">
@@ -111,7 +71,7 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
               key={m}
               type="button"
               className={mode === m ? 'gc-btn-primary' : 'gc-btn'}
-              onClick={() => onSetMode(m)}
+              onClick={() => void setSetting('theme', m)}
             >
               {t(`settings.themeMode${m[0].toUpperCase()}${m.slice(1)}`)}
             </button>
@@ -128,7 +88,7 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
               <button
                 key={c.hex}
                 type="button"
-                onClick={() => applyTheme({ ...current, accent: c.hex })}
+                onClick={() => setAccent(c.hex)}
                 className="relative flex h-9 cursor-pointer items-center justify-center transition-all hover:scale-105"
                 style={{
                   backgroundColor: c.hex,
@@ -158,7 +118,7 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
               <button
                 key={wp.key}
                 type="button"
-                onClick={() => applyTheme({ ...current, bgUrl: wp.url })}
+                onClick={() => setBackground(wp.url)}
                 className={`flex cursor-pointer items-center justify-between gap-2 border p-2.5 text-left text-xs transition-colors ${
                   isSelected
                     ? 'border-accent bg-hover font-semibold text-primary'
@@ -180,7 +140,7 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
             value={customBgUrl.startsWith('data:') ? '' : customBgUrl}
             clearable
             variant="boxed"
-            onChange={(val) => applyTheme({ ...current, bgUrl: val })}
+            onChange={(val) => setBackground(val)}
             inputClassName="font-mono text-xs"
             className="flex-1"
           />
@@ -190,7 +150,7 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
             onClick={async () => {
               if (!window.xrncal?.app?.pickBackgroundImage) return
               const result = await window.xrncal.app.pickBackgroundImage()
-              if (result?.dataUrl) await applyTheme({ ...current, bgUrl: result.dataUrl })
+              if (result?.dataUrl) setBackground(result.dataUrl)
             }}
           >
             <ImageIcon className="h-3.5 w-3.5" />
@@ -224,7 +184,7 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
               max="0.95"
               step="0.05"
               value={bgOverlayOpacity}
-              onChange={(e) => applyTheme({ ...current, opacity: parseFloat(e.target.value) })}
+              onChange={(e) => void setSetting('themeOverlayOpacity', parseFloat(e.target.value))}
               className="w-full cursor-pointer accent-accent"
             />
           </div>
@@ -240,7 +200,7 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
               max="20"
               step="1"
               value={bgBlur}
-              onChange={(e) => applyTheme({ ...current, blur: parseInt(e.target.value, 10) })}
+              onChange={(e) => void setSetting('themeBlur', parseInt(e.target.value, 10))}
               className="w-full cursor-pointer accent-accent"
             />
           </div>
@@ -250,7 +210,12 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
       <button
         type="button"
         className="gc-btn"
-        onClick={() => applyTheme({ accent: '#2383E2', bgUrl: '', opacity: 0.8, blur: 8 })}
+        onClick={() => {
+          setAccent('#2383E2')
+          setBackground('')
+          void setSetting('themeOverlayOpacity', 0.8)
+          void setSetting('themeBlur', 8)
+        }}
       >
         <RotateCcw className="h-3.5 w-3.5" />
         <span>{t('theme.default')}</span>

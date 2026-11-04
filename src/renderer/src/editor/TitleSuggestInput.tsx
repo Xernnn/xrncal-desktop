@@ -68,12 +68,12 @@ export const TitleSuggestInput: React.FC<TitleSuggestInputProps> = ({
   )
 
   const hasQuery = value.trim().length > 0
+  // Suggestions are asked for only with something typed and a time to rank
+  // them against; otherwise none are shown, whatever was found last.
+  const searching = enabled && Boolean(targetStartUtc) && hasQuery
 
   useEffect(() => {
-    if (!enabled || !targetStartUtc || !hasQuery) {
-      setSuggestions([])
-      return
-    }
+    if (!searching || !targetStartUtc) return
     let cancelled = false
     const timer = setTimeout(async () => {
       try {
@@ -97,7 +97,7 @@ export const TitleSuggestInput: React.FC<TitleSuggestInputProps> = ({
       cancelled = true
       clearTimeout(timer)
     }
-  }, [value, targetStartUtc, targetAllDay, enabled, hasQuery])
+  }, [value, targetStartUtc, targetAllDay, searching])
 
   const accept = useCallback(
     (suggestion: TitleSuggestion) => {
@@ -112,7 +112,7 @@ export const TitleSuggestInput: React.FC<TitleSuggestInputProps> = ({
     [onPick]
   )
 
-  const visible = isOpen && hasQuery && suggestions.length > 0
+  const visible = isOpen && searching && suggestions.length > 0
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
     if (!visible) {
@@ -158,6 +158,8 @@ export const TitleSuggestInput: React.FC<TitleSuggestInputProps> = ({
         value={value}
         onChange={(e) => {
           onChange(e.target.value)
+          // Cleared: the next letter starts a new list, not the last one.
+          if (!e.target.value.trim()) setSuggestions([])
           setIsOpen(true)
         }}
         onFocus={() => setIsOpen(hasQuery)}

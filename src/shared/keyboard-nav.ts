@@ -121,3 +121,30 @@ export function resizedRange(
   }
   return { start, end: next }
 }
+
+/** Which occurrence the keyboard cursor is on. Kept as a pair because an
+ *  occurrence id is `${eventId}_${originalStartUtc}` - moving a one-off event
+ *  re-keys it, and the event id is what survives that. */
+export interface CursorSelection {
+  occurrenceId: string
+  eventId: string
+}
+
+/**
+ * The cursor once the occurrences have been read again. A keyboard move changes
+ * the very id the cursor holds - a one-off event's id is built from the start
+ * time the move just changed - so it is found again by its event instead of
+ * dropped after every nudge. Only for one-off events: a recurring occurrence is
+ * keyed by its *original* start, which a move never touches, so matching one by
+ * event id would only ever catch the wrong instance (paging to next week would
+ * drag the cursor onto that week's copy of a weekly meeting).
+ */
+export function refindSelection(
+  prev: CursorSelection | null,
+  occurrences: ExpandedOccurrence[]
+): CursorSelection | null {
+  if (!prev) return prev
+  if (occurrences.some((o) => o.id === prev.occurrenceId)) return prev
+  const sameEvent = occurrences.filter((o) => o.eventId === prev.eventId && !o.isRecurring)
+  return sameEvent.length === 1 ? { occurrenceId: sameEvent[0].id, eventId: prev.eventId } : null
+}

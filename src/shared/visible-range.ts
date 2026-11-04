@@ -107,3 +107,19 @@ export function weekTitle(weekStart: DateTime, locale: string = 'vi'): string {
     ? `Tháng ${first.month}, ${first.year} – Tháng ${last.month}, ${last.year}`
     : `${first.toFormat('MMM yyyy')} – ${last.toFormat('MMM yyyy')}`
 }
+
+/** The anchor date one page earlier (-1) or later (1) in `view`. List pages a
+ *  month at a time, like Month. */
+export function stepAnchor(date: DateTime, view: CalendarViewType, direction: 1 | -1): DateTime {
+  switch (view) {
+    case 'day':
+      return date.plus({ days: direction })
+    case 'week':
+      return date.plus({ weeks: direction })
+    case 'month':
+    case 'list':
+      return date.plus({ months: direction })
+    case 'year':
+      return date.plus({ years: direction })
+  }
+}

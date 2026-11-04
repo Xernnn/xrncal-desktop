@@ -4,6 +4,16 @@ import type { SyncStatus } from '@shared/event-model'
 /** How often a visible status is re-read: a failed sync changes no rows, so nothing else would tell it. */
 const POLL_MS = 30_000
 
+/** The status now; null when the worker cannot be asked. */
+function readSyncStatus(): Promise<SyncStatus | null> {
+  const sync = window.xrncal?.sync
+  if (!sync) return Promise.resolve(null)
+  return sync.getStatus().then(
+    (status) => status ?? null,
+    () => null
+  )
+}
+
 /**
  * The sync worker's status - last sync, what is waiting, and which accounts
  * failed and why - kept current while the component is mounted.
@@ -11,13 +21,7 @@ const POLL_MS = 30_000
 export function useSyncStatus(): { status: SyncStatus | null; reload: () => Promise<void> } {
   const [status, setStatus] = useState<SyncStatus | null>(null)
 
-  const reload = useCallback(async () => {
-    try {
-      setStatus((await window.xrncal?.sync?.getStatus()) ?? null)
-    } catch {
-      setStatus(null)
-    }
-  }, [])
+  const reload = useCallback(() => readSyncStatus().then(setStatus), [])
 
   useEffect(() => {
     void reload()

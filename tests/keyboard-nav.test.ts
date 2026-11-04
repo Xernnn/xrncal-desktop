@@ -4,7 +4,8 @@ import {
   sortForCursor,
   stepCursor,
   nudgedRange,
-  resizedRange
+  resizedRange,
+  refindSelection
 } from '../src/shared/keyboard-nav'
 import type { ExpandedOccurrence } from '../src/shared/event-model'
 
@@ -178,5 +179,29 @@ describe('resizedRange', () => {
   it('refuses to resize an all-day entry by minutes', () => {
     const allDay = occ('allday', '2026-09-14T00:00:00.000Z', '2026-09-14T23:59:59.000Z', true)
     expect(resizedRange(allDay, 30)).toBeNull()
+  })
+})
+
+describe('refindSelection', () => {
+  const moved = occ('e1_2026-05-01T10:00:00.000Z', '2026-05-01T10:00:00.000Z', '2026-05-01T11:00:00.000Z', false, 'e1')
+
+  it('keeps a cursor whose occurrence is still there', () => {
+    const sel = { occurrenceId: moved.id, eventId: 'e1' }
+    expect(refindSelection(sel, [moved])).toBe(sel)
+  })
+
+  it('follows a one-off event whose id a move changed', () => {
+    const sel = { occurrenceId: 'e1_2026-05-01T09:00:00.000Z', eventId: 'e1' }
+    expect(refindSelection(sel, [moved])).toEqual({ occurrenceId: moved.id, eventId: 'e1' })
+  })
+
+  it('does not jump to another occurrence of a series', () => {
+    const weekly = { ...occ('s1_2026-05-08T10:00:00.000Z', '2026-05-08T10:00:00.000Z', '2026-05-08T11:00:00.000Z', false, 's1'), isRecurring: true }
+    expect(refindSelection({ occurrenceId: 's1_2026-05-01T10:00:00.000Z', eventId: 's1' }, [weekly])).toBeNull()
+  })
+
+  it('drops a cursor whose event is gone, and leaves none alone', () => {
+    expect(refindSelection({ occurrenceId: 'gone', eventId: 'gone' }, [moved])).toBeNull()
+    expect(refindSelection(null, [moved])).toBeNull()
   })
 })

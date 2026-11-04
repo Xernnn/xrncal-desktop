@@ -12,7 +12,7 @@ xrncal follows Electron's multi-process model with strict security boundaries.
 ┌─────────────────────────────────────────────────────────────┐
 │  Renderer Process (sandboxed, contextIsolation, no Node.js) │
 │                                                             │
-│  React App (App.tsx - one useState container, no store lib) │
+│  React App (App.tsx + hooks/, SettingsContext; no store lib)│
 │  ├── Views: Day / Week / Month / Year / List                │
 │  ├── Editor: full form, reminders, invitation replies       │
 │  ├── Right-click menu: edit, duplicate, delete, new event   │
@@ -64,8 +64,8 @@ xrncal follows Electron's multi-process model with strict security boundaries.
 
 ```
 User navigates to Week view
-  → App.tsx computes the visible range
-  → window.xrncal.events.queryRange(calendarIds, startUtc, endUtc)
+  → App.tsx computes the visible range (useQueryRange)
+  → useCalendarData: window.xrncal.events.queryRange(calendarIds, startUtc, endUtc)
   → EventsRepo.queryEventsByRange() → SQLite SELECT + RRULE / lunar expansion
   → ExpandedOccurrence[] → App state → React re-renders
 ```

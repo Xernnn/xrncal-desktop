@@ -40,10 +40,15 @@ export const AccountsDialog: React.FC<AccountsDialogProps> = (props) => {
   const [stack, setStack] = useState<AccountsView[]>(props.start)
   const { isOpen, start, onClose } = props
 
-  // Each opening starts where it was asked to, not where the last one ended.
-  useEffect(() => {
-    if (isOpen) setStack(start)
-  }, [isOpen, start])
+  // Each opening starts where it was asked to, not where the last one ended:
+  // the pages it was opened on, remembered while it is open.
+  const [openedOn, setOpenedOn] = useState<AccountsView[] | null>(null)
+  if (isOpen && openedOn !== start) {
+    setOpenedOn(start)
+    setStack(start)
+  } else if (!isOpen && openedOn !== null) {
+    setOpenedOn(null)
+  }
 
   const back = useCallback(() => {
     setStack((s) => (s.length > 1 ? s.slice(0, -1) : s))

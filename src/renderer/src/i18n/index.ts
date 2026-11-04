@@ -622,7 +622,8 @@ export const resources = {
         shareFailed: 'Share failed',
         shareError: 'Failed to share event',
         syncDone: 'Sync complete',
-        syncFailed: 'Sync failed'
+        syncFailed: 'Sync failed',
+        settingFailed: "Couldn't save the setting"
       }
     }
   },
@@ -1246,7 +1247,8 @@ export const resources = {
         shareFailed: 'Chia sẻ thất bại',
         shareError: 'Chia sẻ sự kiện thất bại',
         syncDone: 'Đồng bộ hoàn tất',
-        syncFailed: 'Đồng bộ thất bại'
+        syncFailed: 'Đồng bộ thất bại',
+        settingFailed: 'Không lưu được cài đặt'
       }
     }
   }

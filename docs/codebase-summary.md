@@ -66,7 +66,7 @@ xrncal/
 │   │   └── index.d.ts           # TypeScript declarations for preload
 │   ├── renderer/
 │   │   └── src/
-│   │       ├── App.tsx          # Root component: shell, routing, global keyboard listener
+│   │       ├── App.tsx          # Root component: view routing, modal state, wiring of the hooks below
 │   │       ├── main.tsx         # Entry: dual-mode router (App vs MiniApp via #mini hash)
 │   │       ├── views/           # Calendar view components
 │   │       │   ├── DayView.tsx
@@ -100,7 +100,10 @@ xrncal/
 │   │       ├── editor/          # EventEditorDialog, RecurringScopeDialog, TitleSuggestInput, ReminderListField
 │   │       ├── dnd/             # Drag and drop: use-event-dnd.ts, drop-target.ts, DropActionPopover.tsx
 │   │       ├── mini/            # MiniApp.tsx (companion window renderer)
-│   │       ├── hooks/           # use-theme.ts, use-visible-range.ts, use-wheel-navigation.ts, use-now.ts (minute/day clock)
+│   │       ├── context/         # SettingsContext (the settings, read once, written per key), DisplayPreferencesContext
+│   │       ├── hooks/           # App's parts (use-calendar-data, use-event-commands, use-undo-stack, use-key-commands,
+│   │       │                    #   use-calendar-context-menu, use-query-range, use-zone-following, use-ics-intake,
+│   │       │                    #   use-auto-hide-header, use-last-pointer) + use-theme, use-now, use-wheel-navigation, ...
 │   │       ├── lib/             # account-display, roving-index, wheel-navigation, reminder-labels, new-event, clock, time-zones
 │   │       ├── i18n/            # i18next setup, vi/en translation strings
 │   │       └── styles/          # index.css: design tokens, Tailwind layers
@@ -108,6 +111,7 @@ xrncal/
 │       ├── event-model.ts       # CalendarAccount, Calendar, CalendarEvent, ExpandedOccurrence, etc.
 │       ├── reminders.ts         # Reminder lists: defaults, due times, wording, per-provider merge
 │       ├── keyboard-nav.ts      # Keyboard cursor, nudge and resize maths
+│       ├── keyboard-commands.ts # Which command a key press is (commandForKey), and stepAnchor for paging
 │       ├── all-day.ts           # Floating-date vs instant: inclusive/exclusive ends, day keys
 │       ├── occurrence-order.ts  # Within-day ordering (all-day first, then by time)
 │       ├── title-suggestions.ts # Ranking for the event-title autocomplete
@@ -187,16 +191,38 @@ xrncal/
 
 Entry: `main.tsx` detects `#mini` URL hash to route to `MiniApp` (companion widget) vs `App` (main calendar).
 
-**`App.tsx`** orchestrates:
-- Active view routing (Day/Week/Month/Year/List)
-- Global keyboard shortcuts listener — the app is fully drivable without a mouse: a selection
-  cursor over the on-screen occurrences (`↑`/`↓`, `Enter`, `Del`, `Shift`/`Alt`+arrows to move or
-  resize), period navigation (`T`, `←`/`K`, `→`/`J`), views (`1`–`5`, `D`/`W`/`M`/`Y`/`L`) and
-  actions (`N`/`C`, `Ctrl+K`//, `Ctrl+B`, `R`, `,`, `?`/`F1`, `Esc`). Cursor maths lives in
-  `src/shared/keyboard-nav.ts`; the ring is `.gc-event.is-key-selected`.
+**`App.tsx`** owns view routing and which dialog is open, and wires together hooks that each own
+one concern:
+
+- `SettingsProvider` (`context/SettingsContext.tsx`) reads the settings once at startup and writes
+  one key at a time (`setSetting`), optimistically, reverting with a toast if the write fails.
+  Settings, Appearance and the theme read it with `useSettings()`; the views still read
+  `DisplayPreferences`, which App derives from it (`displayPreferencesOf`).
+- `useCalendarData` - calendars, accounts, occurrences and conflicts for the query range, re-read on
+  `sync.onChanged` (never mid-drag) and when the range moves; a later read always wins over an
+  earlier one still in flight. `useQueryRange` gives that range (List view grows it as it scrolls).
+- `useEventCommands` - save, delete, move, duplicate and drop, with the recurring-scope prompt;
+  `useUndoStack` holds the inverse of each.
+- `useKeyCommands` + `src/shared/keyboard-commands.ts` - the global keyboard. `commandForKey()` is
+  a pure function from a key press and the app's state to a command (tested without a DOM);
+  App's `runKeyCommand` carries it out.
+- `useCalendarContextMenu`, `useIcsIntake` (opened, picked and dropped `.ics` files),
+  `useZoneFollowing` (adds a time-zone move to Where you were), `useAutoHideHeader`,
+  `useLastPointer` (which side the editor opens on).
+
+What they do:
+- The app is fully drivable without a mouse: a selection cursor over the on-screen occurrences
+  (`↑`/`↓`, `Enter`, `Del`, `Shift`/`Alt`+arrows to move or resize), period navigation (`T`,
+  `←`/`K`, `→`/`J`), views (`1`–`5`, `D`/`W`/`M`/`Y`/`L`) and actions (`N`/`C`, `Ctrl+K`//,
+  `Ctrl+B`, `R`, `,`, `?`/`F1`, `Esc`). Cursor maths lives in `src/shared/keyboard-nav.ts`; the
+  ring is `.gc-event.is-key-selected`. After a reload the cursor is found again by occurrence id
+  (`refindSelection`), during render rather than in an effect.
 - An undo stack: every move, resize, copy and delete pushes its inverse, and `Ctrl+Z` runs the
   latest. A delete is undone from a snapshot taken before it (`events.restore`), because a synced
   deletion is pushed within seconds and the row is gone after that.
+- The event editor is mounted only while open, and anew for each opening (`key`): its form is
+  worked out once from what it was opened on (`initialForm()`), so a sync that replaces the
+  calendar list mid-edit leaves what was typed alone.
 - The event editor is keyboard-complete too: `Ctrl+Enter` saves, `Ctrl+⌫` deletes, `Enter` in the
   title saves outright, and `CustomSelect` / `DatePicker` / `TimePicker` each drive their portalled
   popover with a roving index (`src/renderer/src/lib/roving-index.ts`, `.gc-option-active`) because

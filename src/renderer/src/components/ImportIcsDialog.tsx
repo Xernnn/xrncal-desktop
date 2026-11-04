@@ -21,14 +21,13 @@ interface ImportIcsDialogProps {
  */
 export const ImportIcsDialog: React.FC<ImportIcsDialogProps> = ({ files, calendars, onClose, onImported }) => {
   const { t } = useTranslation()
-  const [calendarId, setCalendarId] = useState('')
-  const [busy, setBusy] = useState(false)
-
-  useEffect(() => {
-    if (!files) return
-    setBusy(false)
-    setCalendarId((current) => current || defaultCalendarFor(calendars)?.id || '')
-  }, [files, calendars])
+  // The calendar picked here, else the default one - which may only be known
+  // once the calendars have loaded, when xrncal was opened with the file.
+  const [picked, setPicked] = useState('')
+  const calendarId = picked || defaultCalendarFor(calendars)?.id || ''
+  // The files being imported; a new batch is never busy.
+  const [importing, setImporting] = useState<OpenedIcsFile[] | null>(null)
+  const busy = importing !== null && importing === files
 
   useEffect(() => {
     if (!files) return
@@ -46,8 +45,8 @@ export const ImportIcsDialog: React.FC<ImportIcsDialogProps> = ({ files, calenda
   const writable = calendars.filter((c) => !c.isReadOnly)
 
   const runImport = async (): Promise<void> => {
-    if (!calendarId || !window.xrncal?.ics) return
-    setBusy(true)
+    if (!files || !calendarId || !window.xrncal?.ics) return
+    setImporting(files)
     let imported = 0
     let failed = 0
     try {
@@ -65,7 +64,7 @@ export const ImportIcsDialog: React.FC<ImportIcsDialogProps> = ({ files, calenda
       onClose()
     } catch (err) {
       showFriendlyError(err, t('ics.importFailed'))
-      setBusy(false)
+      setImporting(null)
     }
   }
 
@@ -92,7 +91,7 @@ export const ImportIcsDialog: React.FC<ImportIcsDialogProps> = ({ files, calenda
         <label className="mb-1.5 block text-xs text-primary">{t('ics.importInto')}</label>
         <CustomSelect
           value={calendarId}
-          onChange={setCalendarId}
+          onChange={setPicked}
           variant="boxed"
           options={writable.map((c) => ({ value: c.id, label: c.name, color: c.color }))}
           placeholder={t('editor.chooseCalendar')}

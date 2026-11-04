@@ -141,8 +141,10 @@ export const WeekView: React.FC<WeekViewProps> = ({
     scrollerRef: allDayScrollRef
   })
 
-  const displayOccurrences = withResizePreview(occurrences, preview)
-  const allDayOccurrences = displayOccurrences.filter((o) => o.allDay)
+  // Memoized so the all-day layout below is only redone when the events (or a
+  // resize in progress) change - a new array every render defeated its memo.
+  const displayOccurrences = useMemo(() => withResizePreview(occurrences, preview), [occurrences, preview])
+  const allDayOccurrences = useMemo(() => displayOccurrences.filter((o) => o.allDay), [displayOccurrences])
   const timedOccurrences = displayOccurrences.filter((o) => !o.allDay)
   const hours = Array.from({ length: 24 }, (_, i) => i)
   const timedSegments = timedOccurrences.flatMap(segmentTimedOccurrence)

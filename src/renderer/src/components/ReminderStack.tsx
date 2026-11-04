@@ -5,6 +5,7 @@ import type { ActiveReminder } from '@shared/ipc-contract'
 import type { Calendar, ExpandedOccurrence } from '@shared/event-model'
 import { useDisplayPreferences } from '../context/DisplayPreferencesContext'
 import { reminderWhenLabel } from '../lib/reminder-labels'
+import { useNow } from '../hooks/use-now'
 
 const SNOOZE_MINUTES = [5, 10, 15, 30, 60]
 /** Cards shown at once; the rest are counted underneath. */
@@ -26,7 +27,9 @@ export const ReminderStack: React.FC<ReminderStackProps> = ({ calendars, onOpen 
   const { t, i18n } = useTranslation()
   const { timeFormat } = useDisplayPreferences()
   const [active, setActive] = useState<ActiveReminder[]>([])
-  const [now, setNow] = useState(() => Date.now())
+  // "In 10 min" has to keep counting down while the card sits there: the
+  // shared minute clock, which also catches up after the computer sleeps.
+  const now = useNow().toMillis()
   const [snoozing, setSnoozing] = useState<string | null>(null)
 
   useEffect(() => {
@@ -46,13 +49,6 @@ export const ReminderStack: React.FC<ReminderStackProps> = ({ calendars, onOpen 
     }
   }, [])
 
-  // "In 10 min" has to keep counting down while the card sits there.
-  useEffect(() => {
-    if (active.length === 0) return
-    setNow(Date.now())
-    const id = setInterval(() => setNow(Date.now()), 30_000)
-    return () => clearInterval(id)
-  }, [active.length])
 
   if (active.length === 0) return null
 

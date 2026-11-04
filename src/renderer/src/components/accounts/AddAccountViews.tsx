@@ -116,7 +116,10 @@ export const ConnectView: React.FC<AccountsPageProps & { provider: 'google' | 'g
   useEffect(() => () => void (alive.current = false), [])
 
   // Editing the form is the user acting on the error; stop showing it.
-  useEffect(() => setFailure(null), [server, username, password])
+  const edit = (setter: (value: string) => void) => (value: string) => {
+    setter(value)
+    setFailure(null)
+  }
 
   const finish = async (res: ConnectResult) => {
     if (!alive.current) return
@@ -215,7 +218,7 @@ export const ConnectView: React.FC<AccountsPageProps & { provider: 'google' | 'g
             label={t('addAccount.caldav.server')}
             placeholder="cloud.example.com"
             value={server}
-            onChange={setServer}
+            onChange={edit(setServer)}
             autoFocus
           />
           <p className="px-0.5 text-[11px] text-muted">{t('addAccount.caldav.serverHint')}</p>
@@ -228,7 +231,7 @@ export const ConnectView: React.FC<AccountsPageProps & { provider: 'google' | 'g
         label={isICloud ? t('addAccount.icloud.appleId') : t('addAccount.caldav.username')}
         placeholder={isICloud ? 'name@icloud.com' : undefined}
         value={username}
-        onChange={setUsername}
+        onChange={edit(setUsername)}
         autoFocus={isICloud}
       />
       <TextInput
@@ -236,7 +239,7 @@ export const ConnectView: React.FC<AccountsPageProps & { provider: 'google' | 'g
         type="password"
         label={isICloud ? t('addAccount.icloud.appPassword') : t('addAccount.caldav.password')}
         value={password}
-        onChange={setPassword}
+        onChange={edit(setPassword)}
       />
       <TextInput
         variant="boxed"

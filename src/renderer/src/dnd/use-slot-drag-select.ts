@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { DateTime } from 'luxon'
 import { minutesFromPointer } from './drop-target'
 import { formatClockTimeStr, type TimeFormatPref } from '@shared/time-format'
@@ -49,7 +49,6 @@ export function useSlotDragSelect(options: {
   const { hourHeight, onComplete } = options
   const { timeFormat, dragSnapMinutes } = useDisplayPreferences()
   const [preview, setPreview] = useState<SlotDragPreview | null>(null)
-  const dragRef = useRef<DragState | null>(null)
 
   const buildPreview = useCallback(
     (drag: DragState): SlotDragPreview => {
@@ -68,45 +67,10 @@ export function useSlotDragSelect(options: {
     [hourHeight, timeFormat]
   )
 
-  const handleMouseMove = useCallback(
-    (e: MouseEvent) => {
-      const drag = dragRef.current
-      if (!drag) return
-      // The moving edge may reach midnight; the anchor below may not.
-      drag.currentMinutes = minutesFromPointer(
-        e.clientY,
-        drag.columnTop,
-        hourHeight,
-        dragSnapMinutes,
-        true
-      )
-      drag.clientX = e.clientX
-      drag.clientY = e.clientY
-      setPreview(buildPreview(drag))
-    },
-    [hourHeight, dragSnapMinutes, buildPreview]
-  )
-
-  const handleMouseUp = useCallback(() => {
-    window.removeEventListener('mousemove', handleMouseMove)
-    window.removeEventListener('mouseup', handleMouseUp)
-
-    const drag = dragRef.current
-    dragRef.current = null
-    setPreview(null)
-    if (!drag) return
-
-    const lo = Math.min(drag.anchorMinutes, drag.currentMinutes)
-    const hi = Math.max(drag.anchorMinutes, drag.currentMinutes)
-    // By clock face: on a day the clocks change, startOf('day').plus({ minutes })
-    // turns a drag across the 17:00 row into an event at 16:00 or 18:00.
-    const start = atClockMinutes(drag.day, lo)
-    const end =
-      hi - lo < CLICK_THRESHOLD_MINUTES
-        ? start.plus({ hours: 1 })
-        : atClockMinutes(drag.day, hi)
-    onComplete(start, end, { clientX: drag.clientX })
-  }, [handleMouseMove, onComplete])
+  // The listeners of the drag in progress, taken down together when it ends
+  // (or if the grid goes away mid-drag).
+  const listeners = useRef<AbortController | null>(null)
+  useEffect(() => () => listeners.current?.abort(), [])
 
   const startDrag = useCallback(
     (e: React.MouseEvent, day: DateTime, dayKey: string) => {
@@ -125,12 +89,37 @@ export function useSlotDragSelect(options: {
         clientX: e.clientX,
         clientY: e.clientY
       }
-      dragRef.current = drag
       setPreview(buildPreview(drag))
-      window.addEventListener('mousemove', handleMouseMove)
-      window.addEventListener('mouseup', handleMouseUp)
+
+      listeners.current?.abort()
+      const controller = new AbortController()
+      listeners.current = controller
+
+      const onMove = (ev: MouseEvent): void => {
+        // The moving edge may reach midnight; the anchor below may not.
+        drag.currentMinutes = minutesFromPointer(ev.clientY, drag.columnTop, hourHeight, dragSnapMinutes, true)
+        drag.clientX = ev.clientX
+        drag.clientY = ev.clientY
+        setPreview(buildPreview(drag))
+      }
+
+      const onUp = (): void => {
+        controller.abort()
+        setPreview(null)
+
+        const lo = Math.min(drag.anchorMinutes, drag.currentMinutes)
+        const hi = Math.max(drag.anchorMinutes, drag.currentMinutes)
+        // By clock face: on a day the clocks change, startOf('day').plus({ minutes })
+        // turns a drag across the 17:00 row into an event at 16:00 or 18:00.
+        const start = atClockMinutes(drag.day, lo)
+        const end = hi - lo < CLICK_THRESHOLD_MINUTES ? start.plus({ hours: 1 }) : atClockMinutes(drag.day, hi)
+        onComplete(start, end, { clientX: drag.clientX })
+      }
+
+      window.addEventListener('mousemove', onMove, { signal: controller.signal })
+      window.addEventListener('mouseup', onUp, { signal: controller.signal })
     },
-    [hourHeight, dragSnapMinutes, buildPreview, handleMouseMove, handleMouseUp]
+    [hourHeight, dragSnapMinutes, buildPreview, onComplete]
   )
 
   return { preview, startDrag }

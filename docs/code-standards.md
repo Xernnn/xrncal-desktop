@@ -94,6 +94,19 @@ export function EventPill({ event, onClick }: EventPillProps) {
 
 - Custom hooks start with `use` and live in `src/renderer/src/hooks/`.
 - Hooks that call `window.xrncal.*` must handle errors gracefully and not throw to the render tree.
+- The renderer is linted with eslint-plugin-react-hooks' full `recommended-latest` set, the React
+  Compiler rules included, as errors. What they ask for here:
+  - State that follows a prop is adjusted during render - keep the prop it was computed from in
+    state and compare (`if (prev !== prop) { setPrev(prop); setX(...) }`) - or derived outright.
+    Copying a prop into state in an effect fails `set-state-in-effect`.
+  - Opening a popover is an event: the handler that opens it seeds its state (cursor, view month,
+    position); the effect only binds listeners while it is open.
+  - A listener bound once reads the latest props and state through `useEffectEvent`, declared
+    after the functions it calls.
+  - An effect that loads data sets state in the promise's callback (`read().then(apply)`, with a
+    `cancelled` flag or a sequence number so a stale read cannot win), never synchronously.
+  - Refs are written in events and effects (`useLayoutEffect` for "latest value" refs), never
+    during render.
 
 ---
 

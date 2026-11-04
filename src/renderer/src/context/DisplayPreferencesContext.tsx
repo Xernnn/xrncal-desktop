@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react'
 import type { AppSettings } from '@shared/settings-contract'
-import type { ZonePeriod } from '@shared/zone-history'
+import { parseZoneHistory, type ZonePeriod } from '@shared/zone-history'
+import { parseZoneList } from '../lib/time-zones'
 
 export interface DisplayPreferences {
   timeFormat: AppSettings['timeFormat']
@@ -38,6 +39,24 @@ const DEFAULT_DISPLAY_PREFERENCES: DisplayPreferences = {
   preferredTimeZones: [],
   zoneHistory: [],
   firstDayOfWeek: 1
+}
+
+/** What the views are drawn with, read off the settings. */
+export function displayPreferencesOf(settings: AppSettings): DisplayPreferences {
+  return {
+    timeFormat: settings.timeFormat,
+    hourBlockSize: settings.hourBlockSize,
+    dayStartHour: settings.dayStartHour,
+    secondaryTimezone: settings.secondaryTimezone,
+    suggestionShowCalendarName: settings.suggestionShowCalendarName,
+    dragSnapMinutes: settings.dragSnapMinutes,
+    timePickerStepMinutes: settings.timePickerStepMinutes,
+    defaultReminderMinutes: settings.defaultReminderMinutes,
+    defaultAllDayReminderMinutes: settings.defaultAllDayReminderMinutes,
+    preferredTimeZones: parseZoneList(settings.preferredTimeZones),
+    zoneHistory: parseZoneHistory(settings.zoneHistory),
+    firstDayOfWeek: settings.firstDayOfWeek
+  }
 }
 
 /** Row height (px) of one hour in the Day/Week timed grid, per hourBlockSize setting. */

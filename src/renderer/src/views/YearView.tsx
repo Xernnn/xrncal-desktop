@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { occurrenceDateKeys } from '@shared/all-day'
 import { useTranslation } from 'react-i18next'
 import { DateTime } from 'luxon'
@@ -178,11 +178,14 @@ export const YearView: React.FC<YearViewProps> = ({
   const gridRef = useRef<HTMLDivElement>(null)
 
   // Callers pass inline arrows, which change identity on every parent render
-  // and would defeat MonthCard's memo. Route them through refs.
+  // and would defeat MonthCard's memo. Route them through refs, kept current
+  // after each render (a click cannot come sooner).
   const selectMonthRef = useRef(onSelectMonth)
   const selectDateRef = useRef(onSelectDate)
-  selectMonthRef.current = onSelectMonth
-  selectDateRef.current = onSelectDate
+  useLayoutEffect(() => {
+    selectMonthRef.current = onSelectMonth
+    selectDateRef.current = onSelectDate
+  })
 
   const handleSelectMonth = useCallback(
     (y: number, m: number) => selectMonthRef.current(y, m),

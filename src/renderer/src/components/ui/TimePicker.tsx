@@ -153,9 +153,13 @@ export const TimePicker: React.FC<TimePickerProps> = ({
     [step, startTime]
   )
 
-  useEffect(() => {
-    setInputValue(value ? formatClockTimeStr(value, timeFormat) : '')
-  }, [value, timeFormat])
+  // A new value (or clock format) from outside replaces what the box shows.
+  const shown = value ? formatClockTimeStr(value, timeFormat) : ''
+  const [shownFor, setShownFor] = useState(shown)
+  if (shownFor !== shown) {
+    setShownFor(shown)
+    setInputValue(shown)
+  }
 
   const updateCoords = useCallback(() => {
     if (!containerRef.current) return
@@ -179,32 +183,49 @@ export const TimePicker: React.FC<TimePickerProps> = ({
     setCoords({ top, left })
   }, [align])
 
-  // Scroll active item into view and update coordinates when opening
-  useEffect(() => {
-    if (!isOpen) {
-      setActiveIndex(-1)
-      return
-    }
-
+  /** Open the list with no slot under the cursor (or on `cursor`). */
+  const openList = (cursor = -1): void => {
+    if (isOpen) return
     updateCoords()
-    setTimeout(() => {
+    setActiveIndex(cursor)
+    setIsOpen(true)
+  }
+
+  // While open: the chosen slot scrolled to the middle of the list, and the
+  // list following the field when the page scrolls or resizes.
+  useEffect(() => {
+    if (!isOpen) return
+    const centre = setTimeout(() => {
       if (activeItemRef.current && listRef.current) {
         const list = listRef.current
         const item = activeItemRef.current
         list.scrollTop = item.offsetTop - list.clientHeight / 2 + item.clientHeight / 2
       }
     }, 50)
-
-    const handleScrollOrResize = () => {
-      updateCoords()
-    }
-    window.addEventListener('resize', handleScrollOrResize)
-    window.addEventListener('scroll', handleScrollOrResize, true)
+    window.addEventListener('resize', updateCoords)
+    window.addEventListener('scroll', updateCoords, true)
     return () => {
-      window.removeEventListener('resize', handleScrollOrResize)
-      window.removeEventListener('scroll', handleScrollOrResize, true)
+      clearTimeout(centre)
+      window.removeEventListener('resize', updateCoords)
+      window.removeEventListener('scroll', updateCoords, true)
     }
   }, [isOpen, updateCoords])
+
+  const commitInput = () => {
+    const parsed = parseSmartTime(inputValue)
+    if (parsed) {
+      onChange(parsed)
+      setInputValue(formatClockTimeStr(parsed, timeFormat))
+    } else {
+      setInputValue(value ? formatClockTimeStr(value, timeFormat) : '')
+    }
+  }
+
+  const handleSelectSlot = (slot: string) => {
+    onChange(slot)
+    setInputValue(formatClockTimeStr(slot, timeFormat))
+    setIsOpen(false)
+  }
 
   // What a click outside and Escape do, with the input as it is when they
   // happen - the listeners stay bound while the list is open, not re-bound on
@@ -255,22 +276,6 @@ export const TimePicker: React.FC<TimePickerProps> = ({
     if (activeIndex >= 0) activeItemRef.current?.scrollIntoView({ block: 'nearest' })
   }, [activeIndex])
 
-  const commitInput = () => {
-    const parsed = parseSmartTime(inputValue)
-    if (parsed) {
-      onChange(parsed)
-      setInputValue(formatClockTimeStr(parsed, timeFormat))
-    } else {
-      setInputValue(value ? formatClockTimeStr(value, timeFormat) : '')
-    }
-  }
-
-  const handleSelectSlot = (slot: string) => {
-    onChange(slot)
-    setInputValue(formatClockTimeStr(slot, timeFormat))
-    setIsOpen(false)
-  }
-
   /** Index of the slot matching the committed value, or 0 as a starting point. */
   const slotIndexForValue = (): number => {
     const found = timeSlots.indexOf(value)
@@ -279,8 +284,7 @@ export const TimePicker: React.FC<TimePickerProps> = ({
 
   const stepActive = (delta: number) => {
     if (!isOpen) {
-      setIsOpen(true)
-      setActiveIndex(slotIndexForValue())
+      openList(slotIndexForValue())
       return
     }
     setActiveIndex((prev) =>
@@ -395,7 +399,7 @@ export const TimePicker: React.FC<TimePickerProps> = ({
 
       {/* Input / Trigger — matching DatePicker ghost styling */}
       <div
-        onClick={() => !disabled && setIsOpen(true)}
+        onClick={() => !disabled && openList()}
         className={`gc-focus-ring flex items-center justify-between gap-1 w-full text-left select-none cursor-pointer overflow-hidden transition-colors duration-100 bg-transparent border ${
           isOpen ? 'border-accent bg-hover/50' : 'border-transparent hover:border-hairline hover:bg-hover/30'
         } px-2.5 py-1.5 text-xs ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -412,7 +416,7 @@ export const TimePicker: React.FC<TimePickerProps> = ({
             disabled={disabled}
             value={inputValue}
             placeholder={placeholder}
-            onFocus={() => !disabled && setIsOpen(true)}
+            onFocus={() => !disabled && openList()}
             onChange={(e) => {
               setInputValue(e.target.value)
               setActiveIndex(-1)
