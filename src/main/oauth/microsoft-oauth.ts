@@ -5,6 +5,7 @@ import crypto from 'crypto'
 import { shell } from 'electron'
 import type { ISqliteDatabase } from '../db/sqlite-driver'
 import { SecureStore } from '../secure-store'
+import { AccountsRepo } from '../db/repos/accounts-repo'
 import { mt } from '../i18n-main'
 
 export interface MicrosoftTokens {
@@ -28,9 +29,11 @@ const GRAPH_ME_ENDPOINT = 'https://graph.microsoft.com/v1.0/me'
 
 export class MicrosoftOAuthManager {
   private secureStore: SecureStore
+  private accounts: AccountsRepo
 
-  constructor(private db: ISqliteDatabase) {
+  constructor(db: ISqliteDatabase) {
     this.secureStore = new SecureStore(db)
+    this.accounts = new AccountsRepo(db)
   }
 
   private base64UrlEncode(buffer: Buffer): string {
@@ -180,16 +183,7 @@ export class MicrosoftOAuthManager {
           cleanup()
 
           const accountId = `acc_graph_${userInfo.id}`
-          const now = new Date().toISOString()
-
-          // Upsert account in DB
-          this.db
-            .prepare(
-              `INSERT INTO accounts (id, type, name, email, is_active, created_at, updated_at)
-               VALUES (?, 'graph', ?, ?, 1, ?, ?)
-               ON CONFLICT(id) DO UPDATE SET name = excluded.name, email = excluded.email, is_active = 1, updated_at = excluded.updated_at`
-            )
-            .run(accountId, name, email, now, now)
+          this.accounts.upsert({ id: accountId, type: 'graph', name: name, email: email })
 
           // Store tokens securely
           this.secureStore.storeToken(accountId, tokens)
@@ -286,7 +280,6 @@ export class MicrosoftOAuthManager {
 
   disconnectAccount(accountId: string): void {
     this.secureStore.deleteToken(accountId)
-    const now = new Date().toISOString()
-    this.db.prepare('UPDATE accounts SET is_active = 0, updated_at = ? WHERE id = ?').run(now, accountId)
+    this.accounts.deactivate(accountId)
   }
 }

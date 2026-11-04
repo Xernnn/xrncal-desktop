@@ -1,4 +1,5 @@
 import type { ISqliteDatabase } from '../db/sqlite-driver'
+import { AccountsRepo } from '../db/repos/accounts-repo'
 import { SyncStateRepo } from '../db/repos/sync-state-repo'
 import { GoogleSyncEngine } from './google-sync-engine'
 import { MicrosoftSyncEngine } from './microsoft-sync-engine'
@@ -189,19 +190,7 @@ export class SyncWorker {
    * Query current sync status
    */
   getStatus(): SyncStatus {
-
-    const accounts = this.db
-      .prepare('SELECT * FROM accounts WHERE is_active = 1')
-      .all<any>()
-      .map((row) => ({
-        id: row.id,
-        type: row.type,
-        name: row.name,
-        email: row.email,
-        isActive: row.is_active === 1,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at
-      }))
+    const accounts = new AccountsRepo(this.db).listActive()
 
     return {
       lastSyncTime: this.lastSyncTime,

@@ -430,6 +430,25 @@ describe('CalDAV sync', () => {
     expect(stored).toBe(body)
   })
 
+  it('leaves a calendar another CalDAV account holds to that account', async () => {
+    const now = new Date().toISOString()
+    for (const id of ['acc_caldav_holder', 'acc_caldav_twin']) {
+      db.prepare(
+        `INSERT INTO accounts (id, type, name, email, is_active, created_at, updated_at)
+         VALUES (?, 'caldav', 'Home server', 'sonn', 1, ?, ?)`
+      ).run(id, now, now)
+    }
+    db.prepare("UPDATE calendars SET account_id = 'acc_caldav_holder' WHERE id = ?").run(CAL)
+    stubServer([], 'ctag-1')
+
+    expect(await engine.syncCalendarList('acc_caldav_twin', CREDS)).toEqual([])
+    expect(await engine.syncCalendarList('acc_caldav_holder', CREDS)).toEqual([{ id: CAL, ctag: 'ctag-1' }])
+    // A calendar a local account holds (one detached, then connected again) is
+    // synced as before.
+    db.prepare("UPDATE calendars SET account_id = 'account-local-primary' WHERE id = ?").run(CAL)
+    expect(await engine.syncCalendarList('acc_caldav_twin', CREDS)).toEqual([{ id: CAL, ctag: 'ctag-1' }])
+  })
+
   describe('when the account cannot sync', () => {
     beforeEach(() => {
       const now = new Date().toISOString()

@@ -7,6 +7,7 @@ import {
   graphAttendeesToDomain,
   type MicrosoftGraphApiEvent
 } from './microsoft-event-mapper'
+import { AccountsRepo } from '../db/repos/accounts-repo'
 import { EventsRepo } from '../db/repos/events-repo'
 import { mergePulledReminders, parseRemindersJson, serializeReminders } from '@shared/reminders'
 import { SyncStateRepo } from '../db/repos/sync-state-repo'
@@ -733,9 +734,7 @@ export class MicrosoftSyncEngine {
    * Sync all Microsoft Graph accounts
    */
   async syncAll(clientId?: string, clientSecret?: string): Promise<SyncResult> {
-    const activeAccounts = this.db
-      .prepare("SELECT * FROM accounts WHERE type = 'graph' AND is_active = 1")
-      .all<any>()
+    const activeAccounts = new AccountsRepo(this.db).listActive('graph')
 
     if (activeAccounts.length === 0) {
       return { success: true, pulledCount: 0, pushedCount: 0, errorCount: 0, message: 'No Microsoft accounts connected' }

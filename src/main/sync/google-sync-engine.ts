@@ -10,6 +10,7 @@ import {
   type GoogleCalendarApiEvent
 } from './google-event-mapper'
 import { mergePulledReminders, parseRemindersJson, serializeReminders } from '@shared/reminders'
+import { AccountsRepo } from '../db/repos/accounts-repo'
 import { EventsRepo } from '../db/repos/events-repo'
 import { SyncStateRepo } from '../db/repos/sync-state-repo'
 import type { CalendarEvent, EventException, SyncResult } from '@shared/event-model'
@@ -705,9 +706,7 @@ export class GoogleSyncEngine {
    * Sync all Google accounts
    */
   async syncAll(clientId?: string, clientSecret?: string): Promise<SyncResult> {
-    const activeGoogleAccounts = this.db
-      .prepare("SELECT * FROM accounts WHERE type = 'google' AND is_active = 1")
-      .all<any>()
+    const activeGoogleAccounts = new AccountsRepo(this.db).listActive('google')
 
     if (activeGoogleAccounts.length === 0) {
       return { success: true, pulledCount: 0, pushedCount: 0, errorCount: 0, message: 'No Google accounts connected' }

@@ -6,8 +6,10 @@ import { GoogleOAuthManager } from '../oauth/google-oauth'
 import { MicrosoftOAuthManager } from '../oauth/microsoft-oauth'
 import { SecureStore } from '../secure-store'
 import { normalizeCalDavUrl, defaultCalDavName } from '../sync/caldav-discover'
-import { CalDavAdapter } from '../sync/caldav-adapter'
+import { CalDavAdapter, type CalDavCredentials } from '../sync/caldav-adapter'
+import { resolveCalDavAccount } from '../sync/caldav-account-id'
 import { SyncWorker } from '../sync/sync-worker'
+import { AccountsRepo } from '../db/repos/accounts-repo'
 import { detachAccount } from '../db/repos/detach-account'
 import type { CalendarAccount } from '@shared/event-model'
 
@@ -39,6 +41,7 @@ export function registerAuthSyncIpcHandlers(): void {
   const googleOAuth = new GoogleOAuthManager(db)
   const msOAuth = new MicrosoftOAuthManager(db)
   const secureStore = new SecureStore(db)
+  const accounts = new AccountsRepo(db)
 
   if (!syncWorkerInstance) {
     const googleClientId = process.env.GOOGLE_OAUTH_CLIENT_ID
@@ -158,9 +161,12 @@ export function registerAuthSyncIpcHandlers(): void {
         throw new Error(`No calendars found at ${normalizedUrl}`)
       }
 
-      const accountId = `acc_caldav_${Buffer.from(normalizedUrl).toString('hex').slice(0, 10)}`
+      const { accountId, takeOver } = resolveCalDavAccount(
+        { homeUrl: calendarHomeUrl, username: input.username, calendarIds: calendars.map((c) => c.href) },
+        accounts,
+        (id) => secureStore.getToken<CalDavCredentials>(id)
+      )
       const displayName = input.name?.trim() || defaultCalDavName(input.provider, normalizedUrl)
-      const now = new Date().toISOString()
 
       // Store credentials encrypted in SecureStore
       secureStore.storeToken(accountId, {
@@ -170,29 +176,17 @@ export function registerAuthSyncIpcHandlers(): void {
         provider: input.provider
       })
 
-      // Upsert account
-      db.prepare(
-        `INSERT INTO accounts (id, type, name, email, is_active, created_at, updated_at)
-         VALUES (?, 'caldav', ?, ?, 1, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET name = excluded.name, email = excluded.email, is_active = 1, updated_at = excluded.updated_at`
-      ).run(accountId, displayName, input.username, now, now)
+      const account = db.transaction(() => {
+        const saved = accounts.upsert({ id: accountId, type: 'caldav', name: displayName, email: input.username })
+        accounts.moveCalendars(takeOver, accountId)
+        return saved
+      })()
 
       if (syncWorkerInstance) {
         syncWorkerInstance.triggerSync().catch(() => {})
       }
 
-      return {
-        success: true,
-        account: {
-          id: accountId,
-          type: 'caldav' as const,
-          name: displayName,
-          email: input.username,
-          isActive: true,
-          createdAt: now,
-          updatedAt: now
-        }
-      }
+      return { success: true, account }
     } catch (err: any) {
       return { success: false, message: err.message || String(err) }
     }
@@ -201,8 +195,7 @@ export function registerAuthSyncIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.AUTH.DISCONNECT_CALDAV, (_event, accountId: string) => {
     try {
       secureStore.deleteToken(accountId)
-      const now = new Date().toISOString()
-      db.prepare('UPDATE accounts SET is_active = 0, updated_at = ? WHERE id = ?').run(now, accountId)
+      accounts.deactivate(accountId)
       return true
     } catch {
       return false
@@ -210,18 +203,7 @@ export function registerAuthSyncIpcHandlers(): void {
   })
 
   // Accounts & Sync
-  ipcMain.handle(IPC_CHANNELS.AUTH.LIST_ACCOUNTS, (): CalendarAccount[] => {
-    const rows = db.prepare('SELECT * FROM accounts').all<any>()
-    return rows.map((r) => ({
-      id: r.id,
-      type: r.type,
-      name: r.name,
-      email: r.email,
-      isActive: r.is_active === 1,
-      createdAt: r.created_at,
-      updatedAt: r.updated_at
-    }))
-  })
+  ipcMain.handle(IPC_CHANNELS.AUTH.LIST_ACCOUNTS, (): CalendarAccount[] => accounts.list())
 
   // Keep the data, drop the provider. See detachAccount for why the account row
   // can only be deleted after its calendars have been re-homed.

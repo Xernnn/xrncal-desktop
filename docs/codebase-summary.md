@@ -26,7 +26,7 @@ xrncal/
 │   │   │   ├── sqlite-driver.ts # ISqliteDatabase abstraction (node:sqlite / better-sqlite3)
 │   │   │   ├── backup.ts        # VACUUM INTO snapshot for Settings → Back up database
 │   │   │   ├── migrations/      # Reference copies of the inline migrations (001-022)
-│   │   │   └── repos/           # calendars, events, settings, sync-state, detach-account
+│   │   │   └── repos/           # accounts, calendars, events, settings, sync-state, detach-account
 │   │   ├── holidays/            # Generated holiday calendars, extended at startup
 │   │   ├── subscriptions/       # ics-subscription.ts: fetch, store and refresh feeds
 │   │   ├── sync/                # Provider sync engines
@@ -37,6 +37,7 @@ xrncal/
 │   │   │   ├── microsoft-event-mapper.ts # Graph event ↔ canonical CalendarEvent
 │   │   │   ├── graph-recurrence-map.ts  # Graph recurrence patterns ↔ RFC 5545 RRULE
 │   │   │   ├── caldav-sync-engine.ts    # CalDAV tsdav two-way sync
+│   │   │   ├── caldav-account-id.ts     # Which account a CalDAV sign-in belongs to (one per user per server)
 │   │   │   ├── caldav-adapter.ts        # CalDAV calendar discovery + adapter
 │   │   │   └── caldav-discover.ts       # RFC 6764 DNS/well-known server discovery
 │   │   ├── ics/                 # ICS import/export
@@ -148,7 +149,7 @@ xrncal/
 | `ipc/` | Handler modules: auth+sync, calendar+event+ICS, settings, holidays, subscriptions, reminders |
 | `db/database.ts` | `initDatabase()`, `runMigrations()`, `seedDefaultData()` |
 | `db/sqlite-driver.ts` | `ISqliteDatabase` abstraction over `node:sqlite` / `better-sqlite3` |
-| `db/repos/` | Repository pattern: CalendarsRepo, EventsRepo, SettingsRepo, SyncStateRepo, detachAccount |
+| `db/repos/` | Repository pattern: AccountsRepo, CalendarsRepo, EventsRepo, SettingsRepo, SyncStateRepo, detachAccount |
 | `sync/sync-worker.ts` | Poll loop; 20s interval on window focus, 5m when blurred; also refreshes due subscriptions |
 | `sync/*-sync-engine.ts` | Google, Microsoft Graph, CalDAV two-way sync: events, reminders, guest lists, replies |
 | `subscriptions/ics-subscription.ts` | Read-only calendars fed from an .ics / webcal link, refreshed every 6 h |

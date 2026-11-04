@@ -3,6 +3,7 @@ import { SecureStore } from '../secure-store'
 import { CalDavAdapter, type CalDavCredentials, type CalDavItem } from './caldav-adapter'
 import { describeError } from './http'
 import { parseIcsContent } from '../ics/parse-ics'
+import { AccountsRepo } from '../db/repos/accounts-repo'
 import { EventsRepo } from '../db/repos/events-repo'
 import { SyncStateRepo } from '../db/repos/sync-state-repo'
 import type { Attendee, Calendar, SyncResult } from '@shared/event-model'
@@ -49,8 +50,18 @@ export class CalDavSyncEngine {
       const isReadOnly = desc.isReadOnly === true
 
       const existing = this.db
-        .prepare('SELECT id FROM calendars WHERE id = ?')
-        .get<{ id: string }>(calId)
+        .prepare(
+          `SELECT c.id, c.account_id, a.type AS account_type
+           FROM calendars c LEFT JOIN accounts a ON a.id = c.account_id
+           WHERE c.id = ?`
+        )
+        .get<{ id: string; account_id: string; account_type: string | null }>(calId)
+
+      // Another CalDAV account signed in to the same calendar (the same user
+      // added twice under the old account ids) would sync it a second time,
+      // with its own copy of every push. Connecting decides which account holds
+      // it (resolveCalDavAccount()); the other one leaves it alone.
+      if (existing && existing.account_id !== accountId && existing.account_type === 'caldav') continue
 
       if (!existing) {
         this.db
@@ -504,9 +515,7 @@ export class CalDavSyncEngine {
    * Sync all connected CalDAV accounts
    */
   async syncAll(): Promise<SyncResult> {
-    const activeAccounts = this.db
-      .prepare("SELECT * FROM accounts WHERE type = 'caldav' AND is_active = 1")
-      .all<any>()
+    const activeAccounts = new AccountsRepo(this.db).listActive('caldav')
 
     if (activeAccounts.length === 0) {
       return { success: true, pulledCount: 0, pushedCount: 0, errorCount: 0, message: 'No CalDAV accounts connected' }
