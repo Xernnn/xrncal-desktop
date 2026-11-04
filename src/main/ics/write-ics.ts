@@ -196,8 +196,21 @@ export function generateIcs(
     if (event.rrule) {
       lines.push(`RRULE:${zone ? utcUntil(event.rrule, zone) : event.rrule}`)
     }
-    if (event.exdate) {
-      const dates = event.exdate.split(',').map((d) => d.trim())
+    // A cancelled occurrence is one more EXDATE. It used to be a RECURRENCE-ID
+    // component with STATUS:CANCELLED and nothing else, and without a DTSTART
+    // (which RFC 5545 requires of every VEVENT) Radicale refused the whole series
+    // with a 400 - the push failed on every poll, and the series' other edits
+    // never reached the server. EXDATE is also what other clients write, and
+    // read: some draw a cancelled instance as an ordinary or struck-through event.
+    const cancelled = (exceptionsByMaster.get(event.id) ?? []).filter((ex) => ex.isCancelled).map((ex) => ex.originalStartUtc)
+    const dates = [
+      ...new Map(
+        [...(event.exdate ? event.exdate.split(',').map((d) => d.trim()) : []), ...cancelled]
+          .filter(Boolean)
+          .map((d) => [event.allDay ? d.slice(0, 10) : String(Date.parse(d)), d] as const)
+      ).values()
+    ].sort((a, b) => Date.parse(a) - Date.parse(b))
+    if (dates.length > 0) {
       if (event.allDay) {
         lines.push(`EXDATE;VALUE=DATE:${dates.map((d) => formatIcsDateTime(d, true)).join(',')}`)
       } else if (zone) {
@@ -211,8 +224,8 @@ export function generateIcs(
 
     lines.push('END:VEVENT')
 
-    // Append recurrence exceptions (RECURRENCE-ID)
-    const eventExceptions = exceptionsByMaster.get(event.id) || []
+    // Append recurrence exceptions (RECURRENCE-ID); cancelled ones are EXDATEs above.
+    const eventExceptions = (exceptionsByMaster.get(event.id) || []).filter((ex) => !ex.isCancelled)
     for (const ex of eventExceptions) {
       lines.push('BEGIN:VEVENT')
       lines.push(`UID:${event.uid}`)
@@ -224,35 +237,31 @@ export function generateIcs(
           : timedLine('RECURRENCE-ID', ex.originalStartUtc, zone)
       )
 
-      if (ex.isCancelled) {
-        lines.push('STATUS:CANCELLED')
+      const startIso = ex.dtStartUtc || ex.originalStartUtc
+      const endIso = ex.dtEndUtc || startIso
+      // The occurrence's own all-day flag, not the series': one week of an
+      // all-day series moved to 10:00 used to be written as all-day too, and
+      // every such week lost its time on the server at the next edit here.
+      if (ex.allDay ?? event.allDay) {
+        lines.push(`DTSTART;VALUE=DATE:${formatIcsDateTime(startIso, true)}`)
+        lines.push(
+          `DTEND;VALUE=DATE:${inclusiveEndToExclusiveDate(startIso, endIso).replace(/-/g, '')}`
+        )
       } else {
-        const startIso = ex.dtStartUtc || ex.originalStartUtc
-        const endIso = ex.dtEndUtc || startIso
-        // The occurrence's own all-day flag, not the series': one week of an
-        // all-day series moved to 10:00 used to be written as all-day too, and
-        // every such week lost its time on the server at the next edit here.
-        if (ex.allDay ?? event.allDay) {
-          lines.push(`DTSTART;VALUE=DATE:${formatIcsDateTime(startIso, true)}`)
-          lines.push(
-            `DTEND;VALUE=DATE:${inclusiveEndToExclusiveDate(startIso, endIso).replace(/-/g, '')}`
-          )
-        } else {
-          const at = overrideZone(event, ex, zone)
-          lines.push(timedLine('DTSTART', startIso, at))
-          lines.push(timedLine('DTEND', endIso, at))
-        }
-
-        lines.push(`SUMMARY:${escapeIcsText(ex.title || event.title)}`)
-        if (ex.notes || event.notes) {
-          lines.push(`DESCRIPTION:${escapeIcsText(ex.notes || event.notes || '')}`)
-        }
-        if (ex.location || event.location) {
-          lines.push(`LOCATION:${escapeIcsText(ex.location || event.location || '')}`)
-        }
-        pushAttendeeLines(lines, event.attendees)
-        pushAlarmLines(lines, event.reminders, ex.title || event.title)
+        const at = overrideZone(event, ex, zone)
+        lines.push(timedLine('DTSTART', startIso, at))
+        lines.push(timedLine('DTEND', endIso, at))
       }
+
+      lines.push(`SUMMARY:${escapeIcsText(ex.title || event.title)}`)
+      if (ex.notes || event.notes) {
+        lines.push(`DESCRIPTION:${escapeIcsText(ex.notes || event.notes || '')}`)
+      }
+      if (ex.location || event.location) {
+        lines.push(`LOCATION:${escapeIcsText(ex.location || event.location || '')}`)
+      }
+      pushAttendeeLines(lines, event.attendees)
+      pushAlarmLines(lines, event.reminders, ex.title || event.title)
 
       lines.push('END:VEVENT')
     }

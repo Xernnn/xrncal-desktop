@@ -141,10 +141,25 @@ describe('occurrence exception sync', () => {
     const master = repo.getEventById(masterId)!.event
     const ics = generateIcs(calendar, [master], repo.getExceptionsForEvent(masterId))
 
-    expect(ics).toContain('RECURRENCE-ID:20260309T090000Z')
-    expect(ics).toContain('STATUS:CANCELLED')
+    // The cancelled week is an EXDATE on the series. As a RECURRENCE-ID
+    // component with STATUS:CANCELLED and no DTSTART, Radicale refused the
+    // whole resource (RFC 5545 requires DTSTART in every VEVENT).
+    expect(ics).toContain('EXDATE:20260309T090000Z')
+    expect(ics).not.toContain('RECURRENCE-ID:20260309T090000Z')
+    expect(ics).not.toContain('STATUS:CANCELLED')
     expect(ics).toContain('RECURRENCE-ID:20260316T090000Z')
     expect(ics).toContain('SUMMARY:Standup (long)')
+    for (const vevent of ics.split('BEGIN:VEVENT').slice(1)) expect(vevent).toMatch(/\r\nDTSTART[;:]/)
+  })
+
+  it('lists a date once when it is both in the series EXDATE and cancelled', () => {
+    const masterId = createSeries()
+    repo.updateEvent(masterId, { exdate: '2026-03-09T09:00:00.000Z,2026-03-23T09:00:00.000Z' })
+    repo.upsertException({ masterEventId: masterId, originalStartUtc: '2026-03-09T09:00:00.000Z', isCancelled: true })
+    repo.upsertException({ masterEventId: masterId, originalStartUtc: '2026-03-16T09:00:00.000Z', isCancelled: true })
+    const calendar = { id: CAL_ID, accountId: '', name: 'Test', color: '#000000', isVisible: true, isReadOnly: false, isDefault: false, createdAt: '', updatedAt: '' }
+    const ics = generateIcs(calendar, [repo.getEventById(masterId)!.event], repo.getExceptionsForEvent(masterId))
+    expect(ics).toContain('EXDATE:20260309T090000Z,20260316T090000Z,20260323T090000Z\r\n')
   })
 
   it('rejects an exception on a read-only calendar', () => {

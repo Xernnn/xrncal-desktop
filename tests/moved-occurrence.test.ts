@@ -92,9 +92,12 @@ describe('a week of an all-day series moved to a time of day', () => {
       moved('2026-03-10', '2026-03-10T00:00:00.000Z', '2026-03-10T23:59:59.999Z', 'floating', { isCancelled: true })
     ])
     expect(ics).toContain('RECURRENCE-ID;VALUE=DATE:20260303\r\nDTSTART;VALUE=DATE:20260305\r\nDTEND;VALUE=DATE:20260306')
-    expect(ics).toContain('RECURRENCE-ID;VALUE=DATE:20260310\r\nSTATUS:CANCELLED')
+    // A cancelled week is an EXDATE, as a date like the series' own.
+    expect(ics).toContain('EXDATE;VALUE=DATE:20260310,20260714\r\n')
+    expect(ics).not.toContain('STATUS:CANCELLED')
     const back = parseIcsContent(ics, 'cal')
     expect(back.exceptions.find((x) => x.originalStartUtc.startsWith('2026-03-03'))).toMatchObject({ allDay: true })
+    expect(back.events[0].exdate).toContain('2026-03-10')
   })
 })
 

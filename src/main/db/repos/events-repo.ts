@@ -560,10 +560,27 @@ export class EventsRepo {
         'SELECT id, is_cancelled, dirty FROM event_exceptions WHERE master_event_id = ? AND original_start_utc = ?'
       )
       .get<{ id: string; is_cancelled: number; dirty: number }>(masterEventId, originalStartUtc)
-    // Already back, or changed since: nothing left to undo.
-    if (!row || row.is_cancelled !== 1) return
-
     const override = previous && !previous.isCancelled ? previous : undefined
+
+    // A cancellation pushed to CalDAV goes up as an EXDATE on the series, and
+    // the pull straight after reads it back that way, dropping the exception
+    // row: bringing the occurrence back then means taking the date out again.
+    if (!row) {
+      const exdate = master.event.exdate
+      if (!exdate) return
+      const at = Date.parse(originalStartUtc)
+      const kept = exdate
+        .split(',')
+        .map((d) => d.trim())
+        .filter((d) => d && (master.event.allDay ? d.slice(0, 10) !== originalStartUtc.slice(0, 10) : Date.parse(d) !== at))
+      if (kept.length === exdate.split(',').filter((d) => d.trim()).length) return
+      this.updateEvent(masterEventId, { exdate: kept.join(',') })
+      if (override) this.upsertException({ ...override, isCancelled: false })
+      return
+    }
+    // Already back, or changed since: nothing left to undo.
+    if (row.is_cancelled !== 1) return
+
     if (row.dirty === 1 && !override) {
       this.db.prepare('DELETE FROM event_exceptions WHERE id = ?').run(row.id)
       return

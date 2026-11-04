@@ -120,6 +120,29 @@ describe('EventsRepo.restoreEvent', () => {
       expect(cancelled(evt.id)).toEqual({ is_cancelled: 0, dirty: 1 })
     })
 
+    it('takes the date back out of the series when the cancellation came back from CalDAV as an EXDATE', () => {
+      const evt = create()
+      repo.upsertException({ masterEventId: evt.id, originalStartUtc: OCC, isCancelled: false, title: 'Moved' })
+      const snapshot = repo.getEventById(evt.id)!
+      repo.deleteRecurringScope({ masterEventId: evt.id, originalStartUtc: OCC, scope: 'this' })
+      // Pushed as an EXDATE and read back by the pull: the exception row is gone.
+      db.prepare('DELETE FROM event_exceptions').run()
+      db.prepare('UPDATE events SET exdate = ?, dirty = 0 WHERE id = ?').run(`2026-04-05T09:00:00.000Z,${OCC}`, evt.id)
+
+      repo.restoreOccurrence(evt.id, OCC, snapshot.exceptions.find((x) => x.originalStartUtc === OCC))
+
+      const back = repo.getEventById(evt.id)!
+      expect(back.event).toMatchObject({ exdate: '2026-04-05T09:00:00.000Z', dirty: true })
+      expect(back.exceptions).toEqual([expect.objectContaining({ originalStartUtc: OCC, isCancelled: false, title: 'Moved' })])
+    })
+
+    it('does nothing when the occurrence is neither cancelled nor excluded', () => {
+      const evt = create()
+      db.prepare('UPDATE events SET exdate = ?, dirty = 0 WHERE id = ?').run('2026-04-05T09:00:00.000Z', evt.id)
+      repo.restoreOccurrence(evt.id, OCC)
+      expect(repo.getEventById(evt.id)!.event).toMatchObject({ exdate: '2026-04-05T09:00:00.000Z', dirty: false })
+    })
+
     it('refuses when Outlook already removed it, since Outlook cannot restore one', () => {
       const now = new Date().toISOString()
       db.prepare(
