@@ -112,6 +112,7 @@ xrncal/
 │       ├── reminders.ts         # Reminder lists: defaults, due times, wording, per-provider merge
 │       ├── keyboard-nav.ts      # Keyboard cursor, nudge and resize maths
 │       ├── keyboard-commands.ts # Which command a key press is (commandForKey), and stepAnchor for paging
+│       ├── natural-entry.ts     # Dates, times and repeats typed into a new event's title (vi + en), and applying them
 │       ├── all-day.ts           # Floating-date vs instant: inclusive/exclusive ends, day keys
 │       ├── occurrence-order.ts  # Within-day ordering (all-day first, then by time)
 │       ├── title-suggestions.ts # Ranking for the event-title autocomplete
@@ -223,6 +224,14 @@ What they do:
 - The event editor is mounted only while open, and anew for each opening (`key`): its form is
   worked out once from what it was opened on (`initialForm()`), so a sync that replaces the
   calendar list mid-edit leaves what was typed alone.
+- A new event's title is read for when it is (`parseEntry()` in `src/shared/natural-entry.ts`):
+  "Họp 3h chiều thứ 6", "Lunch tomorrow at 12:30", "Giỗ ông 12/8 âm lịch" fill the date, time
+  and repeat fields as they are typed, and the words are left out of the title saved. A line under
+  the title says what it read, with × to keep the title as typed. The form before the title changed
+  it is kept and put back if the words are deleted; once a date or time is changed by hand, typing
+  no longer overrides it. Only clear dates and times are taken: a bare number is never a time, a
+  period word stays in the title unless it is next to a time or a day ("Ăn tối 7h"), and "Mai" with a
+  capital is a name.
 - The event editor is keyboard-complete too: `Ctrl+Enter` saves, `Ctrl+⌫` deletes, `Enter` in the
   title saves outright, and `CustomSelect` / `DatePicker` / `TimePicker` each drive their portalled
   popover with a roving index (`src/renderer/src/lib/roving-index.ts`, `.gc-option-active`) because

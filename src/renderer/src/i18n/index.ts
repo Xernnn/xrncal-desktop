@@ -190,6 +190,10 @@ export const resources = {
         newEvent: 'New event',
         editEvent: 'Edit event',
         titlePlaceholder: 'Event title…',
+        titleEntry: {
+          savesAs: 'Saved as “{{title}}”',
+          keepTyped: 'Keep the title as typed'
+        },
         calendar: 'Calendar',
         chooseCalendar: 'Choose a calendar…',
         allDay: 'All day',
@@ -815,6 +819,10 @@ export const resources = {
         newEvent: 'Sự kiện mới',
         editEvent: 'Chỉnh sửa sự kiện',
         titlePlaceholder: 'Tiêu đề sự kiện…',
+        titleEntry: {
+          savesAs: 'Lưu thành “{{title}}”',
+          keepTyped: 'Giữ nguyên tiêu đề đã gõ'
+        },
         calendar: 'Lịch',
         chooseCalendar: 'Chọn lịch…',
         allDay: 'Cả ngày',

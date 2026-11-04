@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useEffectEvent, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DateTime, IANAZone } from 'luxon'
-import { Trash2, X, Share2, MapPin, Link as LinkIcon, Users, Check } from 'lucide-react'
+import { Trash2, X, Share2, MapPin, Link as LinkIcon, Users, Check, Sparkles } from 'lucide-react'
 import type {
   Calendar,
   CalendarEvent,
@@ -14,7 +14,7 @@ import type {
 } from '@shared/event-model'
 import { invitationSelf } from '@shared/event-model'
 import type { TitleSuggestion } from '@shared/title-suggestions'
-import { endDateForTimes, formatClockTime } from '@shared/time-format'
+import { endDateForTimes, formatClockTime, formatClockTimeStr } from '@shared/time-format'
 import { convertSolarToLunar, resolveLunarOccurrence } from '@shared/lunar-vietnam'
 import { DEFAULT_EVENT_COLOR } from '@shared/mini-calendar-grid'
 import { EVENT_COLORS } from '@shared/event-colors'
@@ -41,6 +41,8 @@ import { useDisplayPreferences } from '../context/DisplayPreferencesContext'
 import { zoneForEditing, zonePickerOptions } from '../lib/time-zones'
 import { zoneAt, type ZonePeriod } from '@shared/zone-history'
 import { defaultCalendarFor } from '../lib/new-event'
+import { useToday } from '../hooks/use-now'
+import { parseEntry, applyEntry, ENTRY_WEEKDAYS, type EntrySlot, type ParsedEntry } from '@shared/natural-entry'
 
 export interface EventEditorInitialData {
   occurrence?: ExpandedOccurrence
@@ -287,6 +289,15 @@ export function initialForm(
   }
 }
 
+/** The part of the form a typed title can set, and what to put back when the words are deleted. */
+interface ScheduleFields extends EntrySlot {
+  recurrencePreset: string
+  recurrenceByDay: string[]
+  recurrenceInterval: number
+  lunarLeap: boolean
+  reminders: EventReminder[] | null
+}
+
 /** A colour dot to pick; the chosen one carries a tick, as buttons cannot show an outline. */
 const ColorSwatch: React.FC<{ hex: string; selected: boolean; label: string; onClick: () => void }> = ({
   hex,
@@ -317,8 +328,14 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
   onDraftChange
 }) => {
   const { t, i18n } = useTranslation()
-  const { defaultReminderMinutes, defaultAllDayReminderMinutes, timeFormat, preferredTimeZones, zoneHistory } =
-    useDisplayPreferences()
+  const {
+    defaultReminderMinutes,
+    defaultAllDayReminderMinutes,
+    timeFormat,
+    preferredTimeZones,
+    zoneHistory,
+    firstDayOfWeek
+  } = useDisplayPreferences()
   const isEditing = Boolean(data?.occurrence || data?.event)
   // Lunar anniversaries have no per-instance RRULE semantics — edits always apply
   // to the whole series, so they skip the recurring-scope prompt.
@@ -375,6 +392,21 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
   const [isDirty, setIsDirty] = useState<boolean>(false)
   const [showDiscardConfirm, setShowDiscardConfirm] = useState<boolean>(false)
   const [shareSuccess, setShareSuccess] = useState<boolean>(false)
+
+  // A new event's title is read for when it is ("Họp 3h chiều thứ 6"): the
+  // fields follow it as it is typed, and the words are left out of the title
+  // saved. `base` is the form before the title changed it, put back when the
+  // words are deleted; `frozen` once a date, time or repeat was then changed
+  // by hand, which typing no longer overrides. × turns it off for this event.
+  const [titleEntry, setTitleEntry] = useState<{ base: ScheduleFields; frozen: boolean } | null>(null)
+  const [titleEntryOff, setTitleEntryOff] = useState(false)
+  const today = useToday()
+  const entryContext = useMemo(() => ({ today, firstDayOfWeek }), [today, firstDayOfWeek])
+  const readsTitle = !isEditing && !titleEntryOff
+  const parsedTitle = useMemo(
+    () => (readsTitle ? parseEntry(title, entryContext) : null),
+    [readsTitle, title, entryContext]
+  )
 
   // The rest of an event opened from the grid (or handed over without its
   // guest list): its guests and reminders.
@@ -503,6 +535,84 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
     setIsDirty(true)
   }
 
+  const scheduleNow = (): ScheduleFields => ({
+    allDay,
+    startDate: startDateStr,
+    startTime: startTimeStr,
+    endDate: endDateStr,
+    endTime: endTimeStr,
+    recurrencePreset,
+    recurrenceByDay,
+    recurrenceInterval,
+    lunarLeap,
+    reminders
+  })
+
+  const putSchedule = (next: ScheduleFields): void => {
+    setAllDay(next.allDay)
+    setStartDateStr(next.startDate)
+    setStartTimeStr(next.startTime)
+    setEndDateStr(next.endDate)
+    setEndTimeStr(next.endTime)
+    setRecurrencePreset(next.recurrencePreset)
+    setRecurrenceByDay(next.recurrenceByDay)
+    setRecurrenceInterval(next.recurrenceInterval)
+    setLunarLeap(next.lunarLeap)
+    // Reminders picked by hand are the user's, whatever the title says.
+    if (!remindersTouchedRef.current) setReminders(next.reminders)
+  }
+
+  /** `base` with what the title says put into it. */
+  const scheduleFor = (base: ScheduleFields, entry: ParsedEntry): ScheduleFields => {
+    const next = { ...base, ...applyEntry(base, entry) }
+    const repeat = entry.repeat
+    if (!repeat) return next
+    if (repeat.kind === 'lunar-yearly') {
+      // As when "lunar yearly" is picked from the list: a day's notice, unless
+      // the user has an all-day default of their own.
+      const reminders = defaultAllDayReminderMinutes === null ? [{ minutesBefore: LUNAR_ANNIVERSARY_REMINDER }] : base.reminders
+      return { ...next, recurrencePreset: 'lunar-yearly', lunarLeap: repeat.spec.leap, reminders }
+    }
+    const weekday = DateTime.fromISO(next.startDate).weekday
+    return {
+      ...next,
+      recurrencePreset: repeat.kind,
+      recurrenceInterval: 1,
+      recurrenceByDay: repeat.kind === 'weekly' ? [repeat.byDay ?? ENTRY_WEEKDAYS[weekday - 1]] : base.recurrenceByDay
+    }
+  }
+
+  const changeTitle = (next: string): void => {
+    handleFieldChange(setTitle, next)
+    if (!readsTitle || titleEntry?.frozen) return
+    const entry = parseEntry(next, entryContext)
+    if (entry) {
+      const base = titleEntry?.base ?? scheduleNow()
+      if (!titleEntry) setTitleEntry({ base, frozen: false })
+      putSchedule(scheduleFor(base, entry))
+    } else if (titleEntry) {
+      putSchedule(titleEntry.base)
+      setTitleEntry(null)
+    }
+  }
+
+  /** A date, time or repeat changed by hand: from here on the title does not override it. */
+  const scheduleEdited = (): void => {
+    if (titleEntry && !titleEntry.frozen) setTitleEntry({ ...titleEntry, frozen: true })
+  }
+
+  const editSchedule = <T,>(setter: React.Dispatch<React.SetStateAction<T>>, val: NoInfer<T>): void => {
+    handleFieldChange(setter, val)
+    scheduleEdited()
+  }
+
+  /** The title is saved as typed, and the form goes back to what it was before the title changed it. */
+  const keepTitleAsTyped = (): void => {
+    if (titleEntry && !titleEntry.frozen) putSchedule(titleEntry.base)
+    setTitleEntry(null)
+    setTitleEntryOff(true)
+  }
+
   /**
    * Accepting a suggestion also moves the event onto the calendar that title
    * normally lives on - the whole point of ranking by past events rather than
@@ -510,16 +620,16 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
    * the switch cannot land somewhere nothing can be created.
    */
   const handlePickSuggestion = (suggestion: TitleSuggestion) => {
-    setTitle(suggestion.title)
+    changeTitle(suggestion.title)
     if ((calendars || []).some((c) => c.id === suggestion.calendarId && !c.isReadOnly)) {
       setCalendarId(suggestion.calendarId)
     }
-    setIsDirty(true)
   }
 
   const handleStartDateChange = (newStart: string) => {
     setStartDateStr(newStart)
     setIsDirty(true)
+    scheduleEdited()
     if (!endDateStr || endDateStr < newStart) setEndDateStr(newStart)
   }
 
@@ -531,6 +641,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
   const handleEndTimeChange = (newEnd: string) => {
     setEndTimeStr(newEnd)
     setIsDirty(true)
+    scheduleEdited()
     setEndDateStr(
       endDateForTimes({
         startDate: startDateStr,
@@ -544,6 +655,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
   const handleStartTimeChange = (newStart: string) => {
     setStartTimeStr(newStart)
     setIsDirty(true)
+    scheduleEdited()
     if (startDateStr === endDateStr || !endDateStr) {
       const [sh, sm] = newStart.split(':').map(Number)
       const [eh, em] = endTimeStr.split(':').map(Number)
@@ -682,6 +794,20 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
     return out
   })()
 
+  /** What the form now says, for the line under a title it was read from. */
+  const scheduleSummary = (() => {
+    if (!parsedTitle) return ''
+    const day = DateTime.fromISO(startDateStr).setLocale(i18n.language)
+    const parts = [day.isValid ? day.toFormat(i18n.language === 'vi' ? 'cccc, d/M' : 'ccc d LLL') : '']
+    if (isLunarYearly) parts.push(lunarSpec ? describeLunarSpec(lunarSpec) : t('editor.repeatLunar'))
+    else if (allDay) parts.push(t('editor.allDay'))
+    else parts.push(`${formatClockTimeStr(startTimeStr, timeFormat)}–${formatClockTimeStr(endTimeStr, timeFormat)}`)
+    if (!isLunarYearly && recurrencePreset !== 'none' && recurrencePreset !== 'custom') {
+      parts.push(recurrenceOptions.find((o) => o.value === recurrencePreset)?.label ?? '')
+    }
+    return parts.filter(Boolean).join(' · ')
+  })()
+
   const submitEvent = () => {
     if (!title.trim()) {
       toast.warning(t('editor.needTitle'))
@@ -716,7 +842,8 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
 
     const payloadInput: CreateEventInput = {
       calendarId,
-      title: title.trim(),
+      // Without the date and time words, which are in the fields by now.
+      title: parsedTitle?.title ?? title.trim(),
       notes: notes.trim() || undefined,
       location: location.trim() || undefined,
       meetingUrl: meetingUrl.trim() || undefined,
@@ -926,7 +1053,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
           <div className="pb-2 mb-1 border-b border-hairline/60">
             <TitleSuggestInput
               value={title}
-              onChange={(val) => handleFieldChange(setTitle, val)}
+              onChange={changeTitle}
               onPick={handlePickSuggestion}
               targetStartUtc={suggestionTargetStartUtc}
               targetAllDay={allDay || isLunarYearly}
@@ -936,6 +1063,24 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
               enabled={!isEditing}
               onSubmit={submitEvent}
             />
+            {parsedTitle && (
+              <div role="status" className="mt-1 flex items-center gap-1.5 text-[11px] text-muted">
+                <Sparkles className="h-3 w-3 shrink-0 text-accent" aria-hidden />
+                <span className="min-w-0 flex-1 truncate">
+                  {t('editor.titleEntry.savesAs', { title: parsedTitle.title })}
+                  {scheduleSummary && ` · ${scheduleSummary}`}
+                </span>
+                <button
+                  type="button"
+                  onClick={keepTitleAsTyped}
+                  className="gc-icon-btn shrink-0 p-0.5"
+                  title={t('editor.titleEntry.keepTyped')}
+                  aria-label={t('editor.titleEntry.keepTyped')}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="space-y-0">
@@ -1001,7 +1146,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
               <div className="px-2.5 py-1 flex items-center">
                 <ToggleSwitch
                   checked={allDay || isLunarYearly}
-                  onChange={(checked) => handleFieldChange(setAllDay, checked)}
+                  onChange={(checked) => editSchedule(setAllDay, checked)}
                   size="sm"
                   disabled={isLunarYearly}
                 />
@@ -1035,7 +1180,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
                   <div className="flex-1 min-w-max">
                     <DatePicker
                       value={endDateStr}
-                      onChange={(val) => handleFieldChange(setEndDateStr, val)}
+                      onChange={(val) => editSchedule(setEndDateStr, val)}
                       minDate={startDateStr}
                       placeholder={t('editor.endDate')}
                       clearable={false}
@@ -1060,7 +1205,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
               <CustomSelect
                 value={recurrencePreset}
                 onChange={(val) => {
-                  handleFieldChange(setRecurrencePreset, val)
+                  editSchedule(setRecurrencePreset, val)
                   // A new giỗ gets a day's notice unless the user has set an
                   // all-day default of their own (or already picked reminders).
                   if (
@@ -1087,7 +1232,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
                     <span className="text-xs text-muted">{t('editor.repeatEvery')}</span>
                     <NumberInput
                       value={recurrenceInterval}
-                      onChange={(v) => handleFieldChange(setRecurrenceInterval, Math.max(1, Math.round(v)))}
+                      onChange={(v) => editSchedule(setRecurrenceInterval, Math.max(1, Math.round(v)))}
                       min={1}
                       max={999}
                     />
@@ -1109,7 +1254,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
                         <button
                           key={code}
                           type="button"
-                          onClick={() => handleFieldChange(setRecurrenceByDay, toggleWeekday(recurrenceByDay, code))}
+                          onClick={() => editSchedule(setRecurrenceByDay, toggleWeekday(recurrenceByDay, code))}
                           className={`h-6 w-6 shrink-0 cursor-pointer rounded-full text-[10px] font-semibold transition-colors ${
                             recurrenceByDay.includes(code)
                               ? 'bg-accent text-white'
@@ -1181,7 +1326,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
                     <input
                       type="checkbox"
                       checked={lunarLeap}
-                      onChange={(e) => handleFieldChange(setLunarLeap, e.target.checked)}
+                      onChange={(e) => editSchedule(setLunarLeap, e.target.checked)}
                     />
                     {t('editor.lunarLeapCheckbox')}
                   </label>
