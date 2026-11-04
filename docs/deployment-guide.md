@@ -79,7 +79,7 @@ the real Electron binary and a display; on a Linux machine without one, run them
 `.github/workflows/ci.yml` runs on every push to `main` and every pull request:
 
 1. `npm ci` (with `ELECTRON_SKIP_BINARY_DOWNLOAD=1` — CI does not package the app)
-2. `npm run lint` — ESLint (errors fail; `no-explicit-any` is a warning)
+2. `npm run lint` — ESLint with `--max-warnings 0`, so a warning fails it too
 3. `npm run typecheck` — main + renderer
 4. `npm run test` — full Vitest suite
 5. `npm run build` — production bundle

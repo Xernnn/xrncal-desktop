@@ -9,6 +9,7 @@ import { normalizeCalDavUrl, defaultCalDavName } from '../sync/caldav-discover'
 import { CalDavAdapter, type CalDavCredentials } from '../sync/caldav-adapter'
 import { resolveCalDavAccount } from '../sync/caldav-account-id'
 import { SyncWorker } from '../sync/sync-worker'
+import { describeError } from '../sync/http'
 import { AccountsRepo } from '../db/repos/accounts-repo'
 import { detachAccount } from '../db/repos/detach-account'
 import type { CalendarAccount } from '@shared/event-model'
@@ -90,8 +91,8 @@ export function registerAuthSyncIpcHandlers(): void {
         syncWorkerInstance.triggerSync().catch(() => {})
       }
       return { success: true, account: result.account }
-    } catch (err: any) {
-      return { success: false, message: err.message || String(err) }
+    } catch (err) {
+      return { success: false, message: describeError(err) }
     }
   })
 
@@ -124,8 +125,8 @@ export function registerAuthSyncIpcHandlers(): void {
         syncWorkerInstance.triggerSync().catch(() => {})
       }
       return { success: true, account: result.account }
-    } catch (err: any) {
-      return { success: false, message: err.message || String(err) }
+    } catch (err) {
+      return { success: false, message: describeError(err) }
     }
   })
 
@@ -187,8 +188,8 @@ export function registerAuthSyncIpcHandlers(): void {
       }
 
       return { success: true, account }
-    } catch (err: any) {
-      return { success: false, message: err.message || String(err) }
+    } catch (err) {
+      return { success: false, message: describeError(err) }
     }
   })
 

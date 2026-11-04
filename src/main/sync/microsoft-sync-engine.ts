@@ -11,7 +11,7 @@ import {
 } from './microsoft-event-mapper'
 import { log } from '../log'
 import { AccountsRepo } from '../db/repos/accounts-repo'
-import { EventsRepo } from '../db/repos/events-repo'
+import { EventsRepo, type EventRow } from '../db/repos/events-repo'
 import { mergePulledReminders, parseRemindersJson, serializeReminders } from '@shared/reminders'
 import { SyncStateRepo } from '../db/repos/sync-state-repo'
 import type { RsvpResponse, SyncResult } from '@shared/event-model'
@@ -61,6 +61,12 @@ interface GraphPullState {
   overridesPending?: string[]
   /** When every series of the calendar was last queued for that. */
   overridesAt?: string
+}
+
+/** One page of an events listing; the rest is behind `@odata.nextLink`. */
+interface GraphEventsPage {
+  value?: MicrosoftGraphApiEvent[]
+  '@odata.nextLink'?: string
 }
 
 interface PageWalk {
@@ -296,7 +302,7 @@ export class MicrosoftSyncEngine {
         throw new Error(`Microsoft event pull failed for ${calendarId}: ${await res.text()}`)
       }
 
-      const data = await res.json()
+      const data: GraphEventsPage = await res.json()
       const page = this.applyPulledPage(calendarId, data, options)
       walk.touched += page.touched
       for (const id of page.listedIds) walk.listedIds.add(id)
@@ -361,10 +367,10 @@ export class MicrosoftSyncEngine {
    *  rows it named, and the newest modification time on it. */
   private applyPulledPage(
     calendarId: string,
-    data: any,
+    data: GraphEventsPage,
     { selfEmail, skipUnchanged }: { selfEmail?: string; skipUnchanged: boolean }
   ): { touched: number; listedIds: string[]; writtenSeries: string[]; latestModified?: string } {
-    const items: MicrosoftGraphApiEvent[] = data.value || []
+    const items = data.value || []
     const listedIds: string[] = []
     const writtenSeries: string[] = []
     let latestModified: string | undefined
@@ -535,7 +541,7 @@ export class MicrosoftSyncEngine {
   ): Promise<{ pushedCount: number; errorCount: number; lastError: string | null }> {
     const dirtyRows = this.db
       .prepare('SELECT * FROM events WHERE calendar_id = ? AND dirty = 1 AND has_conflict = 0')
-      .all<any>(calendarId)
+      .all<EventRow>(calendarId)
 
     let pushedCount = 0
     let errorCount = 0
@@ -572,20 +578,20 @@ export class MicrosoftSyncEngine {
             calendarId: row.calendar_id,
             uid: row.uid,
             title: row.title,
-            notes: row.notes,
-            location: row.location,
+            notes: row.notes ?? undefined,
+            location: row.location ?? undefined,
             dtStartUtc: row.dtstart_utc,
             dtEndUtc: row.dtend_utc,
             tzid: row.tzid,
             allDay: row.all_day === 1,
-            rrule: row.rrule,
+            rrule: row.rrule ?? undefined,
             reminders: parseRemindersJson(row.reminders),
             // Only a list known to be complete; see mapDomainEventToGraph.
             attendees:
               row.attendees_synced === 1 || !row.etag
                 ? this.eventsRepo.getEventById(row.id)?.event.attendees ?? []
                 : undefined
-          } as any)
+          })
 
           let res: Response
           if (row.etag) {
@@ -872,7 +878,7 @@ export class MicrosoftSyncEngine {
             } else {
               this.syncStateRepo.recordSuccess(calId, pullRes.pulledCount)
             }
-          } catch (calErr: any) {
+          } catch (calErr) {
             this.syncStateRepo.recordFailure(calId, calErr)
             totalErrors++
           }

@@ -5,7 +5,7 @@ import { CalendarsRepo } from '../src/main/db/repos/calendars-repo'
 import { EventsRepo } from '../src/main/db/repos/events-repo'
 
 describe('Recurring Scope Operations (this / future / all)', () => {
-  let db: any
+  let db: ISqliteDatabase
   let calendarsRepo: CalendarsRepo
   let eventsRepo: EventsRepo
   let testCalId: string

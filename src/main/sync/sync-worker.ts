@@ -114,9 +114,10 @@ export class SyncWorker {
   }
 
   /** Contain an engine-level throw so one provider cannot cancel the others. */
-  private engineFailure(provider: string, err: any): SyncResult {
-    const message = `${provider} sync failed: ${err?.message || String(err)}`
-    this.engineErrors[`${provider} engine`] = describeError(err)
+  private engineFailure(provider: string, err: unknown): SyncResult {
+    const reason = describeError(err)
+    const message = `${provider} sync failed: ${reason}`
+    this.engineErrors[`${provider} engine`] = reason
     return { success: false, pulledCount: 0, pushedCount: 0, errorCount: 1, message }
   }
 
@@ -175,8 +176,8 @@ export class SyncWorker {
         errorCount: totalErrors,
         message: mt('sync.done', { pulled: totalPulled, pushed: totalPushed })
       }
-    } catch (err: any) {
-      this.lastError = err.message || String(err)
+    } catch (err) {
+      this.lastError = describeError(err)
       log('error', `Sync failed: ${describeError(err)}`)
       return { success: false, pulledCount: 0, pushedCount: 0, errorCount: 1, message: this.lastError }
     } finally {

@@ -21,6 +21,14 @@ function keyPaths(node: unknown, prefix = ''): string[] {
   )
 }
 
+/** The value at a dotted key path, or undefined where the path stops. */
+function valueAt(tree: unknown, path: string): unknown {
+  return path.split('.').reduce<unknown>(
+    (node, key) => (node !== null && typeof node === 'object' ? (node as Record<string, unknown>)[key] : undefined),
+    tree
+  )
+}
+
 describe('i18n resources', () => {
   const en = new Set(keyPaths(resources.en.translation))
   const vi = new Set(keyPaths(resources.vi.translation))
@@ -33,9 +41,7 @@ describe('i18n resources', () => {
   it('has no empty translation strings', () => {
     for (const [locale, bundle] of Object.entries(resources)) {
       const empties = keyPaths(bundle.translation).filter((path) => {
-        const value = path
-          .split('.')
-          .reduce<any>((node, key) => (node == null ? node : node[key]), bundle.translation)
+        const value = valueAt(bundle.translation, path)
         return typeof value === 'string' && value.trim() === ''
       })
       expect(empties, `empty strings in "${locale}"`).toEqual([])
@@ -46,8 +52,7 @@ describe('i18n resources', () => {
   // sync-conflict screen did exactly that after its strings were dropped in a
   // cleanup - nothing failed, because nothing checked this direction.
   it('has every key the renderer asks for by name', () => {
-    const lookup = (key: string): unknown =>
-      key.split('.').reduce<any>((node, part) => (node == null ? node : node[part]), resources.en.translation)
+    const lookup = (key: string): unknown => valueAt(resources.en.translation, key)
     const missing: string[] = []
     expect(Object.keys(rendererSources).length).toBeGreaterThan(50)
     for (const [file, source] of Object.entries(rendererSources)) {

@@ -26,6 +26,7 @@ import { generateIcs } from '../ics/write-ics'
 import { getSyncWorker } from './auth-sync-ipc'
 import { takeOpenedFiles } from '../opened-ics-files'
 import { writeSharedIcs } from '../share-ics-file'
+import { describeError } from '../sync/http'
 
 /** Fire-and-forget an immediate push/pull right after a local write, instead of waiting for the next poll. */
 function nudgeSync(): void {
@@ -110,7 +111,7 @@ export function registerCalendarIpcHandlers(): void {
       const created = eventsRepo.createEvent(input)
       nudgeSync()
       return created
-    } catch (err: any) {
+    } catch (err) {
       if (err instanceof ReadOnlyCalendarError) {
         throw new Error(`Write rejected: ${err.message}`, { cause: err })
       }
@@ -123,7 +124,7 @@ export function registerCalendarIpcHandlers(): void {
       const updated = eventsRepo.updateEvent(id, input)
       nudgeSync()
       return updated
-    } catch (err: any) {
+    } catch (err) {
       if (err instanceof ReadOnlyCalendarError) {
         throw new Error(`Write rejected: ${err.message}`, { cause: err })
       }
@@ -136,7 +137,7 @@ export function registerCalendarIpcHandlers(): void {
       const result = eventsRepo.deleteEvent(id)
       nudgeSync()
       return result
-    } catch (err: any) {
+    } catch (err) {
       if (err instanceof ReadOnlyCalendarError) {
         throw new Error(`Delete rejected: ${err.message}`, { cause: err })
       }
@@ -151,7 +152,7 @@ export function registerCalendarIpcHandlers(): void {
         const result = eventsRepo.upsertException(exception)
         nudgeSync()
         return result
-      } catch (err: any) {
+      } catch (err) {
         if (err instanceof ReadOnlyCalendarError) {
           throw new Error(`Exception write rejected: ${err.message}`, { cause: err })
         }
@@ -165,7 +166,7 @@ export function registerCalendarIpcHandlers(): void {
       const result = eventsRepo.moveEvent(input)
       nudgeSync()
       return result
-    } catch (err: any) {
+    } catch (err) {
       if (err instanceof ReadOnlyCalendarError) {
         throw new Error(`Move rejected: ${err.message}`, { cause: err })
       }
@@ -178,7 +179,7 @@ export function registerCalendarIpcHandlers(): void {
       const result = eventsRepo.copyEvent(input)
       nudgeSync()
       return result
-    } catch (err: any) {
+    } catch (err) {
       if (err instanceof ReadOnlyCalendarError) {
         throw new Error(`Copy rejected: ${err.message}`, { cause: err })
       }
@@ -191,7 +192,7 @@ export function registerCalendarIpcHandlers(): void {
       const result = eventsRepo.updateRecurringScope(input)
       nudgeSync()
       return result
-    } catch (err: any) {
+    } catch (err) {
       if (err instanceof ReadOnlyCalendarError) {
         throw new Error(`Recurring update rejected: ${err.message}`, { cause: err })
       }
@@ -204,7 +205,7 @@ export function registerCalendarIpcHandlers(): void {
       const result = eventsRepo.deleteRecurringScope(input)
       nudgeSync()
       return result
-    } catch (err: any) {
+    } catch (err) {
       if (err instanceof ReadOnlyCalendarError) {
         throw new Error(`Recurring delete rejected: ${err.message}`, { cause: err })
       }
@@ -215,7 +216,7 @@ export function registerCalendarIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.EVENT.MATERIALIZE_LUNAR, (_event, input: MaterializeLunarInput) => {
     try {
       return eventsRepo.materializeLunarEvent(input)
-    } catch (err: any) {
+    } catch (err) {
       if (err instanceof ReadOnlyCalendarError) {
         throw new Error(`Materialize rejected: ${err.message}`, { cause: err })
       }
@@ -226,7 +227,7 @@ export function registerCalendarIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.EVENT.DETACH_LUNAR, (_event, input: DetachLunarInput) => {
     try {
       return eventsRepo.detachLunarMaterialized(input)
-    } catch (err: any) {
+    } catch (err) {
       if (err instanceof ReadOnlyCalendarError) {
         throw new Error(`Detach rejected: ${err.message}`, { cause: err })
       }
@@ -269,8 +270,8 @@ export function registerCalendarIpcHandlers(): void {
       shell.showItemInFolder(filePath)
 
       return { success: true, filePath, icsContent }
-    } catch (err: any) {
-      return { success: false, message: err.message || String(err) }
+    } catch (err) {
+      return { success: false, message: describeError(err) }
     }
   })
 
@@ -321,7 +322,7 @@ export function registerCalendarIpcHandlers(): void {
       const updated = eventsRepo.respondToInvite(eventId, response)
       nudgeSync()
       return updated
-    } catch (err: any) {
+    } catch (err) {
       if (err instanceof ReadOnlyCalendarError) {
         throw new Error(`Reply rejected: ${err.message}`, { cause: err })
       }
@@ -393,12 +394,12 @@ export function registerCalendarIpcHandlers(): void {
           errorCount,
           message: `Successfully imported ${importedCount} events (${errorCount} errors)`
         }
-      } catch (err: any) {
+      } catch (err) {
         return {
           success: false,
           importedCount: 0,
           errorCount: 1,
-          message: `ICS import failed: ${err.message || String(err)}`
+          message: `ICS import failed: ${describeError(err)}`
         }
       }
     }

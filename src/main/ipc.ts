@@ -14,6 +14,7 @@ import { backupDatabaseTo, defaultBackupFileName } from './db/backup'
 import { restoreDatabaseFromBackup } from './restore-database'
 import { refreshTrayMenu } from './tray'
 import { logDirectory, logFilePath } from './log'
+import { describeError } from './sync/http'
 
 let currentLocale: AppLocale = 'en'
 
@@ -94,8 +95,8 @@ export function registerIpcHandlers(): void {
     try {
       const byteSize = backupDatabaseTo(getDatabase(), result.filePath)
       return { success: true, filePath: result.filePath, byteSize }
-    } catch (err: any) {
-      return { success: false, message: err?.message || String(err) }
+    } catch (err) {
+      return { success: false, message: describeError(err) }
     }
   })
 

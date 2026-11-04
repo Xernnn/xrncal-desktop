@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { createSqliteDriver, type ISqliteDatabase } from '../src/main/db/sqlite-driver'
+import { createSqliteDriver, type ISqliteDatabase, type SqlParam } from '../src/main/db/sqlite-driver'
 import { runMigrations, seedDefaultData } from '../src/main/db/database'
 import { EventsRepo } from '../src/main/db/repos/events-repo'
 import { detachAccount, LOCAL_ACCOUNT_ID } from '../src/main/db/repos/detach-account'
@@ -17,7 +17,7 @@ describe('detachAccount', () => {
   const CAL_A = 'cal_a@group.calendar.google.com'
   const CAL_RO = 'cal_readonly@group.calendar.google.com'
 
-  const count = (sql: string, ...params: unknown[]): number =>
+  const count = (sql: string, ...params: SqlParam[]): number =>
     db.prepare(sql).get<{ c: number }>(...params)!.c
 
   beforeEach(() => {

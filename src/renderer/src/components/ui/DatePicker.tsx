@@ -1,5 +1,5 @@
 import i18n from '../../i18n'
-import React, { useState, useRef, useEffect, useMemo } from 'react'
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { DateTime } from 'luxon'
 import {
@@ -63,7 +63,7 @@ export const DatePicker: React.FC<DatePickerProps> = ({
   // this cursor is what moves.
   const [activeDate, setActiveDate] = useState<DateTime | null>(null)
 
-  const updateCoords = () => {
+  const updateCoords = useCallback(() => {
     if (!containerRef.current) return
     const rect = containerRef.current.getBoundingClientRect()
     const popoverWidth = 280
@@ -85,7 +85,7 @@ export const DatePicker: React.FC<DatePickerProps> = ({
     }
 
     setCoords({ top, left })
-  }
+  }, [align])
 
   useEffect(() => {
     if (!isOpen) return
@@ -103,7 +103,7 @@ export const DatePicker: React.FC<DatePickerProps> = ({
       window.removeEventListener('resize', handleScrollOrResize)
       window.removeEventListener('scroll', handleScrollOrResize, true)
     }
-  }, [isOpen, parsedValue, align])
+  }, [isOpen, parsedValue, updateCoords])
 
   useEffect(() => {
     if (!isOpen) return

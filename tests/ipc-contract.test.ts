@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { IPC_CHANNELS, type AppLocale, type XrncalAPI } from '../src/shared/ipc-contract'
+import { DEFAULT_APP_SETTINGS, type AppSettings } from '../src/shared/settings-contract'
 
 describe('IPC Channels and Contracts', () => {
   it('should define structured and valid IPC channels', () => {
@@ -68,7 +69,7 @@ describe('IPC Channels and Contracts', () => {
           welcomeDone: true,
           lastSeenZone: 'Australia/Sydney'
         }),
-        get: async () => true as any,
+        get: async <K extends keyof AppSettings>(key: K) => DEFAULT_APP_SETTINGS[key],
         set: async () => true
       },
       auth: {

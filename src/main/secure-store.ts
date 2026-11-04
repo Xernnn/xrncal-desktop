@@ -52,7 +52,7 @@ export class SecureStore {
   /**
    * Store token for an account in SQLite encrypted
    */
-  storeToken(accountId: string, tokenData: any): void {
+  storeToken(accountId: string, tokenData: unknown): void {
     if (!this.db) {
       throw new Error('Database instance required to persist tokens')
     }
@@ -72,7 +72,7 @@ export class SecureStore {
   /**
    * Retrieve and decrypt token for an account
    */
-  getToken<T = any>(accountId: string): T | null {
+  getToken<T = unknown>(accountId: string): T | null {
     if (!this.db) return null
     const row = this.db
       .prepare('SELECT value FROM settings WHERE key = ?')

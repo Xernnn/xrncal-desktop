@@ -1,6 +1,7 @@
 import { escapeHtml } from '../html-escape'
-import { fetchWithTimeout } from '../sync/http'
+import { describeError, fetchWithTimeout } from '../sync/http'
 import http from 'http'
+import type { AddressInfo } from 'net'
 import crypto from 'crypto'
 import { shell } from 'electron'
 import type { ISqliteDatabase } from '../db/sqlite-driver'
@@ -117,7 +118,7 @@ export class MicrosoftOAuthManager {
             return
           }
 
-          const address = server.address() as any
+          const address = server.address() as AddressInfo
           const redirectUri = `http://127.0.0.1:${address.port}/oauth2callback`
 
           const tokenParams = new URLSearchParams({
@@ -192,11 +193,11 @@ export class MicrosoftOAuthManager {
             account: { id: accountId, name, email },
             tokens
           })
-        } catch (err: any) {
+        } catch (err) {
           // The browser is still waiting for this page.
           if (!res.headersSent) {
             res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' })
-            res.end('<h3>' + escapeHtml(mt('oauth.microsoft.failed', { error: err?.message || String(err) })) + '</h3><p>' + escapeHtml(mt('oauth.canCloseShort')) + '</p>')
+            res.end('<h3>' + escapeHtml(mt('oauth.microsoft.failed', { error: describeError(err) })) + '</h3><p>' + escapeHtml(mt('oauth.canCloseShort')) + '</p>')
           }
           cleanup()
           reject(err)
@@ -205,7 +206,7 @@ export class MicrosoftOAuthManager {
 
       // Bind exclusively to 127.0.0.1 on random port
       server.listen(0, '127.0.0.1', () => {
-        const address = server.address() as any
+        const address = server.address() as AddressInfo
         const redirectUri = `http://127.0.0.1:${address.port}/oauth2callback`
 
         const authUrl = new URL(MS_AUTH_ENDPOINT)

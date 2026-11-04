@@ -512,7 +512,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
 
   if (!isOpen) return null
 
-  const handleFieldChange = (setter: React.Dispatch<React.SetStateAction<any>>, val: any) => {
+  const handleFieldChange = <T,>(setter: React.Dispatch<React.SetStateAction<T>>, val: NoInfer<T>) => {
     setter(val)
     setIsDirty(true)
   }
@@ -799,7 +799,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
       } else {
         toast.info(t('toast.lunarUpToDate'))
       }
-    } catch (err: any) {
+    } catch (err) {
       showFriendlyError(err, t('toast.lunarAddFailed'))
     } finally {
       setLunarBusy(false)
@@ -814,7 +814,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
       const res = await window.xrncal.events.detachLunar({ masterEventId: eventId })
       toast.success(res.count > 0 ? t('toast.lunarRemoved', { count: res.count }) : t('toast.lunarNoneToRemove'))
       if (res.count > 0) onDataChanged?.()
-    } catch (err: any) {
+    } catch (err) {
       showFriendlyError(err, t('toast.lunarRemoveFailed'))
     } finally {
       setLunarBusy(false)
@@ -833,7 +833,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
       } else {
         toast.error(t('toast.shareFailed'), { description: res.message })
       }
-    } catch (err: any) {
+    } catch (err) {
       showFriendlyError(err, t('toast.shareError'))
     }
   }

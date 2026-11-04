@@ -1,5 +1,5 @@
 import i18n from '../../i18n'
-import React, { useState, useRef, useEffect, useMemo } from 'react'
+import React, { useState, useRef, useEffect, useMemo, useCallback, useEffectEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Clock, ChevronDown } from 'lucide-react'
 import { formatClockTimeStr } from '@shared/time-format'
@@ -157,7 +157,7 @@ export const TimePicker: React.FC<TimePickerProps> = ({
     setInputValue(value ? formatClockTimeStr(value, timeFormat) : '')
   }, [value, timeFormat])
 
-  const updateCoords = () => {
+  const updateCoords = useCallback(() => {
     if (!containerRef.current) return
     const rect = containerRef.current.getBoundingClientRect()
     const popoverWidth = 200
@@ -177,7 +177,7 @@ export const TimePicker: React.FC<TimePickerProps> = ({
     }
 
     setCoords({ top, left })
-  }
+  }, [align])
 
   // Scroll active item into view and update coordinates when opening
   useEffect(() => {
@@ -204,7 +204,19 @@ export const TimePicker: React.FC<TimePickerProps> = ({
       window.removeEventListener('resize', handleScrollOrResize)
       window.removeEventListener('scroll', handleScrollOrResize, true)
     }
-  }, [isOpen, align])
+  }, [isOpen, updateCoords])
+
+  // What a click outside and Escape do, with the input as it is when they
+  // happen - the listeners stay bound while the list is open, not re-bound on
+  // every keystroke.
+  const closeKeepingInput = useEffectEvent(() => {
+    commitInput()
+    setIsOpen(false)
+  })
+  const closeDiscardingInput = useEffectEvent(() => {
+    setInputValue(value ? formatClockTimeStr(value, timeFormat) : '')
+    setIsOpen(false)
+  })
 
   // Click outside & Escape listener
   useEffect(() => {
@@ -218,8 +230,7 @@ export const TimePicker: React.FC<TimePickerProps> = ({
         popoverRef.current &&
         !popoverRef.current.contains(target)
       ) {
-        commitInput()
-        setIsOpen(false)
+        closeKeepingInput()
       }
     }
 
@@ -228,8 +239,7 @@ export const TimePicker: React.FC<TimePickerProps> = ({
         // Without stopPropagation this same Escape carries on to the dialog
         // hosting the field and closes that too.
         e.stopPropagation()
-        setInputValue(value ? formatClockTimeStr(value, timeFormat) : '')
-        setIsOpen(false)
+        closeDiscardingInput()
       }
     }
 
@@ -239,7 +249,7 @@ export const TimePicker: React.FC<TimePickerProps> = ({
       document.removeEventListener('mousedown', handleClickOutside)
       document.removeEventListener('keydown', handleKeyDown)
     }
-  }, [isOpen, value, inputValue, timeFormat])
+  }, [isOpen])
 
   useEffect(() => {
     if (activeIndex >= 0) activeItemRef.current?.scrollIntoView({ block: 'nearest' })

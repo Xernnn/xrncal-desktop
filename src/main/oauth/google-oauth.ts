@@ -1,6 +1,7 @@
 import { escapeHtml } from '../html-escape'
-import { fetchWithTimeout } from '../sync/http'
+import { describeError, fetchWithTimeout } from '../sync/http'
 import http from 'http'
+import type { AddressInfo } from 'net'
 import crypto from 'crypto'
 import { shell } from 'electron'
 import type { ISqliteDatabase } from '../db/sqlite-driver'
@@ -125,7 +126,7 @@ export class GoogleOAuthManager {
           }
 
           // Exchange auth code for tokens
-          const address = server.address() as any
+          const address = server.address() as AddressInfo
           const redirectUri = `http://127.0.0.1:${address.port}/oauth2callback`
 
           const tokenParams = new URLSearchParams({
@@ -197,11 +198,11 @@ export class GoogleOAuthManager {
             account: { id: accountId, name: userInfo.name, email: userInfo.email },
             tokens
           })
-        } catch (err: any) {
+        } catch (err) {
           // The browser is still waiting for this page.
           if (!res.headersSent) {
             res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' })
-            res.end('<h3>' + escapeHtml(mt('oauth.google.failed', { error: err?.message || String(err) })) + '</h3><p>' + escapeHtml(mt('oauth.canCloseShort')) + '</p>')
+            res.end('<h3>' + escapeHtml(mt('oauth.google.failed', { error: describeError(err) })) + '</h3><p>' + escapeHtml(mt('oauth.canCloseShort')) + '</p>')
           }
           cleanup()
           reject(err)
@@ -210,7 +211,7 @@ export class GoogleOAuthManager {
 
       // Bind exclusively to 127.0.0.1 with random port (0)
       server.listen(0, '127.0.0.1', () => {
-        const address = server.address() as any
+        const address = server.address() as AddressInfo
         const redirectUri = `http://127.0.0.1:${address.port}/oauth2callback`
 
         const authUrl = new URL(GOOGLE_AUTH_ENDPOINT)

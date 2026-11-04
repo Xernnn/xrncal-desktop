@@ -34,7 +34,7 @@ describe('Google Event Mapper', () => {
     expect(domain.event!.dtEndUtc).toBe('2026-08-18T08:30:00.000Z')
 
     // Test reverse mapping
-    const backToGoogle = mapDomainEventToGoogle(domain.event! as any)
+    const backToGoogle = mapDomainEventToGoogle(domain.event!)
     expect(backToGoogle.summary).toBe('Q3 Product Strategy Review')
     expect(backToGoogle.start?.dateTime).toBe('2026-08-18T07:00:00.000Z')
   })
@@ -59,7 +59,7 @@ describe('Google Event Mapper', () => {
     expect(domain.event!.dtEndUtc).toBe('2026-09-01T23:59:59.999Z')
 
     // ...and the exclusive form is restored on the way back out.
-    const backToGoogle = mapDomainEventToGoogle(domain.event! as any)
+    const backToGoogle = mapDomainEventToGoogle(domain.event!)
     expect(backToGoogle.start?.date).toBe('2026-09-01')
     expect(backToGoogle.end?.date).toBe('2026-09-02')
   })
@@ -75,7 +75,7 @@ describe('Google Event Mapper', () => {
     const domain = mapGoogleEventToDomain(fixture, targetCalendarId)
     expect(domain.event!.dtStartUtc).toBe('2026-09-01T00:00:00.000Z')
     expect(domain.event!.dtEndUtc).toBe('2026-09-03T23:59:59.999Z')
-    expect(mapDomainEventToGoogle(domain.event! as any).end?.date).toBe('2026-09-04')
+    expect(mapDomainEventToGoogle(domain.event!).end?.date).toBe('2026-09-04')
   })
 
   it('should map a recurring master Google event with RRULE', () => {

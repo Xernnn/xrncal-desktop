@@ -197,9 +197,11 @@ export const YearView: React.FC<YearViewProps> = ({
   }, [year])
 
   const { firstDayOfWeek } = useDisplayPreferences()
+  // react-i18next hands out a new `t` when the language changes, so `t` alone
+  // re-reads the labels in the new language.
   const weekdayHeaders = useMemo(
     () => weekdayShortLabels(t, firstDayOfWeek),
-    [t, i18n.language, firstDayOfWeek]
+    [t, firstDayOfWeek]
   )
   const todayKey = useToday().toFormat('yyyy-MM-dd')
 

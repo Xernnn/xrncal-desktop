@@ -15,15 +15,21 @@ export { toast }
  * is a predicate for the call site instead of a branch in showFriendlyError.
  */
 export function isStaleEventError(err: unknown): boolean {
-  const raw = typeof err === 'string' ? err : (err as { message?: string })?.message || ''
-  return /Event not found|Source event not found|Master event not found/i.test(raw)
+  return /Event not found|Source event not found|Master event not found/i.test(messageOf(err))
+}
+
+/** The text of whatever an IPC call rejected with. */
+function messageOf(err: unknown): string {
+  if (typeof err === 'string') return err
+  const message = (err as { message?: unknown } | null | undefined)?.message
+  return typeof message === 'string' && message ? message : String(err ?? '')
 }
 
 /**
  * Format any backend/IPC error message into a human-friendly, localized notification.
  */
-export function showFriendlyError(err: any, fallbackTitle?: string) {
-  const raw = typeof err === 'string' ? err : err?.message || String(err || '')
+export function showFriendlyError(err: unknown, fallbackTitle?: string) {
+  const raw = messageOf(err)
   const clean = raw.replace(/^Error:\s*/, '').replace(/Error invoking remote method '[^']+':\s*(Error:\s*)?/g, '')
 
   if (

@@ -63,7 +63,7 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
 
   useEffect(() => {
     if (!window.xrncal?.settings) return
-    window.xrncal.settings.getAll().then((st: any) => {
+    window.xrncal.settings.getAll().then((st) => {
       if (st.themeAccent) setAccentColor(st.themeAccent)
       if (st.themeCustomBg !== undefined) setCustomBgUrl(st.themeCustomBg)
       if (st.themeOverlayOpacity !== undefined) setBgOverlayOpacity(st.themeOverlayOpacity)

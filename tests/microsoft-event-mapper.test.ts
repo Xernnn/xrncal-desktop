@@ -33,7 +33,7 @@ describe('Microsoft Graph Event Mapper', () => {
     expect(domain.event!.dtStartUtc).toBe('2026-08-18T10:00:00.000Z')
     expect(domain.event!.dtEndUtc).toBe('2026-08-18T11:00:00.000Z')
 
-    const backToGraph = mapDomainEventToGraph(domain.event! as any)
+    const backToGraph = mapDomainEventToGraph(domain.event!)
     expect(backToGraph.subject).toBe('Architecture Alignment Sync')
     expect(backToGraph.body?.content).toBe('Discuss Graph adapter architecture')
   })

@@ -31,10 +31,11 @@ export class ReadOnlyCalendarError extends Error {
   }
 }
 
-interface EventRow {
+/** A row of `events`, as `SELECT *` reads it. */
+export interface EventRow {
   id: string
   calendar_id: string
-  provider_event_id?: string | null
+  provider_event_id: string | null
   uid: string
   title: string
   notes: string | null
@@ -55,6 +56,12 @@ interface EventRow {
   dirty: number
   has_conflict: number
   is_deleted: number
+  /** 1 once the guest list has been read from the provider (migration 016). */
+  attendees_synced: number
+  /** A reply to an invitation waiting to be sent. */
+  rsvp_pending: string | null
+  /** The calendar the event was moved out of here, until the move reaches the provider. */
+  moved_from_calendar_id: string | null
   created_at: string
   updated_at: string
 }
@@ -90,6 +97,9 @@ interface ExceptionRow {
   tzid: string | null
   all_day: number | null
   color: string | null
+  dirty: number
+  etag: string | null
+  provider_instance_id: string | null
   created_at: string
   updated_at: string
 }
@@ -676,7 +686,7 @@ export class EventsRepo {
          WHERE e.calendar_id = ? AND x.dirty = 1 AND e.has_conflict = 0 AND e.is_deleted = 0
            AND e.etag IS NOT NULL`
       )
-      .all<ExceptionRow & { provider_instance_id: string | null }>(calendarId)
+      .all<ExceptionRow>(calendarId)
 
     const out: {
       exception: EventException
@@ -764,7 +774,7 @@ export class EventsRepo {
     const existing = new Map(
       this.db
         .prepare('SELECT * FROM event_exceptions WHERE master_event_id = ?')
-        .all<ExceptionRow & { dirty: number; provider_instance_id: string | null }>(masterEventId)
+        .all<ExceptionRow>(masterEventId)
         .map((row) => [row.original_start_utc, row])
     )
     let changed = 0

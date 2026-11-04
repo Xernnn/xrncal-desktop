@@ -25,19 +25,22 @@ export class SettingsRepo {
 
   getAllSettings(): AppSettings {
     const rows = this.db.prepare('SELECT key, value FROM settings').all<{ key: string; value: string }>()
-    const settings: Record<string, any> = defaults()
+    const settings = defaults()
+    // Stored values are JSON as written by setSetting(); each key is trusted to
+    // hold its own type, as everywhere settings are read.
+    const values = settings as Record<keyof AppSettings, unknown>
 
     for (const row of rows) {
       // Credentials live in this table too; they are not settings.
       if (!isAppSettingKey(row.key)) continue
       try {
-        settings[row.key] = JSON.parse(row.value)
+        values[row.key] = JSON.parse(row.value)
       } catch {
-        settings[row.key] = row.value
+        values[row.key] = row.value
       }
     }
 
-    return settings as AppSettings
+    return settings
   }
 
   getSetting<K extends keyof AppSettings>(key: K): AppSettings[K] {

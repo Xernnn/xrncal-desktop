@@ -245,7 +245,7 @@ export const App: React.FC = () => {
     try {
       await window.xrncal.events.resolveConflict(eventId, resolution)
       setConflicts((prev) => prev.filter((c) => c.eventId !== eventId))
-    } catch (err: any) {
+    } catch (err) {
       showFriendlyError(err, t('toast.conflictResolveFailed'))
     }
   }
@@ -370,7 +370,7 @@ export const App: React.FC = () => {
           )
         }
         await loadCalendarsAndEvents()
-      } catch (err: any) {
+      } catch (err) {
         // A sync that lands between the drag starting and the drop finishing can
         // re-key the event, so the id in hand is already gone. Refresh instead of
         // blaming the user for a move that was valid when they began it.
@@ -810,7 +810,7 @@ export const App: React.FC = () => {
           await loadCalendarsAndEvents()
         }
       }
-    } catch (err: any) {
+    } catch (err) {
       showFriendlyError(err, t('toast.saveFailed'))
     }
   }
@@ -845,7 +845,7 @@ export const App: React.FC = () => {
           })
           if (snapshot) offerUndoDelete(undoForScopedDelete(snapshot, occurrenceStartUtc, 'this'))
           await done()
-        } catch (err: any) {
+        } catch (err) {
           showFriendlyError(err, t('toast.deleteFailed'))
         }
         return
@@ -870,7 +870,7 @@ export const App: React.FC = () => {
       await window.xrncal.events.delete(eventId)
       if (snapshot) offerUndoDelete(() => events.restore(snapshot))
       await done()
-    } catch (err: any) {
+    } catch (err) {
       showFriendlyError(err, t('toast.deleteFailed'))
     }
   }
@@ -949,7 +949,7 @@ export const App: React.FC = () => {
       }
       setPendingRecurringScope(null)
       await loadCalendarsAndEvents()
-    } catch (err: any) {
+    } catch (err) {
       showFriendlyError(err, t('toast.recurringUpdateFailed'))
     }
   }
@@ -1197,7 +1197,7 @@ export const App: React.FC = () => {
       )
       setPendingDrop(null)
       await loadCalendarsAndEvents()
-    } catch (err: any) {
+    } catch (err) {
       if (isStaleEventError(err)) {
         await loadCalendarsAndEvents()
         toast.error(t('friendly.staleTitle'), { description: t('friendly.staleBody') })
@@ -1231,7 +1231,7 @@ export const App: React.FC = () => {
       pushUndo(() => events.delete(copied.id))
       setPendingDrop(null)
       await loadCalendarsAndEvents()
-    } catch (err: any) {
+    } catch (err) {
       showFriendlyError(err, t('toast.copyFailed'))
     }
   }

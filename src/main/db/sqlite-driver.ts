@@ -6,10 +6,17 @@ export interface ISqliteRunResult {
   lastInsertRowid: number | bigint
 }
 
+/** What SQLite can bind: node:sqlite refuses anything else at run time
+ *  (`undefined` and booleans included), so the type refuses it first. */
+export type SqlParam = string | number | bigint | null | Uint8Array
+
+/** A row read without saying its shape: name the columns with `get<T>` to use them. */
+export type SqlRow = Record<string, unknown>
+
 export interface ISqliteStatement {
-  run(...params: any[]): ISqliteRunResult
-  get<T = any>(...params: any[]): T | undefined
-  all<T = any>(...params: any[]): T[]
+  run(...params: SqlParam[]): ISqliteRunResult
+  get<T = SqlRow>(...params: SqlParam[]): T | undefined
+  all<T = SqlRow>(...params: SqlParam[]): T[]
 }
 
 export interface ISqliteDatabase {
@@ -67,17 +74,17 @@ export function createSqliteDriver(dbPath: string): ISqliteDatabase {
         // caching and compile as before.
         const stmt = rawDb.prepare(sql)
         wrapped = {
-          run(...params: any[]): ISqliteRunResult {
+          run(...params: SqlParam[]): ISqliteRunResult {
             const res = stmt.run(...params)
             return {
               changes: Number(res.changes || 0),
               lastInsertRowid: res.lastInsertRowid ?? 0
             }
           },
-          get<T = any>(...params: any[]): T | undefined {
+          get<T = SqlRow>(...params: SqlParam[]): T | undefined {
             return stmt.get(...params) as T | undefined
           },
-          all<T = any>(...params: any[]): T[] {
+          all<T = SqlRow>(...params: SqlParam[]): T[] {
             return stmt.all(...params) as T[]
           }
         }
@@ -142,17 +149,17 @@ export function createSqliteDriver(dbPath: string): ISqliteDatabase {
         prepare(sql: string): ISqliteStatement {
           const stmt = rawDb.prepare(sql)
           return {
-            run(...params: any[]): ISqliteRunResult {
+            run(...params: SqlParam[]): ISqliteRunResult {
               const res = stmt.run(...params)
               return {
                 changes: res.changes,
                 lastInsertRowid: res.lastInsertRowid
               }
             },
-            get<T = any>(...params: any[]): T | undefined {
+            get<T = SqlRow>(...params: SqlParam[]): T | undefined {
               return stmt.get(...params) as T | undefined
             },
-            all<T = any>(...params: any[]): T[] {
+            all<T = SqlRow>(...params: SqlParam[]): T[] {
               return stmt.all(...params) as T[]
             }
           }

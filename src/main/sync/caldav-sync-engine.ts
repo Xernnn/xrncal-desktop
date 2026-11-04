@@ -4,9 +4,10 @@ import { CalDavAdapter, type CalDavCredentials, type CalDavItem } from './caldav
 import { describeError } from './http'
 import { parseIcsContent } from '../ics/parse-ics'
 import { AccountsRepo } from '../db/repos/accounts-repo'
-import { EventsRepo } from '../db/repos/events-repo'
+import { EventsRepo, type EventRow } from '../db/repos/events-repo'
+import { CalendarsRepo } from '../db/repos/calendars-repo'
 import { SyncStateRepo } from '../db/repos/sync-state-repo'
-import type { Attendee, Calendar, SyncResult } from '@shared/event-model'
+import type { Attendee, SyncResult } from '@shared/event-model'
 import { markSelfAttendee } from '@shared/event-model'
 import { mergePulledReminders, parseRemindersJson, serializeReminders } from '@shared/reminders'
 
@@ -389,23 +390,8 @@ export class CalDavSyncEngine {
     selfEmail?: string
   ): Promise<{ pushedCount: number; errorCount: number; lastError?: string }> {
     const adapter = new CalDavAdapter(creds)
-    const calRow = this.db
-      .prepare('SELECT * FROM calendars WHERE id = ?')
-      .get<any>(calendarId)
-
-    if (!calRow) return { pushedCount: 0, errorCount: 0 }
-
-    const calendar: Calendar = {
-      id: calRow.id,
-      accountId: calRow.account_id,
-      name: calRow.name,
-      color: calRow.color,
-      isVisible: calRow.is_visible === 1,
-      isReadOnly: calRow.is_read_only === 1,
-      isDefault: calRow.is_default === 1,
-      createdAt: calRow.created_at,
-      updatedAt: calRow.updated_at
-    }
+    const calendar = new CalendarsRepo(this.db).getCalendarById(calendarId)
+    if (!calendar) return { pushedCount: 0, errorCount: 0 }
 
     // A reply to an invitation is a PUT like any edit here: the server reads
     // the new PARTSTAT and passes it on to the organizer.
@@ -414,7 +400,7 @@ export class CalDavSyncEngine {
         `SELECT * FROM events
          WHERE calendar_id = ? AND (dirty = 1 OR rsvp_pending IS NOT NULL) AND has_conflict = 0`
       )
-      .all<any>(calendarId)
+      .all<EventRow>(calendarId)
 
     // A series whose master is clean but which has a pending occurrence override
     // or cancellation still needs re-PUTting: CalDAV keeps the whole series in
@@ -422,7 +408,7 @@ export class CalDavSyncEngine {
     const dirtyIds = new Set(dirtyRows.map((r) => r.id))
     for (const master of this.eventsRepo.listMastersWithDirtyExceptions(calendarId)) {
       if (dirtyIds.has(master.id)) continue
-      const row = this.db.prepare('SELECT * FROM events WHERE id = ?').get<any>(master.id)
+      const row = this.db.prepare('SELECT * FROM events WHERE id = ?').get<EventRow>(master.id)
       if (row) dirtyRows.push(row)
     }
 
@@ -457,23 +443,23 @@ export class CalDavSyncEngine {
               calendarId: row.calendar_id,
               uid: row.uid,
               title: row.title,
-              notes: row.notes,
-              location: row.location,
+              notes: row.notes ?? undefined,
+              location: row.location ?? undefined,
               dtStartUtc: row.dtstart_utc,
               dtEndUtc: row.dtend_utc,
               tzid: row.tzid,
               allDay: row.all_day === 1,
-              rrule: row.rrule,
-              exdate: row.exdate,
-              color: row.color,
-              meetingUrl: row.meeting_url,
+              rrule: row.rrule ?? undefined,
+              exdate: row.exdate ?? undefined,
+              color: row.color ?? undefined,
+              meetingUrl: row.meeting_url ?? undefined,
               reminders: parseRemindersJson(row.reminders),
               // An unknown guest list is not sent; the server's copy keeps its
               // guests when there is one, and without it the PUT has none.
               attendees: sendsGuests
                 ? withOrganizer(this.eventsRepo.getEventById(row.id)?.event.attendees ?? [], selfEmail)
                 : undefined,
-              etag: row.etag,
+              etag: row.etag ?? undefined,
               dirty: false,
               isDeleted: false,
               createdAt: row.created_at,

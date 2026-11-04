@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import React, { useState, useRef, useEffect, useMemo } from 'react'
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown, Check, Search } from 'lucide-react'
 import { nextEnabledIndex, firstEnabledIndex } from '../../lib/roving-index'
@@ -78,7 +78,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
     )
   }, [options, searchable, searchQuery])
 
-  const updateCoords = () => {
+  const updateCoords = useCallback(() => {
     if (!containerRef.current) return
     const rect = containerRef.current.getBoundingClientRect()
     const popoverWidth = Math.max(rect.width, 220)
@@ -98,7 +98,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
     }
 
     setCoords({ top, left, width: popoverWidth })
-  }
+  }, [align, options.length, searchable])
 
   // Open on whatever is currently selected, so the first arrow press steps off
   // the real value rather than off the top of the list.
@@ -144,7 +144,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
       window.removeEventListener('resize', handleScrollOrResize)
       window.removeEventListener('scroll', handleScrollOrResize, true)
     }
-  }, [isOpen, searchable, align, options.length])
+  }, [isOpen, searchable, updateCoords])
 
   // Click outside & Escape key
   useEffect(() => {
