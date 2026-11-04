@@ -65,6 +65,16 @@ test('stays on its own page, opens no windows, and gets no permissions it does n
   const { page, app } = running
   const appUrl = page.url()
   const windowsBefore = app.windows().length
+  // A web link goes to the browser. Recorded instead of opened: a real browser
+  // started from here kept the app from closing on CI, and on a desktop it
+  // would open the page in the user's own.
+  await app.evaluate(({ shell }) => {
+    const opened: string[] = []
+    ;(globalThis as { openedExternally?: string[] }).openedExternally = opened
+    shell.openExternal = async (url: string) => {
+      opened.push(url)
+    }
+  })
   // Each of these would put a page that is not the app's next to the bridge.
   await page.evaluate(() => {
     window.open('https://example.com/', '_blank')
@@ -73,5 +83,6 @@ test('stays on its own page, opens no windows, and gets no permissions it does n
   await page.waitForTimeout(500)
   expect(page.url()).toBe(appUrl)
   expect(app.windows().length).toBe(windowsBefore)
+  expect(await app.evaluate(() => (globalThis as { openedExternally?: string[] }).openedExternally)).toEqual(['https://example.com/'])
   expect(await page.evaluate(() => navigator.permissions.query({ name: 'geolocation' }).then((p) => p.state))).toBe('denied')
 })
