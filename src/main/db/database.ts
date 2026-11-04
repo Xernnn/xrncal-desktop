@@ -512,6 +512,29 @@ CREATE TABLE IF NOT EXISTS reminder_state (
 `
 
 /**
+ * Moved occurrences pulled over CalDAV never got an all-day flag of their own:
+ * the .ics reader left it out, so one week of an all-day series moved to 10:00
+ * inherited the series' flag. It showed as an all-day event on the day it was
+ * moved to, and a push wrote it back to the server as all-day, losing its time.
+ * The reader sets the flag now; this fixes the rows already stored, the same
+ * way migration 011 did for Google's.
+ */
+export const MIGRATION_022_SQL = `
+UPDATE event_exceptions
+SET all_day = 0
+WHERE all_day IS NULL
+  AND is_cancelled = 0
+  AND dtstart_utc IS NOT NULL
+  AND dtend_utc IS NOT NULL
+  AND master_event_id IN (SELECT id FROM events WHERE all_day = 1)
+  AND NOT (dtstart_utc LIKE '%T00:00:00.000Z' AND dtend_utc LIKE '%T23:59:59.999Z');
+`
+
+/** The newest migration this build knows. Raise it with every new one: a
+ *  restore refuses a backup made by a build with a newer schema. */
+export const SCHEMA_VERSION = 22
+
+/**
  * Execute all schema migrations in order
  */
 export function runMigrations(db: ISqliteDatabase): void {
@@ -690,6 +713,14 @@ export function runMigrations(db: ISqliteDatabase): void {
     db.exec(MIGRATION_021_SQL)
     db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
       21,
+      new Date().toISOString()
+    )
+  }
+
+  if (currentVersion < 22) {
+    db.exec(MIGRATION_022_SQL)
+    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
+      22,
       new Date().toISOString()
     )
   }

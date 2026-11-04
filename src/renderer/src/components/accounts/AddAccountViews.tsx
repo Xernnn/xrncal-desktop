@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { AlertCircle, Check, ExternalLink, Loader2, Palette, RefreshCw, Trash2 } from 'lucide-react'
 import { DateTime } from 'luxon'
 import type { Calendar, CalendarAccount } from '@shared/event-model'
+import type { ProviderStatus } from '@shared/ipc-contract'
 import {
   classifyConnectError,
   groupCalendars,
@@ -21,9 +22,28 @@ import type { AccountsPageProps, AddableProvider } from './accounts-nav'
 
 const PROVIDERS: AddableProvider[] = ['google', 'graph', 'icloud', 'caldav', 'subscription', 'holidays', 'local']
 
-/** OneCalendar's "Account type" page: one choice, each with a line saying what it covers. */
+/**
+ * OneCalendar's "Account type" page: one choice, each with a line saying what
+ * it covers. Google and Microsoft need the OAuth client an official build
+ * carries; a build without one says so here, rather than after "Continue in
+ * browser" with instructions meant for whoever built it.
+ */
 export const ProviderPickView: React.FC<AccountsPageProps> = (props) => {
   const { t } = useTranslation()
+  const [status, setStatus] = useState<ProviderStatus>({ google: true, microsoft: true })
+  useEffect(() => {
+    let alive = true
+    window.xrncal?.auth
+      ?.providerStatus?.()
+      .then((next) => alive && setStatus(next))
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [])
+  const unavailable = (provider: AddableProvider): boolean =>
+    (provider === 'google' && !status.google) || (provider === 'graph' && !status.microsoft)
+
   return (
     <div className="flex flex-col gap-0.5">
       {PROVIDERS.map((provider) => (
@@ -31,7 +51,12 @@ export const ProviderPickView: React.FC<AccountsPageProps> = (props) => {
           key={provider}
           icon={<ProviderMark kind={provider} />}
           title={t(`addAccount.providers.${provider}.title`)}
-          subtitle={t(`addAccount.providers.${provider}.detail`)}
+          subtitle={
+            unavailable(provider)
+              ? t('addAccount.notInThisBuild')
+              : t(`addAccount.providers.${provider}.detail`)
+          }
+          disabled={unavailable(provider)}
           onClick={() =>
             props.push(
               provider === 'holidays'

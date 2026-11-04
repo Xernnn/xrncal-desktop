@@ -3,6 +3,7 @@ import { IPC_CHANNELS } from '@shared/ipc-contract'
 import { isAppSettingKey, type AppSettings } from '@shared/settings-contract'
 import { SettingsRepo } from '../db/repos/settings-repo'
 import { getDatabase } from '../db/database'
+import { applySettingEffect } from '../setting-effects'
 
 export function registerSettingsIpcHandlers(): void {
   const db = getDatabase()
@@ -28,6 +29,8 @@ export function registerSettingsIpcHandlers(): void {
     if (value !== null && !['string', 'number', 'boolean'].includes(typeof value)) {
       throw new Error(`Invalid value for setting ${key}`)
     }
-    return settingsRepo.setSetting(key, value as AppSettings[typeof key])
+    const saved = settingsRepo.setSetting(key, value as AppSettings[typeof key])
+    applySettingEffect(key, value as AppSettings[typeof key])
+    return saved
   })
 }

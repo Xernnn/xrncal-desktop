@@ -216,7 +216,11 @@ export function parseIcsContent(icsContent: string, targetCalendarId: string): P
           location,
           dtStartUtc: startInfo.iso,
           dtEndUtc: normaliseIcsEnd(startInfo, endInfo),
-          tzid: startInfo.tzid
+          tzid: startInfo.tzid,
+          // One week of an all-day series moved to 10:00 is a timed occurrence
+          // (and the other way round). Left out, it inherited the series' flag
+          // and showed as an all-day event on the day it was moved to.
+          allDay: startInfo.allDay
         })
         continue
       }

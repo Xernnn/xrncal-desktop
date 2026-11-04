@@ -60,3 +60,18 @@ test('finds an event without its accents, edits it in its own zone, and recolour
     .poll(async () => page.evaluate(async (eventId) => (await window.xrncal.events.getById(eventId))?.event, id))
     .toMatchObject({ dtStartUtc: '2026-01-15T01:00:00.000Z', tzid: 'Asia/Bangkok', color: '#d50000' })
 })
+
+test('stays on its own page, opens no windows, and gets no permissions it does not use', async () => {
+  const { page, app } = running
+  const appUrl = page.url()
+  const windowsBefore = app.windows().length
+  // Each of these would put a page that is not the app's next to the bridge.
+  await page.evaluate(() => {
+    window.open('https://example.com/', '_blank')
+    window.location.href = 'file:///etc/hostname'
+  })
+  await page.waitForTimeout(500)
+  expect(page.url()).toBe(appUrl)
+  expect(app.windows().length).toBe(windowsBefore)
+  expect(await page.evaluate(() => navigator.permissions.query({ name: 'geolocation' }).then((p) => p.state))).toBe('denied')
+})

@@ -5,9 +5,9 @@ import { sortOccurrencesWithinDay } from '@shared/occurrence-order'
 import HourGutter from '../components/HourGutter'
 import { DateTime } from 'luxon'
 import type { ExpandedOccurrence } from '@shared/event-model'
-import { TODAY_COLOR } from '@shared/mini-calendar-grid'
 import { segmentTimedOccurrence, type TimedSegment } from '@shared/timed-event-segments'
 import { clockMinutesOfDay } from '@shared/clock-minutes'
+import { TODAY_COLOR } from '@shared/mini-calendar-grid'
 import LunarLabel from '../components/LunarLabel'
 import EventPill from '../components/EventPill'
 import TimedEventBlock from '../components/TimedEventBlock'
@@ -19,6 +19,8 @@ import { useSlotDragSelect } from '../dnd/use-slot-drag-select'
 import { useWheelNavigation } from '../hooks/use-wheel-navigation'
 import { useDisplayPreferences, HOUR_HEIGHT_BY_SIZE } from '../context/DisplayPreferencesContext'
 import type { EventEditorDraftPreview } from '../editor/EventEditorDialog'
+import { useToday } from '../hooks/use-now'
+import NowLine from '../components/NowLine'
 
 interface DayViewProps {
   anchorDate: DateTime
@@ -82,7 +84,7 @@ export const DayView: React.FC<DayViewProps> = ({
   const HOUR_HEIGHT = HOUR_HEIGHT_BY_SIZE[hourBlockSize]
   const gridColsClass = 'grid-cols-[68px_minmax(0,1fr)]'
 
-  const today = DateTime.local()
+  const today = useToday()
   const isToday = anchorDate.hasSame(today, 'day')
   const dayKey = anchorDate.toFormat('yyyy-MM-dd')
 
@@ -236,6 +238,7 @@ export const DayView: React.FC<DayViewProps> = ({
               draggable
               isDragging={draggedOccurrenceId === occ.id}
               isSelected={selectedOccurrenceId === occ.id}
+              occurrenceId={occ.id}
               title={occ.title}
               color={occ.color}
               onDragStart={(e) => onDragStart?.(e, occ)}
@@ -258,6 +261,8 @@ export const DayView: React.FC<DayViewProps> = ({
           <HourGutter hours={hours} hourHeight={HOUR_HEIGHT} referenceDay={anchorDate} dense />
           <div
             ref={columnRef}
+            data-day={dayKey}
+            data-hour-height={HOUR_HEIGHT}
             className={`relative min-w-0 cursor-pointer overflow-visible ${isToday ? 'bg-today/5' : ''}`}
             onDragOver={(e) => {
               prepareDropEvent(e)
@@ -309,15 +314,7 @@ export const DayView: React.FC<DayViewProps> = ({
               />
             )}
 
-            {isToday && (
-              <div
-                className="pointer-events-none absolute right-0 left-0 z-20 flex items-center"
-                style={{ top: `${((today.hour * 60 + today.minute) / 60) * HOUR_HEIGHT}px` }}
-              >
-                <div className="-ml-1.5 h-3.5 w-3.5 rounded-full shrink-0" style={{ backgroundColor: TODAY_COLOR }} />
-                <div className="h-0.5 flex-1" style={{ backgroundColor: TODAY_COLOR }} />
-              </div>
-            )}
+            {isToday && <NowLine hourHeight={HOUR_HEIGHT} dotClassName="-ml-1.5 h-3.5 w-3.5" />}
 
             {timedLayouts.map((layout) => (
               <TimedEventBlock

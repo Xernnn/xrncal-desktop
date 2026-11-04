@@ -19,9 +19,9 @@ jobs:
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -65,15 +65,24 @@ jobs:
             target: --linux AppImage --x64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
 
       - run: npm ci
+
+      # The build bakes in the OAuth client ids (electron.vite.config.ts), so
+      # the installers sign in to Google and Microsoft with no setup. Without
+      # these secrets it still builds; sign-in then says it needs the official
+      # download. See "OAuth for an official build" in docs/deployment-guide.md.
       - run: npm run build
+        env:
+          XRNCAL_GOOGLE_CLIENT_ID: ${{ secrets.XRNCAL_GOOGLE_CLIENT_ID }}
+          XRNCAL_GOOGLE_CLIENT_SECRET: ${{ secrets.XRNCAL_GOOGLE_CLIENT_SECRET }}
+          XRNCAL_MICROSOFT_CLIENT_ID: ${{ secrets.XRNCAL_MICROSOFT_CLIENT_ID }}
 
       # Both jobs upload to the same draft, which electron-builder finds by version.
       #

@@ -1,4 +1,5 @@
 import { DateTime } from 'luxon'
+import { startOfWeek } from './week-start'
 
 export type CalendarViewType = 'day' | 'week' | 'month' | 'year' | 'list'
 
@@ -14,7 +15,9 @@ export interface VisibleRange {
 export function getVisibleRange(
   anchorDate: DateTime,
   view: CalendarViewType,
-  locale: string = 'vi'
+  locale: string = 'vi',
+  /** AppSettings.firstDayOfWeek: 0 = Sunday, 1 = Monday, 6 = Saturday. */
+  firstDayOfWeek: number = 1
 ): VisibleRange {
   let start: DateTime = anchorDate
   let end: DateTime = anchorDate
@@ -29,10 +32,8 @@ export function getVisibleRange(
 
   switch (view) {
     case 'month': {
-      const monthStart = anchorDate.startOf('month')
-      // Monday of the first week of the month (ISO standard 1=Mon)
-      const weekDay = monthStart.weekday // 1=Mon..7=Sun
-      start = monthStart.minus({ days: weekDay - 1 }).startOf('day')
+      // The first day of the week the month starts in.
+      start = startOfWeek(anchorDate.startOf('month'), firstDayOfWeek)
       // 42 days total (6 weeks x 7 days)
       end = start.plus({ days: 41 }).endOf('day')
       label = isVi
@@ -41,8 +42,7 @@ export function getVisibleRange(
       break
     }
     case 'week': {
-      const weekDay = anchorDate.weekday
-      start = anchorDate.minus({ days: weekDay - 1 }).startOf('day')
+      start = startOfWeek(anchorDate, firstDayOfWeek)
       end = start.plus({ days: 6 }).endOf('day')
       const startFmt = start.toFormat('dd/MM')
       const endFmt = end.toFormat('dd/MM/yyyy')
@@ -84,4 +84,26 @@ export function getVisibleRange(
     endUtc: end.toUTC().toISO() || end.toISO()!,
     label
   }
+}
+
+/**
+ * The header title for a week: the month it is in ("October 2026"), or both
+ * months when it spans two ("Oct – Nov 2026", "Dec 2026 – Jan 2027"). The
+ * columns already carry the day numbers; what they do not say is the month.
+ */
+export function weekTitle(weekStart: DateTime, locale: string = 'vi'): string {
+  const first = weekStart.setLocale(locale)
+  const last = weekStart.plus({ days: 6 }).setLocale(locale)
+  const isVi = locale === 'vi'
+  if (first.month === last.month) {
+    return isVi ? `Tháng ${first.month}, ${first.year}` : first.toFormat('MMMM yyyy')
+  }
+  if (first.year === last.year) {
+    return isVi
+      ? `Tháng ${first.month} – ${last.month}, ${first.year}`
+      : `${first.toFormat('MMM')} – ${last.toFormat('MMM yyyy')}`
+  }
+  return isVi
+    ? `Tháng ${first.month}, ${first.year} – Tháng ${last.month}, ${last.year}`
+    : `${first.toFormat('MMM yyyy')} – ${last.toFormat('MMM yyyy')}`
 }

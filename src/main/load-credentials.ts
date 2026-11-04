@@ -3,14 +3,42 @@ import { dirname, join } from 'node:path'
 import { app } from 'electron'
 
 /**
- * OAuth client credentials are not bundled with the app. In dev, electron-vite
- * injects them from a project `.env`. In a packaged build there is no such
- * mechanism, so we read a plain `KEY=VALUE` file from a few well-known locations
- * and copy anything not already in the environment.
+ * Where the OAuth client credentials come from, first match wins:
  *
- * Recognized keys: GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET,
- * MICROSOFT_CLIENT_ID, MICROSOFT_CLIENT_SECRET.
+ * 1. the environment;
+ * 2. a plain `KEY=VALUE` file - `xrncal.env` in the data directory or next to
+ *    the executable, or (only when run from source) the project's `.env`;
+ * 3. the ids an official build carries, baked in by electron.vite.config.ts
+ *    from the release workflow's secrets.
+ *
+ * So the official build signs in out of the box, and anyone can still point
+ * their copy at an OAuth client of their own. Google calls a desktop client's
+ * secret "not treated as a secret" (an installed app cannot keep one), and
+ * Microsoft's public clients have none, which is why shipping them is normal.
  */
+const CREDENTIAL_KEYS = [
+  'GOOGLE_OAUTH_CLIENT_ID',
+  'GOOGLE_OAUTH_CLIENT_SECRET',
+  'MICROSOFT_CLIENT_ID',
+  'MICROSOFT_CLIENT_SECRET'
+] as const
+
+type CredentialKey = (typeof CREDENTIAL_KEYS)[number]
+
+function isCredentialKey(key: string): key is CredentialKey {
+  return (CREDENTIAL_KEYS as readonly string[]).includes(key)
+}
+
+/** The ids baked into this build. `typeof` keeps tests (which have no build
+ *  step to define them) from tripping over the undeclared names. */
+function bakedCredentials(): Partial<Record<CredentialKey, string>> {
+  return {
+    GOOGLE_OAUTH_CLIENT_ID: typeof __XRNCAL_GOOGLE_CLIENT_ID__ === 'string' ? __XRNCAL_GOOGLE_CLIENT_ID__ : '',
+    GOOGLE_OAUTH_CLIENT_SECRET:
+      typeof __XRNCAL_GOOGLE_CLIENT_SECRET__ === 'string' ? __XRNCAL_GOOGLE_CLIENT_SECRET__ : '',
+    MICROSOFT_CLIENT_ID: typeof __XRNCAL_MICROSOFT_CLIENT_ID__ === 'string' ? __XRNCAL_MICROSOFT_CLIENT_ID__ : ''
+  }
+}
 export function credentialsFilePath(): string {
   return join(app.getPath('userData'), 'xrncal.env')
 }
@@ -19,7 +47,9 @@ export function loadCredentialsFile(): void {
   const candidates = [
     credentialsFilePath(),
     join(dirname(app.getPath('exe')), 'xrncal.env'),
-    join(process.cwd(), '.env')
+    // The working directory is wherever the app happened to be started from;
+    // an installed build has no business reading a .env out of it.
+    ...(app.isPackaged ? [] : [join(process.cwd(), '.env')])
   ]
 
   for (const file of candidates) {
@@ -39,13 +69,29 @@ export function loadCredentialsFile(): void {
         ) {
           value = value.slice(1, -1)
         }
-        if (key && !process.env[key]) {
+        // Only the four credentials: copying every line into the environment
+        // let a stray file set anything at all for this process and the
+        // processes it starts (the updater, a relaunch).
+        if (isCredentialKey(key) && !process.env[key]) {
           process.env[key] = value
         }
       }
     } catch {
       // An unreadable file is skipped and the next location is tried.
     }
+  }
+
+  // A provider's baked client is used whole or not at all: a file naming its
+  // own Google id must not be paired with the baked secret of another client.
+  const baked = bakedCredentials()
+  if (!process.env.GOOGLE_OAUTH_CLIENT_ID && baked.GOOGLE_OAUTH_CLIENT_ID) {
+    process.env.GOOGLE_OAUTH_CLIENT_ID = baked.GOOGLE_OAUTH_CLIENT_ID
+    process.env.GOOGLE_OAUTH_CLIENT_SECRET = baked.GOOGLE_OAUTH_CLIENT_SECRET ?? ''
+  }
+  if (!process.env.MICROSOFT_CLIENT_ID && baked.MICROSOFT_CLIENT_ID) {
+    process.env.MICROSOFT_CLIENT_ID = baked.MICROSOFT_CLIENT_ID
+    // A public client has no secret; a stray one would be sent with it.
+    delete process.env.MICROSOFT_CLIENT_SECRET
   }
 }
 

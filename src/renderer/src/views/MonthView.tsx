@@ -14,6 +14,8 @@ import EventPill from '../components/EventPill'
 import DayPeekPopover, { type DayPeekData } from '../components/DayPeekPopover'
 import { prepareDropEvent, type CalendarDropTarget } from '../dnd/drop-target'
 import { weekdayShortLabels } from '../i18n/weekday-labels'
+import { useToday } from '../hooks/use-now'
+import { isoWeekOfRow, startOfWeek, weekdayOrder } from '@shared/week-start'
 
 interface MonthViewProps {
   anchorDate: DateTime
@@ -83,7 +85,8 @@ const MonthDayCell: React.FC<MonthDayCellProps> = ({
   const { timeFormat } = useDisplayPreferences()
   const dayKey = day.toFormat('yyyy-MM-dd')
   const isCurrentMonth = day.month === anchorDate.month
-  const isToday = day.hasSame(DateTime.local(), 'day')
+  const today = useToday()
+  const isToday = day.hasSame(today, 'day')
   const isMonthStart = day.day === 1
   const totalItems = dayOccurrences.length
   const fitsAll = totalItems <= maxVisible
@@ -104,6 +107,8 @@ const MonthDayCell: React.FC<MonthDayCellProps> = ({
 
   return (
     <div
+      data-day={dayKey}
+      data-all-day-slot
       onClick={() => onSelectDate?.(day)}
       onDragOver={(e) => {
         prepareDropEvent(e)
@@ -164,6 +169,7 @@ const MonthDayCell: React.FC<MonthDayCellProps> = ({
               draggable
               isDragging={draggedOccurrenceId === occ.id}
               isSelected={selectedOccurrenceId === occ.id}
+              occurrenceId={occ.id}
               title={occ.title}
               color={occ.color}
               time={occ.allDay ? undefined : formatClockTime(occTime, timeFormat)}
@@ -254,9 +260,8 @@ export const MonthView: React.FC<MonthViewProps> = ({
     return () => ro.disconnect()
   }, [])
 
-  const monthStart = anchorDate.startOf('month')
-  const startDayOfWeek = monthStart.weekday
-  const gridStart = monthStart.minus({ days: startDayOfWeek - 1 }).startOf('day')
+  const { firstDayOfWeek: weekStart } = useDisplayPreferences()
+  const gridStart = startOfWeek(anchorDate.startOf('month'), weekStart)
 
   const days: DateTime[] = []
   for (let i = 0; i < 42; i++) {
@@ -282,7 +287,8 @@ export const MonthView: React.FC<MonthViewProps> = ({
     return map
   }, [occurrences])
 
-  const headers = weekdayShortLabels(t, 1)
+  const headers = weekdayShortLabels(t, weekStart)
+  const weekendColumns = weekdayOrder(weekStart).map((d) => d >= 6)
   const gridColumnsClass = showWeekNumbers
     ? 'grid-cols-[28px_repeat(7,minmax(0,1fr))]'
     : 'grid-cols-[repeat(7,minmax(0,1fr))]'
@@ -298,7 +304,7 @@ export const MonthView: React.FC<MonthViewProps> = ({
       >
         {showWeekNumbers && <div />}
         {headers.map((h, idx) => (
-          <div key={h} className={`min-w-0 truncate ${idx >= 5 ? 'text-today' : ''}`}>
+          <div key={h} className={`min-w-0 truncate ${weekendColumns[idx] ? 'text-today' : ''}`}>
             {h}
           </div>
         ))}
@@ -308,7 +314,6 @@ export const MonthView: React.FC<MonthViewProps> = ({
       <div ref={weeksGridRef} className="grid min-h-0 flex-1 grid-rows-6 divide-y divide-hairline">
         {Array.from({ length: 6 }).map((_, weekIdx) => {
           const weekDays = days.slice(weekIdx * 7, weekIdx * 7 + 7)
-          const firstDayOfWeek = weekDays[0]
 
           return (
             <div
@@ -317,7 +322,7 @@ export const MonthView: React.FC<MonthViewProps> = ({
             >
               {showWeekNumbers && (
                 <div className="flex items-center justify-center bg-app min-w-0">
-                  <WeekNumber weekNumber={firstDayOfWeek.weekNumber} />
+                  <WeekNumber weekNumber={isoWeekOfRow(weekDays[0])} />
                 </div>
               )}
 

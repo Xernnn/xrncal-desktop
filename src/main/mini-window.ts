@@ -1,10 +1,12 @@
 import { BrowserWindow, screen, ipcMain } from 'electron'
+import { devServerUrl, lockDownContents } from './web-contents-guard'
 import { join } from 'node:path'
 import { IPC_CHANNELS } from '@shared/ipc-contract'
 import { getDatabase } from './db/database'
 import { EventsRepo } from './db/repos/events-repo'
 import { CalendarsRepo } from './db/repos/calendars-repo'
 import { DateTime } from 'luxon'
+import { windowBackground } from './window-background'
 
 let miniWindow: BrowserWindow | null = null
 /**
@@ -20,9 +22,6 @@ function createMiniWindow(): BrowserWindow {
     return miniWindow
   }
 
-  // Dark is the default theme; match the dark canvas colour to avoid a flash.
-  const initialBg = '#2b2d31'
-
   miniWindow = new BrowserWindow({
     width: 380,
     height: 560,
@@ -33,7 +32,7 @@ function createMiniWindow(): BrowserWindow {
     resizable: true,
     alwaysOnTop: true,
     skipTaskbar: true,
-    backgroundColor: initialBg,
+    backgroundColor: windowBackground(),
     title: 'xrncal Mini',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -44,9 +43,14 @@ function createMiniWindow(): BrowserWindow {
     }
   })
 
+  // The same bridge as the main window, so the same locks: no new windows, no
+  // navigating away from the app.
+  lockDownContents(miniWindow.webContents)
+
   // Load URL with #mini hash
-  if (process.env['ELECTRON_RENDERER_URL']) {
-    miniWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#mini`)
+  const devServer = devServerUrl()
+  if (devServer) {
+    miniWindow.loadURL(`${devServer}#mini`)
   } else {
     miniWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: 'mini' })
   }

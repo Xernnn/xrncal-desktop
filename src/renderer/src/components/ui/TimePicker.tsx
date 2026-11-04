@@ -132,10 +132,10 @@ export const TimePicker: React.FC<TimePickerProps> = ({
   className = '',
   align = 'left'
 }) => {
-  const { timeFormat, dragSnapMinutes } = useDisplayPreferences()
-  // Same grid the calendar snaps to unless a caller insists otherwise, so the
-  // times offered here match the ones a drag can produce.
-  const step = stepMinutes ?? dragSnapMinutes
+  const { timeFormat, timePickerStepMinutes } = useDisplayPreferences()
+  // Its own setting, not the drag step: some want a short list here and fine
+  // steps on the grid, or the reverse.
+  const step = stepMinutes ?? timePickerStepMinutes
   const [isOpen, setIsOpen] = useState(false)
   const [inputValue, setInputValue] = useState(value ? formatClockTimeStr(value, timeFormat) : '')
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null)

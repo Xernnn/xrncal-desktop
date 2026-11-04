@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import { IPC_CHANNELS, type ConnectCalDavInput } from '@shared/ipc-contract'
+import { IPC_CHANNELS, type ConnectCalDavInput, type ProviderStatus } from '@shared/ipc-contract'
 import { getDatabase } from '../db/database'
 import { credentialsFilePath, isConfigured } from '../load-credentials'
 import { GoogleOAuthManager } from '../oauth/google-oauth'
@@ -56,8 +56,16 @@ export function registerAuthSyncIpcHandlers(): void {
   ipcMain.removeHandler(IPC_CHANNELS.AUTH.DISCONNECT_CALDAV)
   ipcMain.removeHandler(IPC_CHANNELS.AUTH.LIST_ACCOUNTS)
   ipcMain.removeHandler(IPC_CHANNELS.AUTH.DETACH_ACCOUNT)
+  ipcMain.removeHandler(IPC_CHANNELS.AUTH.PROVIDER_STATUS)
   ipcMain.removeHandler(IPC_CHANNELS.SYNC.TRIGGER_NOW)
   ipcMain.removeHandler(IPC_CHANNELS.SYNC.GET_STATUS)
+
+  // The account picker asks first, so a build without an OAuth client says
+  // so up front instead of failing after "Continue in browser".
+  ipcMain.handle(IPC_CHANNELS.AUTH.PROVIDER_STATUS, (): ProviderStatus => ({
+    google: isConfigured(process.env.GOOGLE_OAUTH_CLIENT_ID),
+    microsoft: isConfigured(process.env.MICROSOFT_CLIENT_ID)
+  }))
 
   // Google OAuth
   ipcMain.handle(IPC_CHANNELS.AUTH.CONNECT_GOOGLE, async () => {

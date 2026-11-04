@@ -1,5 +1,5 @@
-import { DateTime } from 'luxon'
-import { rrulestr } from 'rrule'
+import { DateTime, IANAZone } from 'luxon'
+import { boundedBetween, type ExpansionBudget } from './bounded-rrule'
 import type { CalendarEvent, EventException, ExpandedOccurrence } from './event-model'
 import { resolveLunarOccurrence } from './lunar-vietnam'
 
@@ -9,13 +9,15 @@ import { resolveLunarOccurrence } from './lunar-vietnam'
  *
  * `coveredYears` lists Gregorian years for which a lunar master already has a
  * materialized standalone instance; those years are skipped so nothing draws twice.
+ * `budget` is shared by the series of one calendar in one query (see bounded-rrule.ts).
  */
 export function expandOccurrences(
   event: CalendarEvent,
   exceptions: EventException[] = [],
   rangeStartUtc: string,
   rangeEndUtc: string,
-  coveredYears?: Set<number>
+  coveredYears?: Set<number>,
+  budget?: ExpansionBudget
 ): ExpandedOccurrence[] {
   if (event.isDeleted) {
     return []
@@ -63,7 +65,7 @@ export function expandOccurrences(
     return []
   }
 
-  return expandRruleOccurrences(event, exceptions, rangeStart, rangeEnd)
+  return expandRruleOccurrences(event, exceptions, rangeStart, rangeEnd, budget)
 }
 
 /**
@@ -141,7 +143,8 @@ function expandRruleOccurrences(
   event: CalendarEvent,
   exceptions: EventException[],
   rangeStart: DateTime,
-  rangeEnd: DateTime
+  rangeEnd: DateTime,
+  budget?: ExpansionBudget
 ): ExpandedOccurrence[] {
   const rrule = event.rrule
   if (!rrule) return []
@@ -192,7 +195,16 @@ function expandRruleOccurrences(
     // times dressed as UTC, let it do the calendar arithmetic, then read each
     // result's fields back as wall-clock in the real zone. Luxon resolves the
     // offset per occurrence, which is what makes the series hold its clock time.
-    const zone = event.tzid || 'utc'
+    //
+    // All-day dates are floating, parked at UTC midnight, so they repeat on the
+    // UTC calendar. A zone Luxon cannot resolve - an .ics date reads back as
+    // 'floating' - made every date invalid, the rule threw, and the series fell
+    // back to its first occurrence alone: every all-day series pulled over
+    // CalDAV (birthdays, payments) showed once. A timed series in such a zone
+    // was read in this computer's zone, so that is where it repeats; one with
+    // no zone at all repeats in UTC, as it always has.
+    const zone =
+      event.allDay || !event.tzid ? 'utc' : IANAZone.isValidZone(event.tzid) ? event.tzid : 'local'
     const toWallClockUtc = (dt: DateTime): Date =>
       new Date(
         Date.UTC(
@@ -228,8 +240,6 @@ function expandRruleOccurrences(
       ? rrule
       : `DTSTART:${dtstartUtcStr}\nRRULE:${rrule}`
 
-    const rule = rrulestr(ruleString, { dtstart: dtstartWall })
-
     // Expand between rangeStart and rangeEnd, in the same wall-clock space.
     // Expand a bit earlier/later to account for duration overlap.
     const searchStart = toWallClockUtc(
@@ -237,7 +247,8 @@ function expandRruleOccurrences(
     )
     const searchEnd = toWallClockUtc(rangeEnd.setZone(zone))
 
-    const dates = rule.between(searchStart, searchEnd, true).map(fromWallClockUtc)
+    // Not rrule's own between(): a rule can cost hours or never finish there.
+    const dates = boundedBetween(ruleString, dtstartWall, searchStart, searchEnd, budget).map(fromWallClockUtc)
 
     for (const occurrenceStart of dates) {
       const originalIso = occurrenceStart.toISO()!
@@ -311,7 +322,8 @@ function expandRruleOccurrences(
       }
     }
   } catch {
-    // Fallback: return master instance if it overlaps
+    // Fallback - a rule rrule cannot parse, or one bounded-rrule.ts will not
+    // expand (sub-daily, too long): the master instance alone, if it overlaps.
     if (masterStart <= rangeEnd && masterEnd >= rangeStart) {
       results.push({
         id: `${event.id}_${event.dtStartUtc}`,

@@ -1,4 +1,5 @@
-import { app, ipcMain, dialog, BrowserWindow } from 'electron'
+import { app, ipcMain, dialog, BrowserWindow, shell } from 'electron'
+import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { extname, join } from 'node:path'
 import { IPC_CHANNELS, type AppLocale, type BackupResult } from '@shared/ipc-contract'
@@ -10,6 +11,9 @@ import { registerSubscriptionIpcHandlers } from './ipc/subscriptions-ipc'
 import { setMainLocale, loadMainLocaleFromDb, getMainLocale } from './i18n-main'
 import { getDatabase } from './db/database'
 import { backupDatabaseTo, defaultBackupFileName } from './db/backup'
+import { restoreDatabaseFromBackup } from './restore-database'
+import { refreshTrayMenu } from './tray'
+import { logDirectory, logFilePath } from './log'
 
 let currentLocale: AppLocale = 'en'
 
@@ -24,6 +28,9 @@ export function registerIpcHandlers(): void {
   ipcMain.removeHandler(IPC_CHANNELS.APP.GET_PLATFORM)
   ipcMain.removeHandler(IPC_CHANNELS.APP.PICK_BACKGROUND_IMAGE)
   ipcMain.removeHandler(IPC_CHANNELS.APP.BACKUP_DATABASE)
+  ipcMain.removeHandler(IPC_CHANNELS.APP.RESTORE_DATABASE)
+  ipcMain.removeHandler(IPC_CHANNELS.APP.SHOW_LOG_FILE)
+  ipcMain.removeHandler(IPC_CHANNELS.APP.QUIT)
 
   // Return current application version
   ipcMain.handle(IPC_CHANNELS.APP.GET_VERSION, () => {
@@ -40,6 +47,7 @@ export function registerIpcHandlers(): void {
     if (locale === 'vi' || locale === 'en') {
       currentLocale = locale
       setMainLocale(locale)
+      refreshTrayMenu()
       return true
     }
     return false
@@ -89,6 +97,26 @@ export function registerIpcHandlers(): void {
     } catch (err: any) {
       return { success: false, message: err?.message || String(err) }
     }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.APP.RESTORE_DATABASE, () => restoreDatabaseFromBackup())
+
+  // For a bug report: the file is in the profile folder, which is hidden.
+  ipcMain.handle(IPC_CHANNELS.APP.SHOW_LOG_FILE, async () => {
+    const file = logFilePath()
+    const dir = logDirectory()
+    if (file && existsSync(file)) {
+      shell.showItemInFolder(file)
+      return true
+    }
+    if (!dir) return false
+    return (await shell.openPath(dir)) === ''
+  })
+
+  // Closing the window only hides xrncal in the tray; this is the way out
+  // from inside it (Ctrl+Q).
+  ipcMain.handle(IPC_CHANNELS.APP.QUIT, () => {
+    app.quit()
   })
 
   // Register domain calendar, event, settings, auth, sync, and holiday IPC handlers

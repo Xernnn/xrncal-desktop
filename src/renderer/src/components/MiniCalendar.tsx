@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import type { ExpandedOccurrence } from '@shared/event-model'
 import { buildMiniCalendarDays, DEFAULT_EVENT_COLOR, TODAY_COLOR } from '@shared/mini-calendar-grid'
 import { weekdayShortLabels } from '../i18n/weekday-labels'
+import { useToday } from '../hooks/use-now'
 
 interface MiniCalendarProps {
   anchorDate: DateTime
@@ -25,7 +26,7 @@ export const MiniCalendar: React.FC<MiniCalendarProps> = ({
   onNextMonth
 }) => {
   const { t, i18n } = useTranslation()
-  const today = DateTime.local()
+  const today = useToday()
   const days = React.useMemo(
     () => buildMiniCalendarDays(anchorDate, firstDayOfWeek),
     [anchorDate, firstDayOfWeek]

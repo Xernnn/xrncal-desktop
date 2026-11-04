@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import { resources } from '../src/renderer/src/i18n'
 
+/** Every renderer source file as text (Vite's glob: this test is typechecked
+ *  with the renderer, which has no Node types to read files with). */
+const rendererSources = import.meta.glob('../src/renderer/src/**/*.{ts,tsx}', {
+  query: '?raw',
+  import: 'default',
+  eager: true
+}) as Record<string, string>
+
 /**
  * `vi` and `en` are meant to stay in lockstep. Nothing enforced that, so a key
  * added to one and forgotten in the other silently fell back to English (or to
@@ -32,5 +40,23 @@ describe('i18n resources', () => {
       })
       expect(empties, `empty strings in "${locale}"`).toEqual([])
     }
+  })
+
+  // A key the code asks for that no locale has renders as the raw key. The
+  // sync-conflict screen did exactly that after its strings were dropped in a
+  // cleanup - nothing failed, because nothing checked this direction.
+  it('has every key the renderer asks for by name', () => {
+    const lookup = (key: string): unknown =>
+      key.split('.').reduce<any>((node, part) => (node == null ? node : node[part]), resources.en.translation)
+    const missing: string[] = []
+    expect(Object.keys(rendererSources).length).toBeGreaterThan(50)
+    for (const [file, source] of Object.entries(rendererSources)) {
+      for (const match of source.matchAll(/\bt\(\s*'([a-zA-Z0-9_.]+)'/g)) {
+        const key = match[1]
+        const found = [key, `${key}_one`, `${key}_other`].some((k) => typeof lookup(k) === 'string')
+        if (!found) missing.push(`${file.split('src/renderer/src/')[1]}: ${key}`)
+      }
+    }
+    expect(missing).toEqual([])
   })
 })

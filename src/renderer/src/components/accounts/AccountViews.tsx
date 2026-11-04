@@ -32,11 +32,15 @@ export const NavRow: React.FC<{
   subtitle?: React.ReactNode
   onClick: () => void
   trailing?: React.ReactNode
-}> = ({ icon, title, subtitle, onClick, trailing }) => (
+  disabled?: boolean
+}> = ({ icon, title, subtitle, onClick, trailing, disabled = false }) => (
   <button
     type="button"
     onClick={onClick}
-    className="gc-focus-ring flex w-full items-center gap-3 px-2.5 py-2.5 text-left transition-colors hover:bg-hover"
+    disabled={disabled}
+    className={`gc-focus-ring flex w-full items-center gap-3 px-2.5 py-2.5 text-left transition-colors ${
+      disabled ? 'cursor-not-allowed opacity-50' : 'hover:bg-hover'
+    }`}
     style={{ borderRadius: 'var(--radius-control)' }}
   >
     {icon}
@@ -45,7 +49,7 @@ export const NavRow: React.FC<{
       {subtitle && <span className="block truncate text-xs text-muted">{subtitle}</span>}
     </span>
     {trailing}
-    <ChevronRight className="h-4 w-4 shrink-0 text-muted" />
+    {!disabled && <ChevronRight className="h-4 w-4 shrink-0 text-muted" />}
   </button>
 )
 

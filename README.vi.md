@@ -12,9 +12,9 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Windows-10%2F11-1A73E8?style=flat-square" alt="Windows">
   <img src="https://img.shields.io/badge/Linux-AppImage-34C77B?style=flat-square" alt="Linux">
-  <img src="https://img.shields.io/badge/Electron-35-47848F?style=flat-square" alt="Electron">
+  <img src="https://img.shields.io/badge/Electron-44-47848F?style=flat-square" alt="Electron">
   <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square" alt="React">
-  <img src="https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square" alt="TypeScript">
+  <img src="https://img.shields.io/badge/TypeScript-6-3178C6?style=flat-square" alt="TypeScript">
   <img src="https://img.shields.io/badge/license-MIT-6C757D?style=flat-square" alt="MIT">
 </p>
 
@@ -45,7 +45,7 @@ Phần lớn app lịch là **client của một dịch vụ**, hoặc là **tab
 
 Đây là lý do app này tồn tại.
 
-- Nhãn âm lịch hiện trên **mọi view** — ô ngày trong Tháng, header Tuần, nhóm ngày trong Danh sách. Mùng 1 âm được tô riêng.
+- Nhãn âm lịch hiện trên **mọi view** — ô ngày trong Tháng, header Tuần và Ngày, nhóm ngày trong Danh sách, lưới Năm. Mùng 1 và rằm được đánh dấu, mỗi ngày một màu và một hình riêng.
 - **Giỗ / ngày âm lặp hằng năm** là một loại sự kiện thật sự: bạn khai báo *"12 tháng 8 âm"*, app tự giải ra ngày dương cho **từng năm**, xử lý cả tháng nhuận và tháng thiếu 29 ngày.
 - Google Calendar / Outlook / Apple Calendar không có quy tắc lặp theo lịch âm. Cách duy nhất ở đó là tự tra rồi tạo tay từng năm một — sai một năm là trượt cả chuỗi.
 - Giỗ được **materialize** thành sự kiện thường trong lịch có sync, nên điện thoại và đồng nghiệp vẫn thấy, dù họ không dùng xrncal.
@@ -92,7 +92,7 @@ Năm view đều là component React tự viết, không dùng thư viện lịc
 </td>
 <td width="50%" valign="top">
 <img src="docs/assets/screenshots/list.png" alt="View Danh sách">
-<p align="center"><sub><strong>Danh sách</strong> — gom theo ngày, kèm ngày âm bên phải</sub></p>
+<p align="center"><sub><strong>Danh sách</strong> — gom theo ngày, ngày âm ngay cạnh mỗi ngày</sub></p>
 </td>
 </tr>
 <tr>
@@ -113,7 +113,16 @@ Năm view đều là component React tự viết, không dùng thư viện lịc
 
 ## Cài đặt
 
-Yêu cầu build: **Node.js 23.4+** (khuyên dùng 24 - phần test dùng `node:sqlite` có sẵn trong Node) và Git. Chưa có bản release dựng sẵn — hiện tại build từ nguồn. Khi đã có release trên GitHub, bản đã cài sẽ tự cập nhật (tắt ở Cài đặt → Chung → *Kiểm tra bản cập nhật*).
+Tải bản mới nhất ở **[Releases](https://github.com/Xernnn/xrncal-desktop/releases/latest)**:
+
+- **Windows 10/11:** `xrncal Setup <phiên bản>.exe`. Khi bộ cài chưa được ký số, SmartScreen sẽ hỏi trước: *More info → Run anyway*.
+- **Linux:** `xrncal-<phiên bản>.AppImage`. Cho phép chạy (`chmod +x`, hoặc *Properties → Allow executing*) rồi mở.
+
+Lần mở đầu tiên có ba bước ngắn: ngôn ngữ, vài thiết lập cơ bản (âm lịch, ngày lễ, khởi động cùng máy) và các lịch muốn thêm vào. Bản đã cài tự cập nhật khi có release mới; tắt ở *Cài đặt → Chung → Kiểm tra bản cập nhật*.
+
+### Tự build
+
+Cần **Node.js 23.4+** (khuyên dùng 24 - phần test dùng `node:sqlite` có sẵn trong Node) và Git.
 
 ```bash
 git clone https://github.com/Xernnn/xrncal-desktop.git
@@ -121,7 +130,7 @@ cd xrncal-desktop
 npm install
 ```
 
-### Linux — cài thành app bấm được từ menu
+#### Linux — cài thành app bấm được từ menu
 
 ```bash
 npm run app:install
@@ -137,7 +146,7 @@ chmod +x dist/xrncal-*.AppImage
 ./dist/xrncal-*.AppImage
 ```
 
-### Windows
+#### Windows
 
 ```bash
 npm run pack:win       # -> dist/  (NSIS installer, x64)
@@ -145,7 +154,7 @@ npm run pack:win       # -> dist/  (NSIS installer, x64)
 
 Chạy file `.exe` trong `dist/` để cài. Không có bản macOS.
 
-### Chạy thẳng bản dev
+#### Chạy thẳng bản dev
 
 ```bash
 npm run dev            # electron-vite, renderer hot-reload
@@ -153,9 +162,9 @@ npm run dev            # electron-vite, renderer hot-reload
 
 ### Kết nối tài khoản
 
-CalDAV (Nextcloud, Synology, …) chỉ cần URL + tài khoản, **không cần cấu hình gì thêm**.
+Với bản tải từ Releases, **Google và Microsoft đăng nhập qua trình duyệt, không cần cấu hình gì** — bản chính thức có sẵn OAuth client của xrncal. CalDAV (Nextcloud, Synology, Fastmail, …) và iCloud chỉ cần địa chỉ + tài khoản (iCloud dùng mật khẩu dành riêng cho ứng dụng).
 
-Google và Microsoft cần OAuth client **của chính bạn** — app không đóng gói sẵn client secret. Chép [`.env.example`](.env.example) thành `.env` rồi điền:
+Bản **tự build** không có OAuth client: mục Google và Microsoft trong danh sách tài khoản sẽ ghi "Cần bản tải chính thức của xrncal". Muốn đăng nhập từ bản tự build thì dùng OAuth client của chính bạn: chép [`.env.example`](.env.example) thành `.env` rồi điền:
 
 ```ini
 GOOGLE_OAUTH_CLIENT_ID=
@@ -164,7 +173,7 @@ MICROSOFT_CLIENT_ID=
 MICROSOFT_CLIENT_SECRET=
 ```
 
-Với bản đã đóng gói, đặt cùng nội dung đó vào `xrncal.env` trong thư mục dữ liệu (xem bên dưới). Chưa điền thì nút kết nối Google / Microsoft bị tắt và app chạy hoàn toàn local — đó là hành vi đúng, không phải lỗi. Chi tiết đăng ký OAuth: [`docs/deployment-guide.md`](docs/deployment-guide.md).
+Với bản tự đóng gói, đặt cùng nội dung đó vào `xrncal.env` trong thư mục dữ liệu (xem bên dưới). Mọi thứ khác — lịch trên máy, CalDAV, iCloud, lịch đăng ký bằng liên kết — vẫn chạy mà không cần chúng. Đăng ký OAuth client và các secret mà workflow release dùng để build: [`docs/deployment-guide.md`](docs/deployment-guide.md).
 
 ### Dữ liệu nằm ở đâu
 
@@ -173,7 +182,9 @@ Với bản đã đóng gói, đặt cùng nội dung đó vào `xrncal.env` tro
 | Linux | `~/.config/xrncal/xrncal.sqlite` |
 | Windows | `%APPDATA%\xrncal\xrncal.sqlite` |
 
-Sao lưu bất cứ lúc nào bằng **Settings → Sao lưu cơ sở dữ liệu** (ghi ra một file `.sqlite` mở được bằng bất kỳ công cụ SQLite nào).
+Mỗi tuần một lần, xrncal cũng tự chép nó vào thư mục `backups` ngay bên cạnh và giữ lại bốn bản gần nhất (**Cài đặt → Chung → Tự động sao lưu**). Bạn có thể tự sao lưu bất cứ lúc nào bằng **Cài đặt → Sao lưu dữ liệu** (ghi ra một file `.sqlite` mở được bằng bất kỳ công cụ SQLite nào), và khôi phục bằng **Cài đặt → Khôi phục từ bản sao lưu**, hộp chọn tệp sẽ mở sẵn ở thư mục sao lưu tự động (dữ liệu hiện tại được lưu vào đó trước). Chỉ tài khoản người dùng của bạn đọc được các bản sao lưu.
+
+Khi có sự cố, **Cài đặt → Mở tệp nhật ký** mở thư mục chứa `xrncal.log`: lần khởi động, lỗi đồng bộ và lúc đồng bộ chạy lại, các bản sao lưu và lỗi cập nhật. Tệp này không bao giờ ghi nội dung sự kiện hay mật khẩu.
 
 > Nâng cấp từ bản **Gone Calendar** cũ: lần chạy đầu tiên xrncal tự chép dữ liệu từ `gone-calendar` sang. Profile cũ vẫn được giữ nguyên tại chỗ.
 
@@ -187,21 +198,22 @@ Sao lưu bất cứ lúc nào bằng **Settings → Sao lưu cơ sở dữ liệ
 
 **Lịch**
 - 5 view: Ngày, Tuần, Tháng, Năm, Danh sách
+- Bấm vào ô trống hoặc sự kiện để mở cửa sổ sự kiện đầy đủ, hoặc nút Tạo trên thanh tiêu đề; chuột phải vào sự kiện để sửa, nhân bản hoặc xoá, hoặc vào một ngày để tạo sự kiện ở đó
 - Kéo-thả, resize mép, quét chọn khoảng giờ
-- Bước snap 15 / 30 / 60 phút
+- Bước snap 15 / 30 / 60 phút, và bước riêng cho danh sách giờ trong cửa sổ sự kiện
 - Lặp lại: lần này / từ đây trở đi / cả chuỗi
 - `Ctrl+Z` hoàn tác lần di chuyển, đổi độ dài, sao chép hoặc xoá
-- Sự kiện nhiều ngày, cả ngày, số tuần ISO
+- Sự kiện nhiều ngày, cả ngày, số tuần ISO; tuần bắt đầu từ Thứ hai, Chủ nhật hoặc Thứ bảy
 - Cột giờ múi thứ hai cho lịch xuyên quốc gia
 
 </td>
 <td width="50%" valign="top">
 
 **Việt Nam & ngôn ngữ**
-- Âm lịch trên Tháng / Tuần / Danh sách
+- Âm lịch trên mọi view; đánh dấu mùng 1, rằm và Tết
 - Giỗ lặp theo năm âm, xử lý tháng nhuận, nhắc trước một ngày
 - Lịch lễ Việt Nam và quốc tế, subscribe 1 cú bấm
-- Giao diện tiếng Việt và English
+- Giao diện tiếng Việt và English — bản mới cài theo ngôn ngữ, kiểu giờ và ngày đầu tuần của máy
 
 </td>
 </tr>
@@ -224,12 +236,13 @@ Sao lưu bất cứ lúc nào bằng **Settings → Sao lưu cơ sở dữ liệ
 <td width="50%" valign="top">
 
 **Chỗ làm việc**
+- Vẫn chạy ở khay hệ thống khi đóng cửa sổ, và có thể khởi động cùng máy, nên nhắc nhở luôn kêu (`Ctrl+Q` để thoát)
 - Cửa sổ mini luôn-trên-cùng từ khay hệ thống
 - Nhắc nhở cho từng sự kiện (kể cả cả ngày), có báo lại và nút Tham gia
 - Theme sáng / tối / theo hệ thống, ảnh nền tuỳ chỉnh
 - Tìm kiếm không cần gõ dấu ("hop" ra "họp"), gợi ý tiêu đề từ lịch sử của bạn
-- Mỗi sự kiện có thể có múi giờ và màu riêng
-- Nhập / xuất `.ics`, sao lưu database
+- Mỗi sự kiện có thể có múi giờ và màu riêng, giữ nguyên khi đồng bộ CalDAV hay xuất .ics; sự kiện lưu không kèm múi giờ (như bản xuất của Google) mở theo múi giờ nơi bạn ở vào ngày đó
+- Nhập `.ics` (trong Cài đặt, kéo tệp vào cửa sổ, hoặc *Mở bằng xrncal*) và xuất từng lịch; sao lưu và khôi phục dữ liệu
 - Gỡ tài khoản mà vẫn giữ lại sự kiện
 
 </td>
@@ -260,6 +273,7 @@ các sự kiện đang hiển thị; mọi phím còn lại tác động lên s�
 | `,` | Cài đặt |
 | `?` hoặc `F1` | Bảng phím tắt |
 | `Esc` | Đóng hộp thoại, hoặc bỏ chọn |
+| `Ctrl+Q` | Thoát (đóng cửa sổ thì xrncal vẫn chạy ở khay) |
 
 Trong cửa sổ sự kiện, `Tab` đi qua từng ô và mọi bộ chọn đều mở được bằng bàn
 phím: `↑` `↓` di chuyển trong danh sách, `Enter` chọn mục đang tô sáng; riêng
@@ -312,12 +326,12 @@ Renderer **không bao giờ** import `src/main`; IPC là cây cầu duy nhất, 
 ```bash
 npm run dev            # chạy app, hot-reload renderer
 npm run typecheck      # tsc cho main + renderer (chạy trước khi commit)
-npm run lint           # ESLint 9 flat config
+npm run lint           # ESLint 10 flat config
 npm run test           # Vitest — chạy trong Node, không cần Electron binary
 npm run build          # bundle production -> out/
 ```
 
-Chạy một file test: `npx vitest run tests/expand-occurrences.test.ts`. CI chạy lint + typecheck + test + build trên mọi push và PR.
+Chạy một file test: `npx vitest run tests/expand-occurrences.test.ts`. CI chạy lint + typecheck + test + build trên mọi push và PR, và chạy thử bản build bằng Playwright (`npm run test:e2e`).
 
 | Tài liệu | Nội dung |
 | --- | --- |
@@ -334,7 +348,7 @@ Chạy một file test: `npx vitest run tests/expand-occurrences.test.ts`. CI ch
 
 [MIT](LICENSE) © Xernnn.
 
-Dùng `ical.js` (MPL-2.0) và `rrule` (BSD-3-Clause); còn lại là MIT hoặc ISC. Không có phụ thuộc copyleft lây lan.
+Dùng `ical.js` (MPL-2.0), `rrule` (BSD-3-Clause) và font Inter (SIL Open Font License 1.1, đóng gói sẵn trong app); còn lại là MIT hoặc ISC. Không có phụ thuộc copyleft lây lan.
 
 ---
 

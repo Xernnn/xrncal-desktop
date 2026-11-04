@@ -14,6 +14,8 @@ import { alarmAsReminder } from './parse-ics'
  * any edit here, and the series was re-anchored in UTC, so a weekly 09:00 in a
  * zone with summer time moved by an hour twice a year. The generated copy stays
  * the authority for what xrncal owns; the server's copy supplies the rest.
+ * (generateIcs() now writes the event's own zone as well; reanchor() is for a
+ * copy written in UTC - an event whose zone is UTC or unknown.)
  */
 
 export interface ServerCopyOptions {
@@ -85,9 +87,15 @@ export function mergeServerCopy(generated: string, serverCopy: string, options: 
     if (anchor) reanchor(ev, anchor)
   }
 
-  // Every zone a time now names needs its VTIMEZONE, ahead of the events.
+  // Every zone a time now names needs its VTIMEZONE, ahead of the events. One
+  // the server's copy defines keeps that definition - other clients wrote the
+  // series against it - and replaces the generated one; the rest stay generated.
   const named = new Set<string>()
   for (const ev of events) collectZoneIds(ev, named)
+  for (const vtz of out.getAllSubcomponents('vtimezone')) {
+    const id = vtz.getFirstPropertyValue('tzid')
+    if (typeof id !== 'string' || zones.has(id) || !named.has(id)) out.removeSubcomponent(vtz)
+  }
   const needed = [...named].filter((id) => zones.has(id))
   if (needed.length > 0) {
     for (const ev of events) out.removeSubcomponent(ev)

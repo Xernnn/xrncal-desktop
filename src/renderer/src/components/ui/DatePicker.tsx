@@ -10,6 +10,9 @@ import {
   ChevronsRight,
   X
 } from 'lucide-react'
+import { startOfWeek } from '@shared/week-start'
+import { useDisplayPreferences } from '../../context/DisplayPreferencesContext'
+import { weekdayShortLabels } from '../../i18n/weekday-labels'
 
 interface DatePickerProps {
   value?: string // format: yyyy-MM-dd
@@ -41,6 +44,7 @@ export const DatePicker: React.FC<DatePickerProps> = ({
   align = 'left',
   clearable = true
 }) => {
+  const { firstDayOfWeek } = useDisplayPreferences()
   const [isOpen, setIsOpen] = useState(false)
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -165,11 +169,11 @@ export const DatePicker: React.FC<DatePickerProps> = ({
           break
         case 'Home':
           e.preventDefault()
-          move((d) => d.startOf('week'))
+          move((d) => startOfWeek(d, firstDayOfWeek))
           break
         case 'End':
           e.preventDefault()
-          move((d) => d.endOf('week').startOf('day'))
+          move((d) => startOfWeek(d, firstDayOfWeek).plus({ days: 6 }))
           break
         case 't':
         case 'T':
@@ -208,8 +212,8 @@ export const DatePicker: React.FC<DatePickerProps> = ({
     const startOfMonth = viewDate.startOf('month')
     const endOfMonth = viewDate.endOf('month')
 
-    let cur = startOfMonth.startOf('week')
-    const endGrid = endOfMonth.endOf('week')
+    let cur = startOfWeek(startOfMonth, firstDayOfWeek)
+    const endGrid = startOfWeek(endOfMonth, firstDayOfWeek).plus({ days: 6 }).endOf('day')
 
     const days: DateTime[] = []
     while (cur <= endGrid || days.length < 35) {
@@ -219,7 +223,7 @@ export const DatePicker: React.FC<DatePickerProps> = ({
     }
 
     return days
-  }, [viewDate])
+  }, [viewDate, firstDayOfWeek])
 
   const isOutOfRange = (day: DateTime): boolean => {
     if (minDate) {
@@ -269,7 +273,7 @@ export const DatePicker: React.FC<DatePickerProps> = ({
     { label: i18n.t('ui.nextWeek'), getDt: () => today.plus({ weeks: 1 }) }
   ]
 
-  const weekHeaders = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN']
+  const weekHeaders = weekdayShortLabels((key) => i18n.t(key), firstDayOfWeek)
 
   const popover =
     isOpen && coords && typeof document !== 'undefined'
@@ -361,8 +365,8 @@ export const DatePicker: React.FC<DatePickerProps> = ({
 
             {/* Weekday Headers */}
             <div className="mb-1 grid grid-cols-7 text-center text-[10px] font-medium text-muted uppercase tracking-wider">
-              {weekHeaders.map((h) => (
-                <span key={h} className="py-1">
+              {weekHeaders.map((h, idx) => (
+                <span key={`${h}-${idx}`} className="py-1">
                   {h}
                 </span>
               ))}

@@ -21,6 +21,7 @@ import type { TitleSample } from '@shared/title-suggestions'
 import { parseRemindersJson, serializeReminders, type EventReminder } from '@shared/reminders'
 import { resolveLunarOccurrence } from '@shared/lunar-vietnam'
 import { expandOccurrences } from '@shared/expand-occurrences'
+import { calendarExpansionBudget, type ExpansionBudget } from '@shared/bounded-rrule'
 import { DateTime } from 'luxon'
 
 export class ReadOnlyCalendarError extends Error {
@@ -821,6 +822,10 @@ export class EventsRepo {
     const lunarIds = rows.filter((row) => row.lunar_rule !== null).map((row) => row.id)
     const coveredYearsByMaster = this.getMaterializedYearsFor(lunarIds)
     const noExceptions: EventException[] = []
+    // Each calendar has its own allowance for expanding its series, so a feed
+    // full of costly rules can slow only itself - not freeze the app, and not
+    // starve the user's own calendars of theirs.
+    const budgets = new Map<string, ExpansionBudget>()
 
     for (const row of rows) {
       const event = mapRowToEvent(row)
@@ -832,7 +837,12 @@ export class EventsRepo {
         )
         continue
       }
-      occurrences.push(...expandOccurrences(event, exceptions, startUtc, endUtc))
+      let budget = budgets.get(event.calendarId)
+      if (!budget) {
+        budget = calendarExpansionBudget(startUtc, endUtc)
+        budgets.set(event.calendarId, budget)
+      }
+      occurrences.push(...expandOccurrences(event, exceptions, startUtc, endUtc, undefined, budget))
     }
 
     // Sort chronologically by startUtc
@@ -1349,6 +1359,11 @@ export class EventsRepo {
       location: r.location,
       rrule: r.rrule
     }))
+  }
+
+  /** Whether this profile holds any event at all (deleted ones aside). */
+  hasAnyEvents(): boolean {
+    return Boolean(this.db.prepare('SELECT 1 AS present FROM events WHERE is_deleted = 0 LIMIT 1').get())
   }
 
   queryEventsByCalendar(calendarId: string): CalendarEvent[] {

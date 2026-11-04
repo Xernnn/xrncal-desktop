@@ -10,6 +10,8 @@ interface EventPillProps {
   isDragging?: boolean
   /** Where the keyboard cursor is sitting. */
   isSelected?: boolean
+  /** Marks the pill for the right-click menu, which finds the event by it. */
+  occurrenceId?: string
   onClick?: (e: React.MouseEvent) => void
   /** Fired on non-primary button (used for middle-click delete). */
   onAuxClick?: (e: React.MouseEvent) => void
@@ -26,6 +28,7 @@ export const EventPill: React.FC<EventPillProps> = ({
   dense = false,
   isDragging = false,
   isSelected = false,
+  occurrenceId,
   onClick,
   onAuxClick,
   draggable,
@@ -78,6 +81,7 @@ export const EventPill: React.FC<EventPillProps> = ({
       onAuxClick={handleAuxClick}
       title={title}
       data-selected-occurrence={isSelected || undefined}
+      data-occurrence-id={occurrenceId}
       className={`gc-event flex w-full min-w-0 items-center text-white ${
         // Dense pills (all-day bars, Month view's mini list) are short enough that a
         // 6px radius - fine on a full-height timed block - eats a chunk of their own

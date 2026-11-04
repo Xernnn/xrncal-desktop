@@ -1,12 +1,12 @@
 # xrncal — Code Standards
 
-**Last updated:** 2026-10-11
+**Last updated:** 2026-10-27
 
 ---
 
 ## Language & Toolchain
 
-- **TypeScript 5** — strict mode. No `any` except where bridging a third-party library without types.
+- **TypeScript 6** — strict mode. No `any` except where bridging a third-party library without types.
 - **React 19** — functional components only. No class components.
 - **Tailwind CSS 4** — utility-first; design tokens defined in `src/renderer/src/styles/index.css`.
 - **Vitest** — unit tests for main process, shared modules, and event mappers.
@@ -178,6 +178,29 @@ rethrowing. Handlers that return a result object instead (`connectCalDav`, `impo
 7. **Outgoing links**: anything handed to `shell.openExternal()` passes `isSafeExternalUrl()`
    (http, https, mailto). Subscription feeds are fetched only from `https://`, `http://` or
    `webcal://` addresses.
+8. **Only the app's own page**: both windows go through `lockDownContents()`
+   (`src/main/web-contents-guard.ts`) - no new windows, no navigation away from the built
+   `index.html` (not "any file://"), no `<webview>`. `guardIpcSenders()` refuses every IPC request
+   whose frame is not that page, and `denyUnusedPermissions()` grants nothing but clipboard
+   writing. The CSP adds `object-src`, `frame-src`, `base-uri` and `form-action 'none'`. The dev
+   server is read through `devServerUrl()`, which an installed build ignores.
+9. **CalDAV credentials stay with their server**: `mayCarryCredentials()` sends the password only
+   to the account's host or its own domain, never down to plain HTTP. Hrefs come from the server,
+   and a hostile one could otherwise name another host to collect it. Server colours pass
+   `normalizeCalendarColor()`; discovery and error bodies are size-capped.
+10. **Text from providers in HTML or markup is escaped**: the sign-in pages (`escapeHtml()`), and
+    Linux notification bodies, which notification servers read as markup.
+11. **Packaged builds are locked**: Electron fuses (`electron-builder.yml`) disable run-as-Node,
+    `NODE_OPTIONS` and `--inspect`; `src/main/index.ts` exits on `--remote-debugging-*`, and
+    ignores `ELECTRON_RENDERER_URL` and `XRNCAL_USER_DATA_DIR` (dev and test only). On Linux,
+    `safeStorage`'s `basic_text` backend counts as no encryption.
+12. **Recurrence rules are input too**: they come from feeds and invitations, and `rrule` has no
+    limit of its own - one 200-byte event could freeze the main process for minutes or forever.
+    Expansion goes through `boundedBetween()` (`src/shared/bounded-rrule.ts`): sub-daily rules are
+    not expanded, the walk starts near the range, and work is metered per series and per calendar.
+    Never call `rrule`'s `between()`/`all()` on stored rules directly.
+13. **Files written for the user go in a folder of their own**: a shared `.ics` is written by
+    `writeSharedIcs()` into a private `mkdtemp` folder, not straight into the shared temp directory.
 
 ---
 
@@ -197,8 +220,13 @@ rethrowing. Handlers that return a result object instead (`connectCalDav`, `impo
 
 - All user-visible strings go through i18next. Never hardcode English strings in JSX.
 - Translation keys live in `src/renderer/src/i18n/index.ts`.
-- Default language follows `app.getLocale()` from Electron (system locale). User can override in settings.
-- Both `vi` and `en` namespaces must be kept in sync.
+- A new profile's language, clock and first day of the week follow the computer
+  (`defaultsForSystem()` in `src/shared/locale-defaults.ts`, applied in the main process by
+  `setSystemDefaults()`); a setting the user has chosen wins. A profile already in use keeps the
+  values it showed (`settleExistingProfile()` in `src/main/first-run.ts`).
+- Both `vi` and `en` namespaces must be kept in sync. `tests/i18n-parity.test.ts` checks that,
+  and that every `t('literal.key')` in the renderer names a key that exists - a missing one renders
+  as the raw key.
 
 ---
 

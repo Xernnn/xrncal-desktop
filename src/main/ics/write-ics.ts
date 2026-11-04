@@ -2,6 +2,7 @@ import { DateTime } from 'luxon'
 import { inclusiveEndToExclusiveDate } from '@shared/all-day'
 import type { Attendee, Calendar, CalendarEvent, EventException } from '@shared/event-model'
 import { remindersForProvider, type EventReminder } from '@shared/reminders'
+import { localStamp, vtimezoneLines, writableZone } from './vtimezone'
 
 function formatIcsDateTime(isoUtc: string, isAllDay: boolean): string {
   const dt = DateTime.fromISO(isoUtc, { zone: 'utc' })
@@ -9,6 +10,38 @@ function formatIcsDateTime(isoUtc: string, isAllDay: boolean): string {
     return dt.toFormat('yyyyMMdd')
   }
   return dt.toFormat("yyyyMMdd'T'HHmmss'Z'")
+}
+
+/** A timed property in the event's zone (`DTSTART;TZID=Australia/Sydney:20261007T220000`),
+ *  or as UTC when it has none worth writing. */
+function timedLine(name: string, isoUtc: string, zone: string | null): string {
+  return zone ? `${name};TZID=${zone}:${localStamp(isoUtc, zone)}` : `${name}:${formatIcsDateTime(isoUtc, false)}`
+}
+
+/**
+ * With a zoned start, UNTIL has to be a UTC date-time (RFC 5545 3.3.10). The
+ * editor writes it that way; a custom or imported rule may carry a clock time
+ * or a bare date, read here in the event's zone.
+ */
+function utcUntil(rrule: string, zone: string): string {
+  return rrule.replace(/UNTIL=(\d{8})(?:T(\d{6}))?(Z?)/i, (whole, date: string, time: string | undefined, z: string) => {
+    if (z) return whole
+    const local = time
+      ? DateTime.fromFormat(`${date}${time}`, 'yyyyMMddHHmmss', { zone })
+      : DateTime.fromFormat(date, 'yyyyMMdd', { zone }).endOf('day')
+    return local.isValid ? `UNTIL=${local.toUTC().toFormat("yyyyMMdd'T'HHmmss'Z'")}` : whole
+  })
+}
+
+/**
+ * The zone a moved occurrence's times are written in, or null when they are
+ * written as a date (an all-day occurrence) or as UTC. A timed series' overrides
+ * share its zone; a week of an all-day series moved to a time of day has no
+ * series zone to share and keeps its own.
+ */
+function overrideZone(event: CalendarEvent, ex: EventException, seriesZone: string | null): string | null {
+  if (ex.allDay ?? event.allDay) return null
+  return event.allDay ? writableZone(ex.tzid) : seriesZone
 }
 
 function escapeIcsText(text: string): string {
@@ -108,8 +141,27 @@ export function generateIcs(
     exceptionsByMaster.set(ex.masterEventId, list)
   }
 
+  // Each zone a timed event is written in, defined once ahead of the events,
+  // from the year of the earliest event in it.
+  const zoneYears = new Map<string, number>()
+  const useZone = (zone: string | null, isoUtc: string): void => {
+    if (!zone) return
+    const year = DateTime.fromISO(isoUtc, { zone: 'utc' }).setZone(zone).year
+    zoneYears.set(zone, Math.min(year, zoneYears.get(zone) ?? year))
+  }
   for (const event of events) {
     if (event.isDeleted) continue
+    const zone = event.allDay ? null : writableZone(event.tzid)
+    useZone(zone, event.dtStartUtc)
+    for (const ex of exceptionsByMaster.get(event.id) ?? []) {
+      if (!ex.isCancelled) useZone(overrideZone(event, ex, zone), ex.dtStartUtc || ex.originalStartUtc)
+    }
+  }
+  for (const [zone, year] of zoneYears) lines.push(...vtimezoneLines(zone, year))
+
+  for (const event of events) {
+    if (event.isDeleted) continue
+    const zone = event.allDay ? null : writableZone(event.tzid)
 
     lines.push('BEGIN:VEVENT')
     lines.push(`UID:${event.uid}`)
@@ -122,8 +174,8 @@ export function generateIcs(
         `DTEND;VALUE=DATE:${inclusiveEndToExclusiveDate(event.dtStartUtc, event.dtEndUtc).replace(/-/g, '')}`
       )
     } else {
-      lines.push(`DTSTART:${formatIcsDateTime(event.dtStartUtc, false)}`)
-      lines.push(`DTEND:${formatIcsDateTime(event.dtEndUtc, false)}`)
+      lines.push(timedLine('DTSTART', event.dtStartUtc, zone))
+      lines.push(timedLine('DTEND', event.dtEndUtc, zone))
     }
 
     lines.push(`SUMMARY:${escapeIcsText(event.title)}`)
@@ -142,16 +194,17 @@ export function generateIcs(
       lines.push(`COLOR:${escapeIcsText(event.color)}`)
     }
     if (event.rrule) {
-      lines.push(`RRULE:${event.rrule}`)
+      lines.push(`RRULE:${zone ? utcUntil(event.rrule, zone) : event.rrule}`)
     }
     if (event.exdate) {
-      const formattedExdates = event.exdate
-        .split(',')
-        .map((d) => formatIcsDateTime(d.trim(), event.allDay))
-        .join(',')
-      lines.push(
-        event.allDay ? `EXDATE;VALUE=DATE:${formattedExdates}` : `EXDATE:${formattedExdates}`
-      )
+      const dates = event.exdate.split(',').map((d) => d.trim())
+      if (event.allDay) {
+        lines.push(`EXDATE;VALUE=DATE:${dates.map((d) => formatIcsDateTime(d, true)).join(',')}`)
+      } else if (zone) {
+        lines.push(`EXDATE;TZID=${zone}:${dates.map((d) => localStamp(d, zone)).join(',')}`)
+      } else {
+        lines.push(`EXDATE:${dates.map((d) => formatIcsDateTime(d, false)).join(',')}`)
+      }
     }
     pushAttendeeLines(lines, event.attendees)
     pushAlarmLines(lines, event.reminders, event.title)
@@ -165,9 +218,10 @@ export function generateIcs(
       lines.push(`UID:${event.uid}`)
       lines.push(`DTSTAMP:${DateTime.utc().toFormat("yyyyMMdd'T'HHmmss'Z'")}`)
 
-      const recIdFormatted = formatIcsDateTime(ex.originalStartUtc, event.allDay)
       lines.push(
-        event.allDay ? `RECURRENCE-ID;VALUE=DATE:${recIdFormatted}` : `RECURRENCE-ID:${recIdFormatted}`
+        event.allDay
+          ? `RECURRENCE-ID;VALUE=DATE:${formatIcsDateTime(ex.originalStartUtc, true)}`
+          : timedLine('RECURRENCE-ID', ex.originalStartUtc, zone)
       )
 
       if (ex.isCancelled) {
@@ -175,14 +229,18 @@ export function generateIcs(
       } else {
         const startIso = ex.dtStartUtc || ex.originalStartUtc
         const endIso = ex.dtEndUtc || startIso
-        if (event.allDay) {
+        // The occurrence's own all-day flag, not the series': one week of an
+        // all-day series moved to 10:00 used to be written as all-day too, and
+        // every such week lost its time on the server at the next edit here.
+        if (ex.allDay ?? event.allDay) {
           lines.push(`DTSTART;VALUE=DATE:${formatIcsDateTime(startIso, true)}`)
           lines.push(
             `DTEND;VALUE=DATE:${inclusiveEndToExclusiveDate(startIso, endIso).replace(/-/g, '')}`
           )
         } else {
-          lines.push(`DTSTART:${formatIcsDateTime(startIso, false)}`)
-          lines.push(`DTEND:${formatIcsDateTime(endIso, false)}`)
+          const at = overrideZone(event, ex, zone)
+          lines.push(timedLine('DTSTART', startIso, at))
+          lines.push(timedLine('DTEND', endIso, at))
         }
 
         lines.push(`SUMMARY:${escapeIcsText(ex.title || event.title)}`)

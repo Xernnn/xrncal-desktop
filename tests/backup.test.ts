@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createSqliteDriver, type ISqliteDatabase } from '../src/main/db/sqlite-driver'
@@ -106,6 +106,23 @@ describe('database backup', () => {
 
     expect(() => backupDatabaseTo(db, dest)).not.toThrow()
     expect(existsSync(dest)).toBe(true)
+  })
+
+  // Windows has no owner-only mode bits; its profile folder is per-user already.
+  it.skipIf(process.platform === 'win32')('writes the snapshot readable by its owner only', () => {
+    seedEvent('Private')
+    const dest = join(dir, 'private.sqlite')
+    backupDatabaseTo(db, dest)
+
+    expect(statSync(dest).mode & 0o777).toBe(0o600)
+  })
+
+  it('leaves no file behind when the snapshot fails', () => {
+    const dest = join(dir, 'closed.sqlite')
+    db.close()
+
+    expect(() => backupDatabaseTo(db, dest)).toThrow()
+    expect(existsSync(dest)).toBe(false)
   })
 
   it('names snapshots so they sort chronologically and are filesystem-safe', () => {

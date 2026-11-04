@@ -9,6 +9,7 @@ import { TODAY_COLOR, DEFAULT_EVENT_COLOR } from '@shared/mini-calendar-grid'
 import { formatClockTime } from '@shared/time-format'
 import { useDisplayPreferences } from '../context/DisplayPreferencesContext'
 import LunarLabel from '../components/LunarLabel'
+import { useToday } from '../hooks/use-now'
 
 interface ListViewProps {
   anchorDate: DateTime
@@ -35,14 +36,20 @@ export const ListView: React.FC<ListViewProps> = ({
 }) => {
   const { t, i18n } = useTranslation()
   const { timeFormat } = useDisplayPreferences()
-  const today = DateTime.local()
+  const today = useToday()
   const scrollRef = useRef<HTMLDivElement>(null)
   const groupRefs = useRef<Map<string, HTMLDivElement>>(new Map())
-  const hasScrolledRef = useRef(false)
+  // The anchor date stays at the top until the user scrolls. The list draws
+  // first with whatever the previous view had loaded, then with its own range,
+  // then with the past it asks for when it lands near the top - each of which
+  // moves the anchor's group, and a one-off scroll left the list weeks away.
+  const anchorPinnedRef = useRef(true)
+  const programmaticScrollRef = useRef(false)
   const lastAnchorKeyRef = useRef('')
   const edgeRequestedRef = useRef<{ past: boolean; future: boolean }>({ past: false, future: false })
-  const prevScrollHeightRef = useRef(0)
-  const isPrependingRef = useRef(false)
+  // Once the user has scrolled: the group at the top of the view, and how far
+  // below the top it sat, so loading more past events can put it back.
+  const keepInPlaceRef = useRef<{ key: string; offset: number } | null>(null)
 
   const groupedOccurrences = React.useMemo(() => {
     const groups: { date: DateTime; items: ExpandedOccurrence[] }[] = []
@@ -67,13 +74,14 @@ export const ListView: React.FC<ListViewProps> = ({
     return groups
   }, [occurrences])
 
-  // Focus on today (or wherever anchorDate points) first, but stay put across
-  // routine data refreshes so editing an event elsewhere doesn't yank the scroll.
+  // Focus on today (or wherever anchorDate points) until the user scrolls, then
+  // stay put across routine data refreshes so editing an event elsewhere
+  // doesn't yank the scroll.
   useEffect(() => {
     const anchorKey = anchorDate.toFormat('yyyy-MM-dd')
-    const anchorChanged = anchorKey !== lastAnchorKeyRef.current
+    if (anchorKey !== lastAnchorKeyRef.current) anchorPinnedRef.current = true
     lastAnchorKeyRef.current = anchorKey
-    if (!anchorChanged && hasScrolledRef.current) return
+    if (!anchorPinnedRef.current) return
     if (groupedOccurrences.length === 0) return
 
     let closestKey: string | null = null
@@ -88,9 +96,11 @@ export const ListView: React.FC<ListViewProps> = ({
     if (!closestKey) closestKey = groupedOccurrences[groupedOccurrences.length - 1].date.toFormat('yyyy-MM-dd')
 
     requestAnimationFrame(() => {
-      groupRefs.current.get(closestKey!)?.scrollIntoView({ block: 'start' })
+      const el = groupRefs.current.get(closestKey!)
+      if (!el) return
+      programmaticScrollRef.current = true
+      el.scrollIntoView({ block: 'start' })
     })
-    hasScrolledRef.current = true
   }, [anchorDate, groupedOccurrences])
 
   // New data landing means the loaded range actually grew - allow asking again.
@@ -99,24 +109,46 @@ export const ListView: React.FC<ListViewProps> = ({
   }, [occurrences])
 
   // Loading more past events inserts groups above the current scroll position -
-  // compensate so the view doesn't jump. Future events land below, no compensation needed.
+  // put the group that was at the top back where it was. (Adding the change in
+  // scroll height instead also counted groups that landed below, and jumped.)
   useLayoutEffect(() => {
     const el = scrollRef.current
-    if (el && isPrependingRef.current) {
-      el.scrollTop += el.scrollHeight - prevScrollHeightRef.current
+    const keep = keepInPlaceRef.current
+    keepInPlaceRef.current = null
+    if (!el || !keep || anchorPinnedRef.current) return
+    const group = groupRefs.current.get(keep.key)
+    if (!group) return
+    const offset = group.getBoundingClientRect().top - el.getBoundingClientRect().top
+    if (Math.abs(offset - keep.offset) > 1) {
+      programmaticScrollRef.current = true
+      el.scrollTop += offset - keep.offset
     }
-    isPrependingRef.current = false
   }, [groupedOccurrences])
+
+  /** The group at the top of the view and its distance from the top. */
+  const topGroup = (el: HTMLDivElement): { key: string; offset: number } | null => {
+    const top = el.getBoundingClientRect().top
+    // Map order is the order groups mounted, not date order, once past ones arrive.
+    const byDate = [...groupRefs.current].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    for (const [key, group] of byDate) {
+      const rect = group.getBoundingClientRect()
+      if (rect.bottom > top) return { key, offset: rect.top - top }
+    }
+    return null
+  }
 
   const handleScroll = () => {
     const el = scrollRef.current
-    if (!el || !onNearEdge) return
+    if (!el) return
+    // The user scrolling, not us: from here on the list stays where they put it.
+    if (programmaticScrollRef.current) programmaticScrollRef.current = false
+    else anchorPinnedRef.current = false
+    if (!onNearEdge) return
     const { scrollTop, scrollHeight, clientHeight } = el
 
     if (scrollTop < NEAR_EDGE_PX && !edgeRequestedRef.current.past) {
       edgeRequestedRef.current.past = true
-      isPrependingRef.current = true
-      prevScrollHeightRef.current = scrollHeight
+      keepInPlaceRef.current = topGroup(el)
       onNearEdge('past')
     } else if (scrollHeight - clientHeight - scrollTop < NEAR_EDGE_PX && !edgeRequestedRef.current.future) {
       edgeRequestedRef.current.future = true
@@ -157,6 +189,7 @@ export const ListView: React.FC<ListViewProps> = ({
         return (
           <div
             key={dateKey}
+            data-today-group={isToday || undefined}
             ref={(el) => {
               if (el) groupRefs.current.set(dateKey, el)
               else groupRefs.current.delete(dateKey)
@@ -207,6 +240,7 @@ export const ListView: React.FC<ListViewProps> = ({
                     key={occ.id}
                     onClick={() => onSelectOccurrence?.(occ)}
                     data-selected-occurrence={selectedOccurrenceId === occ.id || undefined}
+                    data-occurrence-id={occ.id}
                     className={`gc-event gc-stack-card-3d flex w-full cursor-pointer flex-col gap-1 rounded-[3px] px-3.5 py-3 text-left text-white shadow-xs sm:flex-row sm:items-center sm:justify-between ${
                       selectedOccurrenceId === occ.id ? 'is-key-selected' : ''
                     }`}

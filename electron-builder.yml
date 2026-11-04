@@ -6,6 +6,25 @@ directories:
 files:
   - out/**/*
   - package.json
+  # The app icon, which the main process reads by path for the tray and the
+  # window (src/main/app-icon.ts); unpacked so those OS APIs can open it.
+  - resources/icon.png
+  - resources/icon.ico
+asarUnpack:
+  - resources/**
+
+# Electron's build-time switches. Off: running the binary as plain Node
+# (ELECTRON_RUN_AS_NODE), NODE_OPTIONS and --inspect - each lets any program
+# running as the user drive xrncal, which holds the keyring's key to the saved
+# sign-ins. On: loading the app only from its own app.asar, and encrypting the
+# cookie store. (Asar integrity validation is left off until it can be tried
+# on a signed Windows build.)
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  onlyLoadAppFromAsar: true
+  enableCookieEncryption: true
 
 # Where installed builds look for updates (src/main/updater.ts). A tagged push
 # runs .github/workflows/release.yml, which uploads the installers and the
@@ -16,6 +35,17 @@ publish:
   owner: Xernnn
   repo: xrncal-desktop
   releaseType: draft
+
+# "Open with xrncal" for calendar files. The installer registers it on
+# Windows; on Linux the AppImage's desktop entry carries the MIME type, and so
+# does the launcher scripts/install-linux-app.sh writes. A file opened this way
+# arrives in argv (src/main/opened-ics-files.ts).
+fileAssociations:
+  - ext: ics
+    name: iCalendar file
+    description: Calendar events
+    mimeType: text/calendar
+    role: Viewer
 
 win:
   target:

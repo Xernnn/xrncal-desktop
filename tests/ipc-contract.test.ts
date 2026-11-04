@@ -36,7 +36,10 @@ describe('IPC Channels and Contracts', () => {
         },
         getPlatform: async () => 'win32',
         pickBackgroundImage: async () => null,
-      backupDatabase: async () => ({ success: true })
+        backupDatabase: async () => ({ success: true }),
+        restoreDatabase: async () => ({ success: false, message: 'cancelled' }),
+        showLogFile: async () => true,
+        quit: async () => {}
       },
       settings: {
         getAll: async () => ({
@@ -52,11 +55,18 @@ describe('IPC Channels and Contracts', () => {
           hourBlockSize: 'medium',
           secondaryTimezone: '',
           preferredTimeZones: '',
+          zoneHistory: '',
           dragSnapMinutes: 15,
+          timePickerStepMinutes: 15,
           suggestionShowCalendarName: true,
           defaultReminderMinutes: 10,
           defaultAllDayReminderMinutes: null,
-          checkForUpdates: true
+          checkForUpdates: true,
+          autoBackup: true,
+          closeToTray: true,
+          launchAtLogin: false,
+          welcomeDone: true,
+          lastSeenZone: 'Australia/Sydney'
         }),
         get: async () => true as any,
         set: async () => true
@@ -69,7 +79,8 @@ describe('IPC Channels and Contracts', () => {
         connectCalDav: async () => ({ success: true }),
         disconnectCalDav: async () => true,
         listAccounts: async () => [],
-      detachAccount: async () => ({ success: true, calendarCount: 0, eventCount: 0 })
+        detachAccount: async () => ({ success: true, calendarCount: 0, eventCount: 0 }),
+        providerStatus: async () => ({ google: true, microsoft: true })
       },
       sync: {
         triggerNow: async () => ({ success: true, pulledCount: 0, pushedCount: 0, errorCount: 0 }),
@@ -190,7 +201,9 @@ describe('IPC Channels and Contracts', () => {
       },
       ics: {
         importIcs: async () => ({ success: true, importedCount: 0, errorCount: 0 }),
-        exportIcs: async () => 'BEGIN:VCALENDAR\r\nEND:VCALENDAR'
+        exportIcs: async () => ({ success: true, filePath: '/tmp/calendar.ics' }),
+        takeOpenedFiles: async () => [],
+        onFileOpened: () => () => {}
       },
       mini: {
         openMain: async () => {},

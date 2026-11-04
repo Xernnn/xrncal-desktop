@@ -38,7 +38,9 @@ import {
 import { TitleSuggestInput } from './TitleSuggestInput'
 import { ReminderListField } from './ReminderListField'
 import { useDisplayPreferences } from '../context/DisplayPreferencesContext'
-import { zonePickerOptions } from '../lib/time-zones'
+import { zoneForEditing, zonePickerOptions } from '../lib/time-zones'
+import { zoneAt } from '@shared/zone-history'
+import { defaultCalendarFor } from '../lib/new-event'
 
 export interface EventEditorInitialData {
   occurrence?: ExpandedOccurrence
@@ -48,7 +50,7 @@ export interface EventEditorInitialData {
   initialCalendarId?: string
   /** Slot was picked from the all-day row — default the new event to all-day. */
   initialAllDay?: boolean
-  /** Viewport X of the click that started creation — used to dock the dialog on the opposite side. */
+  /** Viewport X of the slot or event it was opened from — the panel opens on the opposite side (the right without one). */
   initialClientX?: number
 }
 
@@ -143,7 +145,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
   onDraftChange
 }) => {
   const { t, i18n } = useTranslation()
-  const { defaultReminderMinutes, defaultAllDayReminderMinutes, timeFormat, preferredTimeZones } =
+  const { defaultReminderMinutes, defaultAllDayReminderMinutes, timeFormat, preferredTimeZones, zoneHistory } =
     useDisplayPreferences()
   const isEditing = Boolean(data?.occurrence || data?.event)
   // Lunar anniversaries have no per-instance RRULE semantics — edits always apply
@@ -224,7 +226,10 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
       setColor(occ.color && occ.color.toLowerCase() !== calendarColor?.toLowerCase() ? occ.color : '')
       setCalendarId(occ.calendarId)
       setAllDay(occ.allDay)
-      setTzid(occ.tzid || userTz)
+      // An event that names no zone of its own opens in the one the user was
+      // in on its date (Settings -> Where you were), else this computer's.
+      const occZone = zoneForEditing(occ.tzid, occ.isRecurring, zoneAt(zoneHistory, occ.startUtc) ?? userTz)
+      setTzid(occ.allDay || occ.isLunar ? occ.tzid || userTz : occZone)
       setAttendees([])
       setAttendeesLoaded(false)
       setReminders(null)
@@ -232,7 +237,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
       // Timed: the clock in the event's own zone. All-day: the stored UTC
       // date - read in this machine's zone it was the day before west of UTC,
       // and saving it moved the event back a day.
-      const shownIn = occ.allDay || occ.isLunar ? 'utc' : editZone(occ.tzid || userTz)
+      const shownIn = occ.allDay || occ.isLunar ? 'utc' : occZone
       const startLocal = DateTime.fromISO(occ.startUtc, { zone: 'utc' }).setZone(shownIn)
       const endLocal = DateTime.fromISO(occ.endUtc, { zone: 'utc' }).setZone(shownIn)
 
@@ -258,14 +263,15 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
       setColor(evt.color || '')
       setCalendarId(evt.calendarId)
       setAllDay(evt.allDay)
-      setTzid(evt.tzid || userTz)
+      const evtZone = zoneForEditing(evt.tzid, Boolean(evt.rrule), zoneAt(zoneHistory, evt.dtStartUtc) ?? userTz)
+      setTzid(evt.allDay || evt.lunarRule ? evt.tzid || userTz : evtZone)
       // An event handed over without its guest list has it read, like an
       // occurrence's, before a save may send guests.
       setAttendees(evt.attendees || [])
       setAttendeesLoaded(evt.attendees !== undefined)
       setReminders(evt.reminders ?? null)
 
-      const shownIn = evt.allDay || evt.lunarRule ? 'utc' : editZone(evt.tzid || userTz)
+      const shownIn = evt.allDay || evt.lunarRule ? 'utc' : evtZone
       const startLocal = DateTime.fromISO(evt.dtStartUtc, { zone: 'utc' }).setZone(shownIn)
       const endLocal = DateTime.fromISO(evt.dtEndUtc, { zone: 'utc' }).setZone(shownIn)
 
@@ -317,7 +323,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
         setRecurrenceCount(10)
       }
     } else {
-      const defaultCal = calendars.find((c) => !c.isReadOnly) || calendars[0]
+      const defaultCal = defaultCalendarFor(calendars)
       setCalendarId(data?.initialCalendarId || defaultCal?.id || '')
       setTitle('')
       setNotes('')
@@ -344,7 +350,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
       setEndDateStr(end.toFormat('yyyy-MM-dd'))
       setEndTimeStr(end.toFormat('HH:mm'))
     }
-  }, [isOpen, data, calendars])
+  }, [isOpen, data, calendars, zoneHistory])
 
   // The rest of an event opened from the grid (or handed over without its
   // guest list): its guests and reminders.
@@ -868,27 +874,24 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
         : { timed: defaultReminderMinutes, allDay: defaultAllDayReminderMinutes }
     )
 
-  // New events created by clicking a slot dock as a side panel, on the side opposite
-  // the click, so the panel never covers the spot the event was just created at.
-  const isSidePanel = !isEditing && typeof data?.initialClientX === 'number'
+  // Always a side panel, never a dialog over the middle. Opened from the grid - a
+  // slot clicked to create, an event clicked to edit - it comes in from the side
+  // away from that spot so the spot stays in sight; without one (Create, search)
+  // from the right.
   const panelSide: 'left' | 'right' =
-    isSidePanel && data!.initialClientX! < window.innerWidth / 2 ? 'right' : 'left'
+    typeof data?.initialClientX === 'number' && data.initialClientX >= window.innerWidth / 2 ? 'left' : 'right'
 
   return (
     <div
-      className={isSidePanel ? 'fixed inset-0 z-50 select-none bg-black/30' : 'gc-overlay select-none'}
+      className="fixed inset-0 z-50 select-none bg-black/30"
       onClick={(e) => {
         if (e.target === e.currentTarget) handleCloseAttempt()
       }}
     >
       <div
-        className={
-          isSidePanel
-            ? `absolute top-0 flex h-full w-full max-w-[420px] flex-col overflow-hidden bg-dialog text-primary shadow-xl ${
-                panelSide === 'right' ? 'right-0 border-l border-hairline gc-slide-right' : 'left-0 border-r border-hairline gc-slide-left'
-              }`
-            : 'gc-dialog w-full max-w-lg'
-        }
+        className={`absolute top-0 flex h-full w-full max-w-[420px] flex-col overflow-hidden bg-dialog text-primary shadow-xl ${
+          panelSide === 'right' ? 'right-0 border-l border-hairline gc-slide-right' : 'left-0 border-r border-hairline gc-slide-left'
+        }`}
       >
         <div className="flex shrink-0 items-center justify-between border-b border-hairline px-5 py-3">
           <div className="flex items-center gap-2.5">

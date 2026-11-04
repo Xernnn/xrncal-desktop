@@ -80,7 +80,8 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
         { keys: ['R'], description: t('shortcuts.syncNow') },
         { keys: [','], description: t('shortcuts.openSettings') },
         { keys: ['?'], description: t('shortcuts.openShortcuts') },
-        { keys: ['Esc'], description: t('shortcuts.closeDialog') }
+        { keys: ['Esc'], description: t('shortcuts.closeDialog') },
+        { keys: ['Ctrl + Q'], description: t('shortcuts.quit') }
       ]
     }
   ]

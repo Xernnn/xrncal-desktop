@@ -1,7 +1,7 @@
 # xrncal — Project Roadmap
 
-**Last updated:** 2026-10-11  
-**Current version:** 0.1.0
+**Last updated:** 2026-10-20  
+**Current version:** 0.2.0 (in package.json; not yet released)
 
 ---
 
@@ -94,13 +94,80 @@ All 10 planned phases are **complete**. The codebase ships R1 + R2 + R3 + Stretc
 
 ---
 
+## 0.2.0 - ready for everyday use (2026-10)
+
+Built to make xrncal usable by someone who is not its developer:
+
+- ✅ **Header:** always shown, with Create, the month in Week view and Settings as a gear; weekday
+  names on Week view's columns.
+- ✅ **Right-click menus** (PDR-011): edit, duplicate or delete an event, or start one on a day. A
+  click on a slot or an event still opens the full editor.
+- ✅ **The editor's time lists have their own step** (15 / 30 / 60 minutes), apart from the step
+  drag and resize snap to.
+- ✅ **Events saved without a time zone** (Google's export writes every one-off event as a bare UTC
+  time) no longer open in UTC: they take the zone the user was in on their date (Settings →
+  *Where you were*), else this computer's. When the computer's zone changes, xrncal adds the move
+  there by itself and redraws the views in the new zone.
+- ✅ **Security review (2026-10-20):** IPC requests accepted only from the app's own page; the
+  tray window locked down like the main one and navigation limited to the app's `index.html`;
+  browser permissions denied; CalDAV passwords sent only to the account's own server (a server
+  could name another host for an href); sign-in pages escape what they show, keep waiting after
+  a stray request instead of failing, and no longer invent an account when the profile cannot be
+  read; Linux notifications escape event text; Electron fuses and a debugging-port refusal in
+  packaged builds; `basic_text` refused as encryption; CI's token read-only. Server colours are
+  now read (they were requested in the wrong namespace) and validated.
+- ✅ **CalDAV repeating series fixed:** an all-day series read from a CalDAV server (zone
+  `floating`) showed only its first occurrence - 131 of one user's 200 series, birthdays and
+  payments among them. One week of an all-day series moved to a time of day showed as all-day, and
+  any edit here wrote every such week back to the server as all-day; the moved week now keeps its
+  own all-day flag both ways (migration 022 repairs the rows already stored).
+- ✅ **Events keep their zone on the way out:** CalDAV pushes and `.ics` exports write timed
+  events in their own zone with a VTIMEZONE built from the zone database, instead of as UTC - an
+  event made here no longer comes back from the server zone-less, and a weekly series no longer
+  moves by an hour on other clients when summer time changes.
+- ✅ **Runs in the tray** when the window is closed, can **start at sign-in**, and Ctrl+Q quits
+  (PDR-012). The tray icon now actually draws (it was a blank SVG decode) and its menu works on
+  Linux.
+- ✅ **"Today" follows the clock:** the today mark and the current-time line move on their own,
+  across midnight.
+- ✅ **First-run welcome:** language, lunar dates, holidays, start at sign-in, connect calendars.
+- ✅ **Follows the computer:** a new profile takes its language, 12/24-hour clock, first day of
+  the week and light/dark theme from the system; weeks can start on Monday, Sunday or Saturday.
+  An existing profile keeps what it showed.
+- ✅ **.ics in and out:** import from Settings, by dropping files on the window or "Open with
+  xrncal" (registered by the installers); export any calendar.
+- ✅ **Restore from backup**, alongside backup.
+- ✅ **Automatic backups** (2026-11): a weekly snapshot into the profile's `backups` folder, the
+  newest four kept; restore opens there. Every backup is created readable by its owner only (one
+  saved to Documents used to be readable by every user of the computer).
+- ✅ **A log file** (2026-11): `logs/xrncal.log` in the profile, with sync failures and
+  recoveries, backups, update errors and crashes, secrets redacted; Settings → *Show log file*.
+- ✅ **GNOME without the AppIndicator extension** (2026-11): the tray is known to be invisible
+  there, so closing the window quits instead of leaving an app nobody can reach.
+- ✅ **Electron 44.10.1** (2026-11): 44.9.0 carried advisory GHSA-jr5w-w6x2-84p9 (trust in
+  compromised eMudhra intermediate certificates).
+- ✅ **Sign-in ready for release builds:** OAuth client ids baked in from repository secrets; a
+  build without them says so instead of failing in the browser. The credentials file accepts only
+  the four sign-in keys, and installed builds no longer read a `.env` from the working directory.
+- ✅ **Fixes:** the sync-conflict screen showed raw translation keys (its strings had been dropped;
+  a test now fails on any missing key); pickers and menus ignored a custom accent colour; the
+  Inter font is bundled instead of fetched from Google; Windows notifications carry the app's
+  AppUserModelID.
+
+**To release 0.2.0** (maintainer accounts; see the checklist in `docs/deployment-guide.md`):
+add the `XRNCAL_GOOGLE_*` / `XRNCAL_MICROSOFT_CLIENT_ID` secrets, publish and verify the Google
+consent screen, register the Microsoft public client, optionally set up Windows signing, then tag
+`v0.2.0` and publish the draft.
+
 ## Open Items / Known Gaps
 
 These are non-blocking items that remain for post-0.1.0:
 
 ### Must Validate Before "Daily Driver" Gate
 
-- [ ] **Live Google OAuth round-trip** — Requires a real Google Cloud OAuth Desktop client ID. The sync engine is complete but must be tested end-to-end with a real account before R1 is declared production-ready.
+- [ ] **Live Google OAuth round-trip from a release build** — sign-in works with the maintainer's own client; it has to be tried from the 0.2.0 installers built with the release secrets, and Google's verification of the consent screen is pending.
+- [ ] **Microsoft sign-in from a release build** — needs the public-client registration first.
+- [x] **Close-to-tray on GNOME without the AppIndicator extension** — detected through the session bus (`tray-host.ts`); closing the window quits there. Still to try on a real GNOME session with and without the extension.
 - [ ] **Linux `safeStorage` validation** — Verify fail-closed behavior on a headless Ubuntu environment where D-Bus / libsecret is unavailable.
 
 ### Known Deferrals (URD-tracked)
@@ -130,6 +197,7 @@ The following ideas are outside the current URD scope and require a URD change b
 | CalDAV self-signed TLS UI | Planned in the URD, never implemented: self-signed servers are simply refused by Node's TLS. |
 | Natural-language quick add | "Họp 3pm thứ 6", "giỗ ông 12/8 âm lịch" - deferred. |
 | Code signing | The release workflow signs once a certificate is configured (`docs/deployment-guide.md`); none is yet, so SmartScreen still warns. |
+| Printing | Out of scope by URD principle 5; the most-asked feature of regular calendars that is still missing. |
 | Per-occurrence reminders | Reminders belong to the series; a `this`-scoped reminder change applies to all occurrences. |
 | Moving an Outlook event between calendars | Graph has no move endpoint and the push does not recreate the event, so it returns to its original calendar at the next full listing (it used to leave a duplicate). |
 | Graph occurrence overrides | The `/events` listing carries series masters only, so an occurrence moved in Outlook keeps its series time here. |
@@ -141,6 +209,6 @@ The following ideas are outside the current URD scope and require a URD change b
 | Version | Milestone |
 |---------|-----------|
 | 0.1.0 | All 10 phases complete. R1+R2+R3+Stretch in codebase. |
-| 0.2.0 | First published release from the release workflow (reminders, replies, subscriptions, undo, auto-update), live Google OAuth tested. "Daily driver" gate. |
+| 0.2.0 | First published release: everything above plus the everyday-use work (tray, welcome, right-click menus, sign-in in official builds), live Google and Microsoft OAuth tested from the installers. "Daily driver" gate. |
 | 0.3.0 | iCloud CalDAV best-effort validated. Fedora AppImage. |
 | 1.0.0 | Stable release after daily driver validation on both OS targets. |

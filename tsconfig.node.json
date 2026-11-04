@@ -54,6 +54,7 @@
     "tests/roving-index.test.ts",
     "tests/wheel-navigation.test.ts",
     "tests/account-display.test.ts",
-    "tests/time-zones.test.ts"
+    "tests/time-zones.test.ts",
+    "tests/new-event.test.ts"
   ]
 }

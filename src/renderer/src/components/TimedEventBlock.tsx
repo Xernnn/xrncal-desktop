@@ -96,6 +96,7 @@ export const TimedEventBlock: React.FC<TimedEventBlockProps> = ({
         onDelete?.(occ)
       }}
       data-selected-occurrence={isSelected || undefined}
+      data-occurrence-id={occ.id}
       style={{
         top: `${layout.topPos}px`,
         height: `${Math.max(minHeight, layout.height - 2)}px`,

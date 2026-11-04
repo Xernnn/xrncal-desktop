@@ -15,19 +15,42 @@ export interface RunningApp {
  * The built app on a fresh profile, in a fixed zone (Asia/Ho_Chi_Minh, UTC+7
  * all year) so times read the same on every machine. On Linux without a display
  * (CI) run it under xvfb-run.
+ *
+ * A fresh profile opens on the first-run welcome; it is marked done unless a
+ * test asks to see it (`{ welcome: true }`).
  */
-export async function launchApp(): Promise<RunningApp> {
+export async function launchApp(options: { welcome?: boolean; args?: string[] } = {}): Promise<RunningApp> {
   const profile = mkdtempSync(join(tmpdir(), 'xrncal-e2e-'))
   const app = await electron.launch({
     // CI runners cannot start Chromium's OS sandbox for an unpacked Electron
     // (no setuid helper, user namespaces restricted); the window sandboxes stay.
-    args: [join(__dirname, '..', 'out', 'main', 'index.js'), ...(process.env.CI ? ['--no-sandbox'] : [])],
-    env: { ...process.env, XRNCAL_USER_DATA_DIR: profile, TZ: 'Asia/Ho_Chi_Minh' }
+    args: [
+      join(__dirname, '..', 'out', 'main', 'index.js'),
+      ...(process.env.CI ? ['--no-sandbox'] : []),
+      // Command-line arguments as the OS would pass them, e.g. a file to open.
+      ...(options.args ?? [])
+    ],
+    // A fixed locale as well: a new profile takes its clock and first day of
+    // the week from the computer, and the tests read times as 24-hour.
+    env: {
+      ...process.env,
+      XRNCAL_USER_DATA_DIR: profile,
+      TZ: 'Asia/Ho_Chi_Minh',
+      LANG: 'en_GB.UTF-8',
+      LANGUAGE: 'en_GB',
+      LC_ALL: 'en_GB.UTF-8'
+    }
   })
   const page = await mainWindow(app)
   const errors: string[] = []
   page.on('pageerror', (err) => errors.push(err.message))
   await page.waitForLoadState('domcontentloaded')
+  if (!options.welcome) {
+    await page.waitForFunction(() => Boolean(window.xrncal?.settings))
+    await page.evaluate(() => window.xrncal.settings.set('welcomeDone', true))
+    await page.reload()
+    await page.waitForLoadState('domcontentloaded')
+  }
   return {
     app,
     page,

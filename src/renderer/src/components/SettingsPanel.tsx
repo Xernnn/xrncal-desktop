@@ -14,15 +14,21 @@ import {
   Moon,
   Monitor,
   Globe,
-  HardDriveDownload
+  HardDriveDownload,
+  HardDriveUpload,
+  FileUp,
+  FileText
 } from 'lucide-react'
 import type { ThemeConfig, ThemeMode } from '@shared/theme-mode'
 import type { DisplayPreferences } from '../context/DisplayPreferencesContext'
-import { NumberInput, CustomSelect, toast } from './ui'
+import { NumberInput, CustomSelect, DatePicker, toast } from './ui'
 import { SNAP_STEP_OPTIONS } from '../dnd/resize-math'
 import { ALL_DAY_REMINDER_PRESETS, TIMED_REMINDER_PRESETS } from '@shared/reminders'
 import { reminderLabel } from '../lib/reminder-labels'
 import { zoneLabel, zoneOptions } from '../lib/time-zones'
+import { WEEK_START_CHOICES } from '@shared/week-start'
+import type { ZonePeriod } from '@shared/zone-history'
+import { DateTime } from 'luxon'
 import AppearanceSettings from './AppearanceSettings'
 
 /** `null` is the panel's root list; anything else is the one level below it. */
@@ -65,15 +71,27 @@ interface SettingsPanelProps {
   onToggleSuggestionShowCalendarName: (next: boolean) => void
   dragSnapMinutes: DisplayPreferences['dragSnapMinutes']
   onChangeDragSnapMinutes: (next: DisplayPreferences['dragSnapMinutes']) => void
+  timePickerStepMinutes: DisplayPreferences['timePickerStepMinutes']
+  onChangeTimePickerStepMinutes: (next: DisplayPreferences['timePickerStepMinutes']) => void
   defaultReminderMinutes: DisplayPreferences['defaultReminderMinutes']
   onChangeDefaultReminderMinutes: (next: DisplayPreferences['defaultReminderMinutes']) => void
   defaultAllDayReminderMinutes: DisplayPreferences['defaultAllDayReminderMinutes']
   onChangeDefaultAllDayReminderMinutes: (next: DisplayPreferences['defaultAllDayReminderMinutes']) => void
   preferredTimeZones: string[]
   onChangePreferredTimeZones: (next: string[]) => void
+  zoneHistory: ZonePeriod[]
+  onChangeZoneHistory: (next: ZonePeriod[]) => void
   timezoneNames: string[]
   checkForUpdates: boolean
   onToggleCheckForUpdates: (next: boolean) => void
+  autoBackup: boolean
+  onToggleAutoBackup: (next: boolean) => void
+  closeToTray: boolean
+  onToggleCloseToTray: (next: boolean) => void
+  launchAtLogin: boolean
+  onToggleLaunchAtLogin: (next: boolean) => void
+  firstDayOfWeek: number
+  onChangeFirstDayOfWeek: (next: number) => void
   autoHideHeader: boolean
   onToggleAutoHideHeader: (next: boolean) => void
 
@@ -81,6 +99,10 @@ interface SettingsPanelProps {
   onManageAccounts: () => void
 
   onOpenShortcuts: () => void
+  /** Pick .ics files to import. */
+  onImportIcs: () => void
+  /** Replace everything with a backup (asks first, then restarts). */
+  onRestoreBackup: () => void
   conflictCount?: number
   onOpenConflicts?: () => void
 
@@ -261,6 +283,37 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
                 <span className="flex-1 truncate">{t('settings.backup')}</span>
               </button>
 
+              <button
+                type="button"
+                className="flex w-full items-center gap-2.5 rounded-[3px] px-2.5 py-2.5 text-left text-sm text-primary transition-colors hover:bg-hover"
+                onClick={props.onRestoreBackup}
+              >
+                <HardDriveUpload className="h-4 w-4 shrink-0 text-muted" />
+                <span className="flex-1 truncate">{t('settings.restore')}</span>
+              </button>
+
+              <button
+                type="button"
+                className="flex w-full items-center gap-2.5 rounded-[3px] px-2.5 py-2.5 text-left text-sm text-primary transition-colors hover:bg-hover"
+                onClick={props.onImportIcs}
+              >
+                <FileUp className="h-4 w-4 shrink-0 text-muted" />
+                <span className="flex-1 truncate">{t('ics.importMenu')}</span>
+              </button>
+
+              {/* For a bug report: the log is in the profile folder, which is hidden. */}
+              <button
+                type="button"
+                className="flex w-full items-center gap-2.5 rounded-[3px] px-2.5 py-2.5 text-left text-sm text-primary transition-colors hover:bg-hover"
+                onClick={async () => {
+                  const shown = await window.xrncal?.app?.showLogFile?.()
+                  if (shown === false) toast.error(t('settings.showLogFailed'))
+                }}
+              >
+                <FileText className="h-4 w-4 shrink-0 text-muted" />
+                <span className="flex-1 truncate">{t('settings.showLog')}</span>
+              </button>
+
               <div className="px-2.5 pt-3 pb-1 font-mono text-[11px] text-muted">
                 v{props.appVersion} ({props.platform})
               </div>
@@ -294,8 +347,17 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
                   <Row label={t('settings.showMiniCalendar')}>
                     <Toggle on={props.showMiniCalendar} onChange={props.onToggleMiniCalendar} />
                   </Row>
+                  <Row label={t('settings.launchAtLogin')} hint={t('settings.launchAtLoginHint')}>
+                    <Toggle on={props.launchAtLogin} onChange={props.onToggleLaunchAtLogin} />
+                  </Row>
+                  <Row label={t('settings.closeToTray')} hint={t('settings.closeToTrayHint')}>
+                    <Toggle on={props.closeToTray} onChange={props.onToggleCloseToTray} />
+                  </Row>
                   <Row label={t('settings.checkForUpdates')} hint={t('settings.checkForUpdatesHint')}>
                     <Toggle on={props.checkForUpdates} onChange={props.onToggleCheckForUpdates} />
+                  </Row>
+                  <Row label={t('settings.autoBackup')} hint={t('settings.autoBackupHint')}>
+                    <Toggle on={props.autoBackup} onChange={props.onToggleAutoBackup} />
                   </Row>
                   {/* Full width, like the timezone list: the labels are long. */}
                   <div className="border-b border-hairline py-3">
@@ -338,7 +400,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
                   </div>
                   {/* The zones the event editor lists first, so picking one there
                       is not a hunt through the whole list. */}
-                  <div className="py-3">
+                  <div className="border-b border-hairline py-3">
                     <div className="text-sm text-primary">{t('settings.preferredTimeZones')}</div>
                     <div className="mt-0.5 mb-2 text-xs leading-snug text-muted">
                       {t('settings.preferredTimeZonesHint')}
@@ -379,6 +441,67 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
                       options={zoneOptions().filter((o) => !props.preferredTimeZones.includes(o.value))}
                     />
                   </div>
+                  {/* Where the user was, from when: the zone an event that names
+                      none opens in - Google's export writes one-off events as bare
+                      UTC, with nothing to say whether they were made at +7 or +11. */}
+                  <div className="py-3">
+                    <div className="text-sm text-primary">{t('settings.zoneHistory')}</div>
+                    <div className="mt-0.5 mb-2 text-xs leading-snug text-muted">{t('settings.zoneHistoryHint')}</div>
+                    {props.zoneHistory.length > 0 && (
+                      <div className="mb-2 space-y-1">
+                        {props.zoneHistory.map((period, idx) => (
+                          <div
+                            key={`${period.from ?? 'first'}-${period.zone}`}
+                            className="flex items-center gap-2 rounded-[3px] bg-hover/60 px-2.5 py-1.5 text-xs"
+                          >
+                            <div className="w-36 shrink-0">
+                              {idx === 0 ? (
+                                <span className="text-muted">{t('settings.zoneHistoryFirst')}</span>
+                              ) : (
+                                <DatePicker
+                                  compact
+                                  clearable={false}
+                                  value={period.from ?? ''}
+                                  onChange={(from) => {
+                                    if (!from) return
+                                    props.onChangeZoneHistory(
+                                      props.zoneHistory.map((p, i) => (i === idx ? { ...p, from } : p))
+                                    )
+                                  }}
+                                />
+                              )}
+                            </div>
+                            <span className="min-w-0 flex-1 truncate text-primary">{zoneLabel(period.zone)}</span>
+                            <button
+                              type="button"
+                              onClick={() => props.onChangeZoneHistory(props.zoneHistory.filter((_, i) => i !== idx))}
+                              className="shrink-0 cursor-pointer text-muted transition-colors hover:text-today"
+                              title={t('settings.zoneHistoryRemove')}
+                              aria-label={t('settings.zoneHistoryRemove')}
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <CustomSelect
+                      value=""
+                      onChange={(zone) => {
+                        if (!zone) return
+                        // The first is where it all started; each later one is a
+                        // move, dated today until its date is picked.
+                        props.onChangeZoneHistory([
+                          ...props.zoneHistory,
+                          { from: props.zoneHistory.length === 0 ? null : DateTime.local().toISODate(), zone }
+                        ])
+                      }}
+                      searchable
+                      variant="boxed"
+                      placeholder={props.zoneHistory.length === 0 ? t('settings.zoneHistoryStart') : t('settings.zoneHistoryAdd')}
+                      options={zoneOptions()}
+                    />
+                  </div>
                 </div>
               )}
 
@@ -394,6 +517,20 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
 
               {props.section === 'view' && (
                 <div>
+                  <Row label={t('settings.weekStart')}>
+                    <div className="flex gap-1">
+                      {WEEK_START_CHOICES.map((day) => (
+                        <button
+                          key={day}
+                          type="button"
+                          className={props.firstDayOfWeek === day ? 'gc-btn-primary' : 'gc-btn'}
+                          onClick={() => props.onChangeFirstDayOfWeek(day)}
+                        >
+                          {t(`settings.weekStartDay.${day}`)}
+                        </button>
+                      ))}
+                    </div>
+                  </Row>
                   <Row label={t('settings.dayStartHour')} hint={t('settings.dayStartHourHint')}>
                     <NumberInput
                       value={props.dayStartHour}
@@ -427,6 +564,20 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
                           type="button"
                           className={props.dragSnapMinutes === opt ? 'gc-btn-primary' : 'gc-btn'}
                           onClick={() => props.onChangeDragSnapMinutes(opt)}
+                        >
+                          {opt === 60 ? t('settings.dragSnapHour') : t('settings.dragSnapMin', { count: opt })}
+                        </button>
+                      ))}
+                    </div>
+                  </Row>
+                  <Row label={t('settings.timePickerStep')}>
+                    <div className="flex gap-1">
+                      {SNAP_STEP_OPTIONS.map((opt) => (
+                        <button
+                          key={opt}
+                          type="button"
+                          className={props.timePickerStepMinutes === opt ? 'gc-btn-primary' : 'gc-btn'}
+                          onClick={() => props.onChangeTimePickerStepMinutes(opt)}
                         >
                           {opt === 60 ? t('settings.dragSnapHour') : t('settings.dragSnapMin', { count: opt })}
                         </button>

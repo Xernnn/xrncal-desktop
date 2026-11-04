@@ -24,7 +24,9 @@ Defined in `src/renderer/src/styles/index.css` and mapped as Tailwind theme toke
 - Today Mark: `#eb5757` (Notion soft coral red)
 - Accent Mark: `#2383e2` (Notion blue)
 
-### Dark Mode (Default — Discord-style dark)
+The theme follows the system by default (light or dark with the OS); both can be chosen in Settings. A profile from before 0.2.0 keeps the dark theme it had.
+
+### Dark Mode (Discord-style dark)
 Soft blue-grey, comfortable contrast, deliberately never pure black.
 - Canvas / App: `#2b2d31` (main calendar surface)
 - Surface / Cards: `#313338` (elevated: dialogs, menus, inputs, event blocks)
@@ -84,8 +86,16 @@ Font: Inter. Hierarchy:
 - **Footer Status:** `rounded-[3px]` refresh button, soft pastel emerald `#52b788` dot.
 
 ### Header Rules
-- **Task Launcher Button:** `gc-icon-btn` with `text-muted hover:text-primary`, counter badge `rounded-[3px] bg-accent text-[8px] font-bold text-white`.
+The header is always shown by default (auto-hide is an opt-in setting), laid out like every calendar app:
+- **Left:** sidebar toggle (☰), previous / next arrows, the period's name (28px). There is no Today button: `T` and Week view's week number go to today. Week view names its month ("October 2026", "Oct – Nov 2026"); Day view leaves the bar empty because its column carries the full date.
+- **Right:** **Create** (`gc-btn-primary` with a plus), search, `ViewSwitcher`, Settings as a **gear** (never a second ☰), with a `bg-today` dot when there are sync conflicts.
 - **Controls & Buttons:** `gc-btn`, `gc-btn-primary`, `ViewSwitcher`, `SettingsPanel` all follow `var(--radius-control)`.
+- Week view column heads carry the weekday ("MO", "T2") above the number; weekend names use `text-today`.
+
+### Right-click menu
+A click on an empty slot or an event opens the full editor; there is no quick-create box or event card in between. The editor is always a 420px side panel, never a centred dialog: opened from the grid it slides in from the side away from the slot or event, which stays in sight; from the Create button, `N` or search it comes in from the right. The right-click menu (`ContextMenu`) is portalled to `<body>` at the pointer and kept inside the window: `rounded-[4px]`, `border-hairline`, `bg-surface`, `shadow-lg`, `animate-popover`; 13px rows with a muted 16px icon column and a shortcut hint on the right; destructive rows in `text-today`. It closes on Escape, a click outside, scrolling and resize. Colour is changed in the editor only.
+
+The accent colour is set on `<html>`, not only on the app root, so portalled UI uses the chosen accent too.
 
 ## Motion & Interaction
 

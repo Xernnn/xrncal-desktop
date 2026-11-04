@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react'
 import type { AppSettings } from '@shared/settings-contract'
+import type { ZonePeriod } from '@shared/zone-history'
 
 export interface DisplayPreferences {
   timeFormat: AppSettings['timeFormat']
@@ -11,11 +12,17 @@ export interface DisplayPreferences {
   suggestionShowCalendarName: boolean
   /** Minutes that drag, drop and resize snap to. */
   dragSnapMinutes: AppSettings['dragSnapMinutes']
+  /** Gap between the times the editor's time lists offer. */
+  timePickerStepMinutes: AppSettings['timePickerStepMinutes']
   /** What an event with no reminders of its own rings with (see effectiveReminders). */
   defaultReminderMinutes: AppSettings['defaultReminderMinutes']
   defaultAllDayReminderMinutes: AppSettings['defaultAllDayReminderMinutes']
   /** Zones the event editor lists first (the parsed `preferredTimeZones` setting). */
   preferredTimeZones: string[]
+  /** Where the user was, from when: the zone of an event that names none. */
+  zoneHistory: ZonePeriod[]
+  /** The day weeks start on: 0 = Sunday, 1 = Monday, 6 = Saturday. */
+  firstDayOfWeek: number
 }
 
 const DEFAULT_DISPLAY_PREFERENCES: DisplayPreferences = {
@@ -25,9 +32,12 @@ const DEFAULT_DISPLAY_PREFERENCES: DisplayPreferences = {
   secondaryTimezone: '',
   suggestionShowCalendarName: true,
   dragSnapMinutes: 15,
+  timePickerStepMinutes: 15,
   defaultReminderMinutes: 10,
   defaultAllDayReminderMinutes: null,
-  preferredTimeZones: []
+  preferredTimeZones: [],
+  zoneHistory: [],
+  firstDayOfWeek: 1
 }
 
 /** Row height (px) of one hour in the Day/Week timed grid, per hourBlockSize setting. */

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DateTime } from 'luxon'
-import type { AppLocale } from '@shared/ipc-contract'
+import type { AppLocale, OpenedIcsFile } from '@shared/ipc-contract'
 import type { AppSettings } from '@shared/settings-contract'
 import type {
   Calendar,
@@ -17,6 +17,8 @@ import type {
 import type { CalendarViewType } from '@shared/visible-range'
 import { sortForCursor, stepCursor, nudgedRange, resizedRange } from '@shared/keyboard-nav'
 import { useVisibleRange } from './hooks/use-visible-range'
+import { weekTitle } from '@shared/visible-range'
+import { startOfWeek } from '@shared/week-start'
 import { useTheme } from './hooks/use-theme'
 import MonthView from './views/MonthView'
 import WeekView from './views/WeekView'
@@ -43,6 +45,12 @@ import { singleDayRange } from './dnd/drop-target'
 import { NotionToaster, toast, showFriendlyError, isStaleEventError } from './components/ui'
 import { DisplayPreferencesProvider, type DisplayPreferences } from './context/DisplayPreferencesContext'
 import { TIME_ZONE_NAMES, parseZoneList, serializeZoneList } from './lib/time-zones'
+import { parseZoneHistory, recordZoneMove, serializeZoneHistory, type ZonePeriod } from '@shared/zone-history'
+import { defaultCalendarFor } from './lib/new-event'
+import ImportIcsDialog, { readIcsFiles } from './components/ImportIcsDialog'
+import WelcomeDialog, { type WelcomeNext } from './components/WelcomeDialog'
+import { ContextMenu, type ContextMenuEntry } from './components/ui'
+import { CalendarPlus, Copy, CalendarDays as CalendarDaysIcon, Pencil, Trash2 } from 'lucide-react'
 
 export type { CalendarViewType }
 
@@ -88,19 +96,30 @@ export const App: React.FC = () => {
   const [showLunar, setShowLunar] = useState(true)
   const [showWeekNumbers, setShowWeekNumbers] = useState(true)
   const [showMiniCalendar, setShowMiniCalendar] = useState(true)
-  const [autoHideHeader, setAutoHideHeader] = useState(true)
+  const [autoHideHeader, setAutoHideHeader] = useState(false)
   const [timeFormat, setTimeFormat] = useState<DisplayPreferences['timeFormat']>('24h')
   const [dayStartHour, setDayStartHour] = useState(7)
   const [hourBlockSize, setHourBlockSize] = useState<DisplayPreferences['hourBlockSize']>('medium')
   const [secondaryTimezone, setSecondaryTimezone] = useState<string>('')
   const [preferredTimeZones, setPreferredTimeZones] = useState<string[]>([])
+  const [zoneHistory, setZoneHistory] = useState<ZonePeriod[]>([])
+  // Where you were, kept by itself: the zone this computer was last seen in
+  // (null until the settings are read), and a count of zone changes that keys
+  // the views so they redraw their hours in the new zone.
+  const zoneHistoryRef = useRef<ZonePeriod[]>([])
+  const lastSeenZoneRef = useRef<string | null>(null)
+  const [zoneMoves, setZoneMoves] = useState(0)
   const [suggestionShowCalendarName, setSuggestionShowCalendarName] = useState<boolean>(true)
   const [dragSnapMinutes, setDragSnapMinutes] = useState<AppSettings['dragSnapMinutes']>(15)
+  const [timePickerStepMinutes, setTimePickerStepMinutes] = useState<AppSettings['timePickerStepMinutes']>(15)
   const [defaultReminderMinutes, setDefaultReminderMinutes] =
     useState<AppSettings['defaultReminderMinutes']>(10)
   const [defaultAllDayReminderMinutes, setDefaultAllDayReminderMinutes] =
     useState<AppSettings['defaultAllDayReminderMinutes']>(null)
   const [checkForUpdates, setCheckForUpdates] = useState(true)
+  const [autoBackup, setAutoBackup] = useState(true)
+  const [closeToTray, setCloseToTray] = useState(true)
+  const [launchAtLogin, setLaunchAtLogin] = useState(false)
   const [headerVisible, setHeaderVisible] = useState(true)
   const headerHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [firstDayOfWeek, setFirstDayOfWeek] = useState(1)
@@ -122,6 +141,16 @@ export const App: React.FC = () => {
   const handleDraftChange = useCallback((draft: EventEditorDraftPreview | null) => {
     setDraftPreview(draft)
   }, [])
+  // Right-click on an event or a day.
+  const [contextMenu, setContextMenu] = useState<{
+    at: { x: number; y: number }
+    entries: ContextMenuEntry[]
+    label: string
+  } | null>(null)
+  const [importFiles, setImportFiles] = useState<OpenedIcsFile[] | null>(null)
+  const [welcomeOpen, setWelcomeOpen] = useState(false)
+  const icsInputRef = useRef<HTMLInputElement>(null)
+
   const [pendingRecurringScope, setPendingRecurringScope] = useState<{
     action: 'edit' | 'delete'
     title: string
@@ -130,7 +159,7 @@ export const App: React.FC = () => {
     input?: UpdateEventInput
   } | null>(null)
 
-  const visibleRange = useVisibleRange(anchorDate, currentView, i18n.language)
+  const visibleRange = useVisibleRange(anchorDate, currentView, i18n.language, firstDayOfWeek)
 
   // Each entry undoes one move, resize, copy or delete. Only those: an edit in
   // the editor is deliberate, and a series-wide change has no simple inverse.
@@ -397,17 +426,84 @@ export const App: React.FC = () => {
     [handleDropOnDate]
   )
 
+  // Where the pointer last went down, and on which event if any: the views
+  // report which event was clicked, not where, and the editor docks on the
+  // side away from it.
+  const lastPointerRef = useRef<{ x: number; occurrenceId?: string } | null>(null)
+  useEffect(() => {
+    const remember = (e: PointerEvent): void => {
+      const el = (e.target as Element | null)?.closest?.<HTMLElement>('[data-occurrence-id]')
+      lastPointerRef.current = { x: e.clientX, occurrenceId: el?.dataset.occurrenceId }
+    }
+    window.addEventListener('pointerdown', remember, true)
+    return () => window.removeEventListener('pointerdown', remember, true)
+  }, [])
+
+  /** The viewport X of an occurrence on screen: where it was just clicked, else
+   *  the middle of its element (Enter on the selection, a right-click menu).
+   *  Undefined when it is not drawn; the editor then opens on the right. */
+  const clientXOf = (occurrenceId: string): number | undefined => {
+    const last = lastPointerRef.current
+    if (last && last.occurrenceId === occurrenceId) return last.x
+    const el = document.querySelector(`[data-occurrence-id="${CSS.escape(occurrenceId)}"]`)
+    if (!el) return undefined
+    const rect = el.getBoundingClientRect()
+    return rect.left + rect.width / 2
+  }
+
+  /** A new event from 09:00 on `date`: a Month view day click (with where it
+   *  was, so the editor opens away from it), Create, N or Enter on a day. */
   const openEditorForDate = useCallback(
-    (date: DateTime) => {
+    (date: DateTime, clientX?: number) => {
       if (wasJustDragging()) return
       setEditorData({
         initialStart: date.set({ hour: 9, minute: 0, second: 0 }),
-        initialEnd: date.set({ hour: 10, minute: 0, second: 0 })
+        initialEnd: date.set({ hour: 10, minute: 0, second: 0 }),
+        initialClientX: clientX
       })
       setIsEditorOpen(true)
     },
     [wasJustDragging]
   )
+
+  /** A click or drag on an empty slot of the hour grid or the all-day lane.
+   *  `clientX` docks the editor on the side away from the slot. */
+  const openEditorForSlot = useCallback(
+    (start: DateTime, end: DateTime, allDay?: boolean, clientX?: number) => {
+      if (wasJustDragging()) return
+      setEditorData({ initialStart: start, initialEnd: end, initialAllDay: allDay, initialClientX: clientX })
+      setIsEditorOpen(true)
+    },
+    [wasJustDragging]
+  )
+
+  /**
+   * Notices this computer's zone changing - a flight, a move - and records it
+   * in Where you were from today, so events saved without a zone keep the one
+   * they were made in. The views are redrawn: their hours are this computer's.
+   */
+  const followSystemZone = useCallback(async (): Promise<void> => {
+    const lastSeen = lastSeenZoneRef.current
+    const current = Intl.DateTimeFormat().resolvedOptions().timeZone
+    if (lastSeen === null || !current || lastSeen === current) return
+    lastSeenZoneRef.current = current
+    const settings = window.xrncal?.settings
+    try {
+      const moved = recordZoneMove(zoneHistoryRef.current, lastSeen, current, DateTime.local().toISODate() ?? '')
+      if (moved) {
+        zoneHistoryRef.current = moved
+        setZoneHistory(moved)
+        await settings?.set('zoneHistory', serializeZoneHistory(moved))
+      }
+      await settings?.set('lastSeenZone', current)
+    } catch {
+      // Looked at again on the next check.
+      lastSeenZoneRef.current = lastSeen
+      return
+    }
+    // The first look only records the zone; a later change is a move.
+    if (lastSeen) setZoneMoves((n) => n + 1)
+  }, [])
 
   useEffect(() => {
     const initApp = async (): Promise<void> => {
@@ -428,17 +524,25 @@ export const App: React.FC = () => {
           setShowLunar(settings.showLunar ?? true)
           setShowWeekNumbers(settings.showWeekNumbers ?? true)
           setShowMiniCalendar(settings.showMiniCalendar ?? true)
-          setAutoHideHeader(settings.autoHideHeader ?? true)
+          setAutoHideHeader(settings.autoHideHeader ?? false)
           setTimeFormat(settings.timeFormat ?? '24h')
           setDayStartHour(settings.dayStartHour ?? 7)
           setHourBlockSize(settings.hourBlockSize ?? 'medium')
           setSecondaryTimezone(settings.secondaryTimezone ?? '')
           setPreferredTimeZones(parseZoneList(settings.preferredTimeZones))
+          setZoneHistory(parseZoneHistory(settings.zoneHistory))
+          zoneHistoryRef.current = parseZoneHistory(settings.zoneHistory)
+          lastSeenZoneRef.current = settings.lastSeenZone ?? ''
           setSuggestionShowCalendarName(settings.suggestionShowCalendarName ?? true)
           setDragSnapMinutes(settings.dragSnapMinutes ?? 15)
+          setTimePickerStepMinutes(settings.timePickerStepMinutes ?? 15)
           setDefaultReminderMinutes(settings.defaultReminderMinutes === undefined ? 10 : settings.defaultReminderMinutes)
           setDefaultAllDayReminderMinutes(settings.defaultAllDayReminderMinutes ?? null)
           setCheckForUpdates(settings.checkForUpdates ?? true)
+          setAutoBackup(settings.autoBackup ?? true)
+          setCloseToTray(settings.closeToTray ?? true)
+          setLaunchAtLogin(settings.launchAtLogin ?? false)
+          if (!settings.welcomeDone) setWelcomeOpen(true)
           setFirstDayOfWeek(settings.firstDayOfWeek ?? 1)
           const loc = settings.locale === 'vi' || settings.locale === 'en' ? settings.locale : 'en'
           if (loc !== i18n.language) await i18n.changeLanguage(loc)
@@ -450,9 +554,34 @@ export const App: React.FC = () => {
 
       await loadFromSettings()
       await loadCalendarsAndEvents()
+      await followSystemZone()
     }
     initApp()
-  }, [i18n, loadCalendarsAndEvents, loadFromSettings])
+  }, [i18n, loadCalendarsAndEvents, loadFromSettings, followSystemZone])
+
+  // A move noticed while xrncal is open: the laptop woke up somewhere else.
+  useEffect(() => {
+    const check = (): void => void followSystemZone()
+    const timer = setInterval(check, 60_000)
+    window.addEventListener('focus', check)
+    return () => {
+      clearInterval(timer)
+      window.removeEventListener('focus', check)
+    }
+  }, [followSystemZone])
+
+  useEffect(() => {
+    zoneHistoryRef.current = zoneHistory
+  }, [zoneHistory])
+
+  // The accent goes on <html>, not only on the app's root element: pickers,
+  // menus and popovers are portalled to <body>, outside that root,
+  // and drew in the theme's stock accent instead of the one chosen.
+  useEffect(() => {
+    const root = document.documentElement.style
+    root.setProperty('--accent-color', themeConfig.accentColor)
+    root.setProperty('--color-accent-mark', themeConfig.accentColor)
+  }, [themeConfig.accentColor])
 
   const handleToday = () => setAnchorDate(DateTime.local())
 
@@ -564,9 +693,20 @@ export const App: React.FC = () => {
     if (window.xrncal?.settings) await window.xrncal.settings.set('preferredTimeZones', serializeZoneList(next))
   }
 
+  const changeZoneHistory = async (next: ZonePeriod[]) => {
+    const stored = serializeZoneHistory(next)
+    setZoneHistory(parseZoneHistory(stored))
+    if (window.xrncal?.settings) await window.xrncal.settings.set('zoneHistory', stored)
+  }
+
   const changeDragSnapMinutes = async (next: AppSettings['dragSnapMinutes']) => {
     setDragSnapMinutes(next)
     if (window.xrncal?.settings) await window.xrncal.settings.set('dragSnapMinutes', next)
+  }
+
+  const changeTimePickerStepMinutes = async (next: AppSettings['timePickerStepMinutes']) => {
+    setTimePickerStepMinutes(next)
+    if (window.xrncal?.settings) await window.xrncal.settings.set('timePickerStepMinutes', next)
   }
 
   const changeDefaultReminderMinutes = async (next: AppSettings['defaultReminderMinutes']) => {
@@ -582,6 +722,26 @@ export const App: React.FC = () => {
   const toggleCheckForUpdates = async (next: boolean) => {
     setCheckForUpdates(next)
     if (window.xrncal?.settings) await window.xrncal.settings.set('checkForUpdates', next)
+  }
+
+  const toggleAutoBackup = async (next: boolean) => {
+    setAutoBackup(next)
+    if (window.xrncal?.settings) await window.xrncal.settings.set('autoBackup', next)
+  }
+
+  const toggleCloseToTray = async (next: boolean) => {
+    setCloseToTray(next)
+    if (window.xrncal?.settings) await window.xrncal.settings.set('closeToTray', next)
+  }
+
+  const toggleLaunchAtLogin = async (next: boolean) => {
+    setLaunchAtLogin(next)
+    if (window.xrncal?.settings) await window.xrncal.settings.set('launchAtLogin', next)
+  }
+
+  const changeFirstDayOfWeek = async (next: number) => {
+    setFirstDayOfWeek(next)
+    if (window.xrncal?.settings) await window.xrncal.settings.set('firstDayOfWeek', next)
   }
 
   const toggleSuggestionShowCalendarName = async (next: boolean) => {
@@ -798,11 +958,179 @@ export const App: React.FC = () => {
     (occ: ExpandedOccurrence) => {
       if (wasJustDragging()) return
       setSelection({ occurrenceId: occ.id, eventId: occ.eventId })
-      setEditorData({ occurrence: occ })
+      setEditorData({ occurrence: occ, initialClientX: clientXOf(occ.id) })
       setIsEditorOpen(true)
     },
     [wasJustDragging]
   )
+
+  /** A copy of one occurrence as an event of its own, opened in the editor to
+   *  be moved or renamed. Out of a read-only calendar it lands in the default one. */
+  const duplicateOccurrence = async (occ: ExpandedOccurrence): Promise<void> => {
+    if (!window.xrncal?.events) return
+    const events = window.xrncal.events
+    const source = calendars.find((c) => c.id === occ.calendarId)
+    const target = source?.isReadOnly ? defaultCalendarFor(calendars)?.id : occ.calendarId
+    try {
+      const copied = await events.copy({
+        sourceEventId: occ.eventId,
+        dtStartUtc: occ.startUtc,
+        dtEndUtc: occ.endUtc,
+        targetCalendarId: target,
+        copyInstanceOnly: true,
+        allDay: occ.allDay
+      })
+      pushUndo(() => events.delete(copied.id))
+      await loadCalendarsAndEvents()
+      // The copy sits where the original does.
+      setEditorData({ event: copied, initialClientX: clientXOf(occ.id) })
+      setIsEditorOpen(true)
+    } catch (err) {
+      showFriendlyError(err, t('toast.copyFailed'))
+    }
+  }
+
+  const deleteOccurrence = (occ: ExpandedOccurrence): void => {
+    if (calendars.find((c) => c.id === occ.calendarId)?.isReadOnly) {
+      toast.error(t('toast.readOnlyTitle'), { description: t('toast.readOnlyDelete') })
+      return
+    }
+    void handleDeleteEvent(occ.eventId, occ.originalStartUtc || occ.startUtc, occ.isRecurring)
+  }
+
+  // Right-click: on an event, what can be done to it; on an empty day or
+  // hour, a new event there. Found through the data attributes the views put
+  // on events (data-occurrence-id) and on days (data-day).
+  useEffect(() => {
+    const onContextMenu = (e: MouseEvent): void => {
+      const target = e.target as HTMLElement
+      if (target.closest('input, textarea, [contenteditable="true"], [role="dialog"], [role="menu"]')) return
+      const at = { x: e.clientX, y: e.clientY }
+
+      const eventEl = target.closest<HTMLElement>('[data-occurrence-id]')
+      if (eventEl) {
+        const occ = occurrences.find((o) => o.id === eventEl.dataset.occurrenceId)
+        if (!occ) return
+        e.preventDefault()
+        setSelection({ occurrenceId: occ.id, eventId: occ.eventId })
+        const readOnly = Boolean(calendars.find((c) => c.id === occ.calendarId)?.isReadOnly)
+        setContextMenu({
+          at,
+          label: occ.title,
+          entries: [
+            { label: readOnly ? t('contextMenu.open') : t('contextMenu.edit'), icon: <Pencil className="h-3.5 w-3.5" />, hint: 'Enter', onSelect: () => handleSelectOccurrence(occ) },
+            { label: readOnly ? t('contextMenu.copyToMine') : t('contextMenu.duplicate'), icon: <Copy className="h-3.5 w-3.5" />, onSelect: () => void duplicateOccurrence(occ) },
+            'separator',
+            { label: t('common.delete'), icon: <Trash2 className="h-3.5 w-3.5" />, hint: 'Del', danger: true, disabled: readOnly, onSelect: () => deleteOccurrence(occ) }
+          ]
+        })
+        return
+      }
+
+      const dayEl = target.closest<HTMLElement>('[data-day]')
+      if (dayEl?.dataset.day) {
+        e.preventDefault()
+        const day = DateTime.fromISO(dayEl.dataset.day)
+        const hourHeight = Number(dayEl.dataset.hourHeight)
+        // On the hour grid, the half hour under the pointer; on a day cell or
+        // the all-day lane, the whole day.
+        const slot =
+          hourHeight > 0
+            ? (() => {
+                const minutes = ((e.clientY - dayEl.getBoundingClientRect().top) / hourHeight) * 60
+                const start = day.plus({ minutes: Math.max(0, Math.min(23 * 60 + 30, Math.floor(minutes / 30) * 30)) })
+                return { start, end: start.plus({ hours: 1 }), allDay: false }
+              })()
+            : { start: day, end: day, allDay: true }
+        setContextMenu({
+          at,
+          label: day.setLocale(i18n.language).toFormat('cccc, d MMMM'),
+          entries: [
+            { label: t('contextMenu.newEventHere'), icon: <CalendarPlus className="h-3.5 w-3.5" />, onSelect: () => openEditorForSlot(slot.start, slot.end, slot.allDay, at.x) },
+            {
+              label: t('contextMenu.openDay'),
+              icon: <CalendarDaysIcon className="h-3.5 w-3.5" />,
+              onSelect: () => {
+                setAnchorDate(day)
+                setCurrentView('day')
+              }
+            }
+          ]
+        })
+      }
+    }
+    window.addEventListener('contextmenu', onContextMenu)
+    return () => window.removeEventListener('contextmenu', onContextMenu)
+  }) // re-bound each render: it reads the occurrences and calendars on screen
+
+  // .ics files: those the OS opened xrncal with (collected now and whenever
+  // main says another is waiting), and those dropped onto the window.
+  useEffect(() => {
+    const api = window.xrncal?.ics
+    if (!api?.takeOpenedFiles) return
+    const collect = (): void => {
+      api
+        .takeOpenedFiles()
+        .then((files) => {
+          if (files.length > 0) setImportFiles(files)
+        })
+        .catch(() => {})
+    }
+    collect()
+    return api.onFileOpened?.(collect)
+  }, [])
+
+  useEffect(() => {
+    // Capture phase: the day cells' own drop handlers (moving events) stop
+    // propagation, and a file is not theirs to handle.
+    const isFileDrag = (e: DragEvent): boolean => Array.from(e.dataTransfer?.types ?? []).includes('Files')
+    const onDragOver = (e: DragEvent): void => {
+      if (!isFileDrag(e)) return
+      e.preventDefault()
+      e.stopPropagation()
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+    }
+    const onDrop = (e: DragEvent): void => {
+      if (!isFileDrag(e) || !e.dataTransfer) return
+      e.preventDefault()
+      e.stopPropagation()
+      void readIcsFiles(e.dataTransfer.files).then((files) => {
+        if (files.length > 0) setImportFiles(files)
+        else toast.error(t('ics.notCalendar'))
+      })
+    }
+    window.addEventListener('dragover', onDragOver, true)
+    window.addEventListener('drop', onDrop, true)
+    return () => {
+      window.removeEventListener('dragover', onDragOver, true)
+      window.removeEventListener('drop', onDrop, true)
+    }
+  }, [t])
+
+  const restoreFromBackup = async (): Promise<void> => {
+    if (!window.xrncal?.app?.restoreDatabase) return
+    if (!confirm(t('settings.restoreConfirm'))) return
+    try {
+      const result = await window.xrncal.app.restoreDatabase()
+      // On success the app restarts and nothing comes back.
+      if (!result.success && result.message && result.message !== 'cancelled') {
+        const known = ['notDatabase', 'notXrncal', 'newer'].includes(result.message)
+        toast.error(t('settings.restoreFailed'), {
+          description: known ? t(`settings.restoreProblem.${result.message}`) : result.message
+        })
+      }
+    } catch (err) {
+      showFriendlyError(err, t('settings.restoreFailed'))
+    }
+  }
+
+  const finishWelcome = async (next: WelcomeNext, startAtLogin: boolean): Promise<void> => {
+    setWelcomeOpen(false)
+    if (window.xrncal?.settings) await window.xrncal.settings.set('welcomeDone', true)
+    await toggleLaunchAtLogin(startAtLogin)
+    if (next === 'subscription') setAccountsDialog([{ name: 'list' }, { name: 'subscriptions' }])
+    else if (next) setAccountsDialog([{ name: 'list' }, { name: 'add' }, { name: 'connect', provider: next }])
+  }
 
   // Week view middle-click gesture: delete the occurrence without opening the editor.
   const handleQuickDeleteOccurrence = useCallback(
@@ -1012,6 +1340,9 @@ export const App: React.FC = () => {
   // through a dialog and switch the view behind it.
   const isOverlayOpen =
     isEditorOpen ||
+    Boolean(contextMenu) ||
+    Boolean(importFiles) ||
+    welcomeOpen ||
     isSettingsOpen ||
     Boolean(accountsDialog) ||
     isShortcutsModalOpen ||
@@ -1022,7 +1353,14 @@ export const App: React.FC = () => {
 
   // These close themselves on Escape - the accounts dialog steps back a page
   // per press. Handling it here as well would close two layers with one press.
-  const ownsEscape = isEditorOpen || isSearchPaletteOpen || Boolean(pendingDrop) || Boolean(accountsDialog)
+  const ownsEscape =
+    isEditorOpen ||
+    isSearchPaletteOpen ||
+    Boolean(pendingDrop) ||
+    Boolean(accountsDialog) ||
+    Boolean(contextMenu) ||
+    Boolean(importFiles) ||
+    welcomeOpen
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1035,6 +1373,13 @@ export const App: React.FC = () => {
         if (isOverlayOpen && !isSearchPaletteOpen) return
         e.preventDefault()
         setIsSearchPaletteOpen((prev) => !prev)
+        return
+      }
+
+      // Closing the window leaves xrncal in the tray; Ctrl+Q is the way out.
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'q') {
+        e.preventDefault()
+        void window.xrncal?.app?.quit?.()
         return
       }
 
@@ -1229,9 +1574,12 @@ export const App: React.FC = () => {
         secondaryTimezone,
         suggestionShowCalendarName,
         dragSnapMinutes,
+        timePickerStepMinutes,
         defaultReminderMinutes,
         defaultAllDayReminderMinutes,
-        preferredTimeZones
+        preferredTimeZones,
+        zoneHistory,
+        firstDayOfWeek
       }}>
     <div
       className="relative flex h-screen w-screen flex-col overflow-hidden bg-app font-sans text-primary select-none"
@@ -1262,16 +1610,24 @@ export const App: React.FC = () => {
       )}
 
       {(() => {
-          // Day and week views head their own columns with the date, so the bar
-          // would only repeat it.
+          // Day view heads its column with the full date, so the bar would only
+          // repeat it. Week view's columns carry day numbers but not the month,
+          // which is what the bar says there.
           const header = (
             <AppHeader
-              title={currentView === 'week' || currentView === 'day' ? '' : visibleRange.label}
+              title={
+                currentView === 'day'
+                  ? ''
+                  : currentView === 'week'
+                    ? weekTitle(startOfWeek(anchorDate, firstDayOfWeek), i18n.language)
+                    : visibleRange.label
+              }
               currentView={currentView}
               showSidebarToggle={showMiniCalendar}
               onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
               onPrev={handlePrev}
               onNext={handleNext}
+              onNewEvent={() => openEditorForDate(anchorDate)}
               onChangeView={setCurrentView}
               onSearch={() => setIsSearchPaletteOpen(true)}
               onOpenMenu={() => {
@@ -1340,7 +1696,7 @@ export const App: React.FC = () => {
           />
         )}
 
-        <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-surface">
+        <main key={zoneMoves} className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-surface">
 
           {currentView === 'month' && (
             <MonthView
@@ -1348,7 +1704,7 @@ export const App: React.FC = () => {
               occurrences={occurrences}
               showLunar={showLunar}
               showWeekNumbers={showWeekNumbers}
-              onSelectDate={openEditorForDate}
+              onSelectDate={(date) => openEditorForDate(date, lastPointerRef.current?.x)}
               onSelectOccurrence={handleSelectOccurrence}
               onPrevMonth={handlePrev}
               onNextMonth={handleNext}
@@ -1369,16 +1725,7 @@ export const App: React.FC = () => {
               showLunar={showLunar}
               showWeekNumbers={showWeekNumbers}
               previewSlot={draftPreview}
-              onSelectSlot={(start, end, meta) => {
-                if (wasJustDragging()) return
-                setEditorData({
-                  initialStart: start,
-                  initialEnd: end,
-                  initialAllDay: meta?.allDay,
-                  initialClientX: meta?.clientX
-                })
-                setIsEditorOpen(true)
-              }}
+              onSelectSlot={(start, end, meta) => openEditorForSlot(start, end, meta?.allDay, meta?.clientX)}
               onSelectOccurrence={handleSelectOccurrence}
               onDeleteOccurrence={handleQuickDeleteOccurrence}
               onGoToday={handleToday}
@@ -1403,16 +1750,7 @@ export const App: React.FC = () => {
               occurrences={occurrences}
               showLunar={showLunar}
               previewSlot={draftPreview}
-              onSelectSlot={(start, end, meta) => {
-                if (wasJustDragging()) return
-                setEditorData({
-                  initialStart: start,
-                  initialEnd: end,
-                  initialAllDay: meta?.allDay,
-                  initialClientX: meta?.clientX
-                })
-                setIsEditorOpen(true)
-              }}
+              onSelectSlot={(start, end, meta) => openEditorForSlot(start, end, meta?.allDay, meta?.clientX)}
               onSelectOccurrence={handleSelectOccurrence}
               onPrevDay={handlePrev}
               onNextDay={handleNext}
@@ -1548,15 +1886,27 @@ export const App: React.FC = () => {
         onToggleSuggestionShowCalendarName={toggleSuggestionShowCalendarName}
         dragSnapMinutes={dragSnapMinutes}
         onChangeDragSnapMinutes={changeDragSnapMinutes}
+        timePickerStepMinutes={timePickerStepMinutes}
+        onChangeTimePickerStepMinutes={changeTimePickerStepMinutes}
         defaultReminderMinutes={defaultReminderMinutes}
         onChangeDefaultReminderMinutes={changeDefaultReminderMinutes}
         defaultAllDayReminderMinutes={defaultAllDayReminderMinutes}
         onChangeDefaultAllDayReminderMinutes={changeDefaultAllDayReminderMinutes}
         preferredTimeZones={preferredTimeZones}
         onChangePreferredTimeZones={changePreferredTimeZones}
+        zoneHistory={zoneHistory}
+        onChangeZoneHistory={changeZoneHistory}
         timezoneNames={TIME_ZONE_NAMES}
         checkForUpdates={checkForUpdates}
         onToggleCheckForUpdates={toggleCheckForUpdates}
+        autoBackup={autoBackup}
+        onToggleAutoBackup={toggleAutoBackup}
+        closeToTray={closeToTray}
+        onToggleCloseToTray={toggleCloseToTray}
+        launchAtLogin={launchAtLogin}
+        onToggleLaunchAtLogin={toggleLaunchAtLogin}
+        firstDayOfWeek={firstDayOfWeek}
+        onChangeFirstDayOfWeek={changeFirstDayOfWeek}
         autoHideHeader={autoHideHeader}
         onToggleAutoHideHeader={toggleAutoHideHeader}
         onManageAccounts={() => {
@@ -1564,17 +1914,68 @@ export const App: React.FC = () => {
           setAccountsDialog([{ name: 'list' }])
         }}
         onOpenShortcuts={() => setIsShortcutsModalOpen(true)}
+        onImportIcs={() => {
+          setIsSettingsOpen(false)
+          icsInputRef.current?.click()
+        }}
+        onRestoreBackup={() => void restoreFromBackup()}
         conflictCount={conflicts.length}
         onOpenConflicts={() => setIsConflictsModalOpen(true)}
         appVersion={appVersion}
         platform={platform}
       />
 
+      <ContextMenu
+        at={contextMenu?.at ?? null}
+        entries={contextMenu?.entries ?? []}
+        label={contextMenu?.label}
+        onClose={() => setContextMenu(null)}
+      />
+
+      {/* Held back while the welcome is up: a new user who opened xrncal by
+          double-clicking an invitation gets the welcome first, then the import. */}
+      <ImportIcsDialog
+        files={welcomeOpen ? null : importFiles}
+        calendars={calendars}
+        onClose={() => setImportFiles(null)}
+        onImported={loadCalendarsAndEvents}
+      />
+
+      <WelcomeDialog
+        isOpen={welcomeOpen}
+        language={i18n.language}
+        onSetLanguage={(locale) => void setLanguage(locale)}
+        showLunar={showLunar}
+        onToggleLunar={(next) => void toggleLunar(next)}
+        calendars={calendars}
+        onCalendarsChanged={() => void loadCalendarsAndEvents()}
+        onFinish={(next, startAtLogin) => void finishWelcome(next, startAtLogin)}
+      />
+
+      {/* Settings -> Import opens this; the picked files go to ImportIcsDialog. */}
+      <input
+        ref={icsInputRef}
+        type="file"
+        accept=".ics,.ical,text/calendar"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          const list = e.target.files
+          if (list && list.length > 0) {
+            void readIcsFiles(list).then((files) => {
+              if (files.length > 0) setImportFiles(files)
+              else toast.error(t('ics.notCalendar'))
+            })
+          }
+          e.target.value = ''
+        }}
+      />
+
       <ReminderStack
         calendars={calendars}
         onOpen={(occurrence) => {
           setSelection({ occurrenceId: occurrence.id, eventId: occurrence.eventId })
-          setEditorData({ occurrence })
+          setEditorData({ occurrence, initialClientX: clientXOf(occurrence.id) })
           setIsEditorOpen(true)
         }}
       />

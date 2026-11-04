@@ -1,7 +1,7 @@
-import { ipcMain, app, shell } from 'electron'
+import { ipcMain, app, shell, dialog, BrowserWindow } from 'electron'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { IPC_CHANNELS, type IcsImportResult } from '@shared/ipc-contract'
+import { IPC_CHANNELS, type IcsExportResult, type IcsImportResult } from '@shared/ipc-contract'
 import type {
   CreateEventInput,
   UpdateEventInput,
@@ -24,6 +24,8 @@ import { getDatabase } from '../db/database'
 import { parseIcsContent } from '../ics/parse-ics'
 import { generateIcs } from '../ics/write-ics'
 import { getSyncWorker } from './auth-sync-ipc'
+import { takeOpenedFiles } from '../opened-ics-files'
+import { writeSharedIcs } from '../share-ics-file'
 
 /** Fire-and-forget an immediate push/pull right after a local write, instead of waiting for the next poll. */
 function nudgeSync(): void {
@@ -63,6 +65,7 @@ export function registerCalendarIpcHandlers(): void {
 
   ipcMain.removeHandler(IPC_CHANNELS.ICS.IMPORT)
   ipcMain.removeHandler(IPC_CHANNELS.ICS.EXPORT)
+  ipcMain.removeHandler(IPC_CHANNELS.ICS.TAKE_OPENED)
 
   // 1. Calendar handlers
   ipcMain.handle(IPC_CHANNELS.CALENDAR.LIST, () => {
@@ -262,12 +265,7 @@ export function registerCalendarIpcHandlers(): void {
       }
 
       const icsContent = generateIcs(cal, [res.event], res.exceptions)
-      const tempDir = app.getPath('temp')
-      const sanitizedTitle = (res.event.title || 'event').replace(/[^a-zA-Z0-9_\-\s]/g, '_').trim().slice(0, 40)
-      const fileName = `${sanitizedTitle || 'event'}.ics`
-      const filePath = join(tempDir, fileName)
-
-      writeFileSync(filePath, icsContent, 'utf-8')
+      const filePath = writeSharedIcs(res.event.title, icsContent)
       shell.showItemInFolder(filePath)
 
       return { success: true, filePath, icsContent }
@@ -406,43 +404,32 @@ export function registerCalendarIpcHandlers(): void {
     }
   )
 
-  ipcMain.handle(IPC_CHANNELS.ICS.EXPORT, (_event, calendarId: string) => {
+  // A whole calendar as one .ics file, saved where the user picks - to move it
+  // to another app, or to keep.
+  ipcMain.handle(IPC_CHANNELS.ICS.EXPORT, async (_event, calendarId: string): Promise<IcsExportResult> => {
     const cal = calendarsRepo.getCalendarById(calendarId)
     if (!cal) {
       throw new Error(`Calendar not found: ${calendarId}`)
     }
 
-    // Get master events
-    const masterEvents = db
-      .prepare('SELECT * FROM events WHERE calendar_id = ? AND is_deleted = 0')
-      .all<any>(calendarId)
-      .map((row) => ({
-        id: row.id,
-        calendarId: row.calendar_id,
-        uid: row.uid,
-        title: row.title,
-        notes: row.notes,
-        location: row.location,
-        dtStartUtc: row.dtstart_utc,
-        dtEndUtc: row.dtend_utc,
-        tzid: row.tzid,
-        allDay: row.all_day === 1,
-        rrule: row.rrule,
-        rdate: row.rdate,
-        exdate: row.exdate,
-        color: row.color,
-        meetingUrl: row.meeting_url,
-        dirty: row.dirty === 1,
-        isDeleted: row.is_deleted === 1,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at
-      }))
-
+    const masterEvents = eventsRepo.queryEventsByCalendar(calendarId)
     const exceptions: EventException[] = []
     for (const me of masterEvents) {
       exceptions.push(...eventsRepo.getExceptionsForEvent(me.id))
     }
+    const content = generateIcs(cal, masterEvents, exceptions)
 
-    return generateIcs(cal, masterEvents, exceptions)
+    const safeName = cal.name.replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'calendar'
+    const win = BrowserWindow.getFocusedWindow()
+    const options: Electron.SaveDialogOptions = {
+      defaultPath: join(app.getPath('documents'), `${safeName}.ics`),
+      filters: [{ name: 'iCalendar', extensions: ['ics'] }]
+    }
+    const result = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options)
+    if (result.canceled || !result.filePath) return { success: false, message: 'cancelled' }
+    writeFileSync(result.filePath, content, 'utf8')
+    return { success: true, filePath: result.filePath }
   })
+
+  ipcMain.handle(IPC_CHANNELS.ICS.TAKE_OPENED, () => takeOpenedFiles())
 }

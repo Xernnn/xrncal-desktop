@@ -8,6 +8,28 @@ import type { SyncStatus, SyncResult } from '@shared/event-model'
 import { mt } from '../i18n-main'
 import { BrowserWindow } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc-contract'
+import { log, type LogLevel } from '../log'
+import { describeError } from './http'
+
+/**
+ * What changed in the accounts' sync errors since the last round, as log
+ * lines: an account that started failing, failed differently, or recovered.
+ * Polls run every 20 s, so an account that stays offline is logged once, not
+ * thrice a minute.
+ */
+export function accountErrorChanges(
+  before: Record<string, string>,
+  after: Record<string, string>
+): { level: LogLevel; message: string }[] {
+  const lines: { level: LogLevel; message: string }[] = []
+  for (const [accountId, error] of Object.entries(after)) {
+    if (before[accountId] !== error) lines.push({ level: 'warn', message: `Sync: ${accountId} failed: ${error}` })
+  }
+  for (const accountId of Object.keys(before)) {
+    if (!(accountId in after)) lines.push({ level: 'info', message: `Sync: ${accountId} no longer failing` })
+  }
+  return lines
+}
 
 export class SyncWorker {
   private googleEngine: GoogleSyncEngine
@@ -22,6 +44,11 @@ export class SyncWorker {
   private lastError?: string
   /** Accounts the last sync could not reach, by id, and why. */
   private accountErrors: Record<string, string> = {}
+  /** A provider's whole sync that threw this round, by provider. */
+  private engineErrors: Record<string, string> = {}
+  /** The failures last written to the log, so each is logged when it starts,
+   *  changes or ends rather than on every poll. */
+  private loggedFailures: Record<string, string> = {}
 
   private currentIntervalMs = 5 * 60 * 1000
 
@@ -88,6 +115,7 @@ export class SyncWorker {
   /** Contain an engine-level throw so one provider cannot cancel the others. */
   private engineFailure(provider: string, err: any): SyncResult {
     const message = `${provider} sync failed: ${err?.message || String(err)}`
+    this.engineErrors[`${provider} engine`] = describeError(err)
     return { success: false, pulledCount: 0, pushedCount: 0, errorCount: 1, message }
   }
 
@@ -100,6 +128,7 @@ export class SyncWorker {
     }
 
     this.isSyncing = true
+    this.engineErrors = {}
     try {
       // Run the three providers concurrently and settle independently: in
       // sequence, a slow provider delays the other two and a throw from the
@@ -123,6 +152,9 @@ export class SyncWorker {
       this.lastSyncTime = new Date().toISOString()
       this.lastError = totalErrors > 0 ? `Sync completed with ${totalErrors} errors` : undefined
       this.accountErrors = { ...googleRes.accountErrors, ...msRes.accountErrors, ...caldavRes.accountErrors }
+      const failures = { ...this.accountErrors, ...this.engineErrors }
+      for (const line of accountErrorChanges(this.loggedFailures, failures)) log(line.level, line.message)
+      this.loggedFailures = failures
 
       // Tell the renderer its copy of the data is out of date. This matters more
       // than "the view is a few minutes stale": a successful push re-keys the
@@ -144,6 +176,7 @@ export class SyncWorker {
       }
     } catch (err: any) {
       this.lastError = err.message || String(err)
+      log('error', `Sync failed: ${describeError(err)}`)
       return { success: false, pulledCount: 0, pushedCount: 0, errorCount: 1, message: this.lastError }
     } finally {
       // Always release, on every exit path: a flag left set makes every later

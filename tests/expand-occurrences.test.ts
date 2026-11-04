@@ -244,3 +244,107 @@ describe('expandOccurrences', () => {
     })
   })
 })
+
+/**
+ * An .ics DATE reads back with the zone 'floating', which Luxon cannot resolve.
+ * Expanding in it made every date invalid, the rule threw, and the series fell
+ * back to its first occurrence: every all-day series pulled over CalDAV -
+ * birthdays, a weekly placeholder - showed once and never again.
+ */
+describe('a series in a zone Luxon cannot resolve', () => {
+  const allDay: CalendarEvent = {
+    id: 'weekly',
+    calendarId: 'cal',
+    uid: 'weekly@example.com',
+    title: 'Sanctuary + Tantarus',
+    dtStartUtc: '2025-11-25T00:00:00.000Z',
+    dtEndUtc: '2025-11-25T23:59:59.999Z',
+    tzid: 'floating',
+    allDay: true,
+    rrule: 'FREQ=WEEKLY;BYDAY=TU',
+    exdate: '2025-12-09T00:00:00.000Z',
+    dirty: false,
+    isDeleted: false,
+    createdAt: '',
+    updatedAt: ''
+  }
+
+  it('repeats an all-day series on its dates, with its skips and moved weeks', () => {
+    const moved: EventException = {
+      id: 'x',
+      masterEventId: 'weekly',
+      originalStartUtc: '2025-12-16T00:00:00.000Z',
+      dtStartUtc: '2025-12-15T00:00:00.000Z',
+      dtEndUtc: '2025-12-15T01:00:00.000Z',
+      tzid: 'Australia/Sydney',
+      allDay: false,
+      isCancelled: false,
+      createdAt: '',
+      updatedAt: ''
+    }
+    const occs = expandOccurrences(allDay, [moved], '2025-11-20T00:00:00.000Z', '2025-12-31T00:00:00.000Z')
+    expect(occs.map((o) => [o.startUtc, o.allDay])).toEqual([
+      ['2025-11-25T00:00:00.000Z', true],
+      ['2025-12-02T00:00:00.000Z', true],
+      ['2025-12-15T00:00:00.000Z', false],
+      ['2025-12-23T00:00:00.000Z', true],
+      ['2025-12-30T00:00:00.000Z', true]
+    ])
+  })
+
+  it('keeps all-day dates on their day across a summer-time change, whatever the zone says', () => {
+    const sydney = { ...allDay, tzid: 'Australia/Sydney', exdate: undefined }
+    const occs = expandOccurrences(sydney, [], '2026-03-30T00:00:00.000Z', '2026-04-20T00:00:00.000Z')
+    expect(occs.map((o) => o.startUtc)).toEqual([
+      '2026-03-31T00:00:00.000Z',
+      '2026-04-07T00:00:00.000Z',
+      '2026-04-14T00:00:00.000Z'
+    ])
+  })
+
+  it('repeats a timed series in this computer\'s zone', () => {
+    const timed = { ...allDay, allDay: false, dtStartUtc: '2025-11-25T09:00:00.000Z', dtEndUtc: '2025-11-25T10:00:00.000Z', exdate: undefined }
+    const occs = expandOccurrences(timed, [], '2025-11-20T00:00:00.000Z', '2025-12-10T00:00:00.000Z')
+    expect(occs).toHaveLength(3)
+  })
+})
+
+/**
+ * Rules come from feeds and invitations, and rrule.js has no limit of its own:
+ * each of these froze the main process (51 s, 0.65 s, 4.75 s per 200-byte
+ * event; a feed holds thousands). bounded-rrule.ts has the details.
+ */
+describe('a rule that would cost too much to expand', () => {
+  const series: CalendarEvent = {
+    id: 'feed-1',
+    calendarId: 'feed',
+    uid: 'feed-1@example.com',
+    title: 'x',
+    dtStartUtc: '2026-10-05T09:00:00.000Z',
+    dtEndUtc: '2026-10-05T09:01:00.000Z',
+    tzid: 'UTC',
+    allDay: false,
+    dirty: false,
+    isDeleted: false,
+    createdAt: '',
+    updatedAt: ''
+  }
+  const october = ['2026-10-01T00:00:00.000Z', '2026-10-31T23:59:59.999Z'] as const
+
+  it('shows a secondly series once, at its start, like a rule it cannot read', () => {
+    const occs = expandOccurrences({ ...series, rrule: 'FREQ=SECONDLY' }, [], ...october)
+    expect(occs.map((o) => o.startUtc)).toEqual(['2026-10-05T09:00:00.000Z'])
+  })
+
+  it('shows nothing for a rule that can never match', () => {
+    const occs = expandOccurrences({ ...series, rrule: 'FREQ=DAILY;BYMONTH=2;BYMONTHDAY=30' }, [], ...october)
+    expect(occs).toEqual([])
+  })
+
+  it('still finds this month of a daily series that started in the year 1000', () => {
+    const ancient = { ...series, dtStartUtc: '1000-01-01T09:00:00.000Z', dtEndUtc: '1000-01-01T09:01:00.000Z', rrule: 'FREQ=DAILY' }
+    const occs = expandOccurrences(ancient, [], ...october)
+    expect(occs).toHaveLength(31)
+    expect(occs[30].startUtc).toBe('2026-10-31T09:00:00.000Z')
+  })
+})

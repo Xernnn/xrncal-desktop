@@ -3,6 +3,8 @@ import { autoUpdater } from 'electron-updater'
 import { getDatabase } from './db/database'
 import { SettingsRepo } from './db/repos/settings-repo'
 import { mt } from './i18n-main'
+import { log } from './log'
+import { describeError } from './sync/http'
 
 /** How often a running app looks for a new release. */
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000
@@ -35,7 +37,9 @@ export function startAutoUpdates(): void {
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
   // Offline, rate-limited or no release yet: try again at the next interval.
-  autoUpdater.on('error', () => {})
+  // Logged, because a download that fails its checksum lands here too.
+  autoUpdater.on('error', (err) => log('warn', `Update check failed: ${describeError(err)}`))
+  autoUpdater.on('update-downloaded', (info) => log('info', `Update ${info.version} downloaded; installs on quit`))
   autoUpdater.on('update-downloaded', (info) => {
     if (!Notification.isSupported()) return
     new Notification({

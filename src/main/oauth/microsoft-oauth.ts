@@ -1,3 +1,4 @@
+import { escapeHtml } from '../html-escape'
 import { fetchWithTimeout } from '../sync/http'
 import http from 'http'
 import crypto from 'crypto'
@@ -95,19 +96,21 @@ export class MicrosoftOAuthManager {
           const queryState = reqUrl.searchParams.get('state')
           const queryError = reqUrl.searchParams.get('error')
 
-          if (queryError) {
+          // Only the browser coming back from this sign-in knows the state. A
+          // request without it - another page probing local ports - is turned
+          // away without ending the sign-in, and cannot put text on this page.
+          if (queryState !== state) {
             res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' })
-            res.end('<h3>' + mt('oauth.microsoft.failed', { error: queryError }) + '</h3><p>' + mt('oauth.canCloseShort') + '</p>')
-            cleanup()
-            reject(new Error(`Microsoft OAuth error: ${queryError}`))
+            res.end('<h3>' + escapeHtml(mt('oauth.stateError')) + '</h3>')
             return
           }
 
-          if (queryState !== state || !queryCode) {
+          if (queryError || !queryCode) {
+            const reason = queryError || 'no code'
             res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' })
-            res.end('<h3>' + mt('oauth.stateError') + '</h3>')
+            res.end('<h3>' + escapeHtml(mt('oauth.microsoft.failed', { error: reason })) + '</h3><p>' + escapeHtml(mt('oauth.canCloseShort')) + '</p>')
             cleanup()
-            reject(new Error('Invalid OAuth state or code'))
+            reject(new Error(`Microsoft OAuth error: ${reason}`))
             return
           }
 
@@ -152,9 +155,10 @@ export class MicrosoftOAuthManager {
           const userRes = await fetchWithTimeout(GRAPH_ME_ENDPOINT, {
             headers: { Authorization: `Bearer ${tokens.accessToken}` }
           })
-          const userInfo: MicrosoftUserInfo = userRes.ok
-            ? await userRes.json()
-            : { id: `ms_${Date.now()}`, displayName: 'Microsoft Account', mail: 'user@outlook.com' }
+          // Without the profile there is no account id to file the tokens
+          // under: inventing one made a second account on every retry.
+          if (!userRes.ok) throw new Error(mt('oauth.profileFailed', { status: userRes.status }))
+          const userInfo: MicrosoftUserInfo = await userRes.json()
 
           const email = userInfo.mail || userInfo.userPrincipalName || 'user@outlook.com'
           const name = userInfo.displayName || 'Microsoft User'
@@ -166,9 +170,9 @@ export class MicrosoftOAuthManager {
             <html>
               <head><meta charset="utf-8"><title>xrncal Auth</title></head>
               <body style="font-family:system-ui,sans-serif;text-align:center;padding:40px;background:#2b2d31;color:#dbdee1;">
-                <h2 style="color:#0078d4;">${mt('oauth.microsoft.success')}</h2>
-                <p style="color:#94a3b8;">${mt('oauth.account', { detail: `${email} (${name})` })}</p>
-                <p style="color:#64748b;">${mt('oauth.canClose')}</p>
+                <h2 style="color:#0078d4;">${escapeHtml(mt('oauth.microsoft.success'))}</h2>
+                <p style="color:#94a3b8;">${escapeHtml(mt('oauth.account', { detail: `${email} (${name})` }))}</p>
+                <p style="color:#64748b;">${escapeHtml(mt('oauth.canClose'))}</p>
               </body>
             </html>
           `)
@@ -195,6 +199,11 @@ export class MicrosoftOAuthManager {
             tokens
           })
         } catch (err: any) {
+          // The browser is still waiting for this page.
+          if (!res.headersSent) {
+            res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' })
+            res.end('<h3>' + escapeHtml(mt('oauth.microsoft.failed', { error: err?.message || String(err) })) + '</h3><p>' + escapeHtml(mt('oauth.canCloseShort')) + '</p>')
+          }
           cleanup()
           reject(err)
         }

@@ -31,7 +31,10 @@ export const IPC_CHANNELS = {
     SET_LOCALE: 'xrncal:app:set-locale',
     GET_PLATFORM: 'xrncal:app:get-platform',
     PICK_BACKGROUND_IMAGE: 'xrncal:app:pick-background-image',
-    BACKUP_DATABASE: 'xrncal:app:backup-database'
+    BACKUP_DATABASE: 'xrncal:app:backup-database',
+    RESTORE_DATABASE: 'xrncal:app:restore-database',
+    SHOW_LOG_FILE: 'xrncal:app:show-log-file',
+    QUIT: 'xrncal:app:quit'
   },
   SETTINGS: {
     GET_ALL: 'xrncal:settings:get-all',
@@ -46,7 +49,8 @@ export const IPC_CHANNELS = {
     CONNECT_CALDAV: 'xrncal:auth:connect-caldav',
     DISCONNECT_CALDAV: 'xrncal:auth:disconnect-caldav',
     LIST_ACCOUNTS: 'xrncal:auth:list-accounts',
-    DETACH_ACCOUNT: 'xrncal:auth:detach-account'
+    DETACH_ACCOUNT: 'xrncal:auth:detach-account',
+    PROVIDER_STATUS: 'xrncal:auth:provider-status'
   },
   SYNC: {
     TRIGGER_NOW: 'xrncal:sync:trigger-now',
@@ -93,7 +97,12 @@ export const IPC_CHANNELS = {
   },
   ICS: {
     IMPORT: 'xrncal:ics:import',
-    EXPORT: 'xrncal:ics:export'
+    EXPORT: 'xrncal:ics:export',
+    /** Files the OS asked xrncal to open ("Open with", a double-click, a drop
+     *  on the launcher), waiting for the renderer to collect them. */
+    TAKE_OPENED: 'xrncal:ics:take-opened',
+    /** Main -> renderer: an opened file is waiting. */
+    FILE_OPENED: 'xrncal:ics:file-opened'
   },
   MINI: {
     OPEN_MAIN: 'xrncal:mini:open-main',
@@ -138,6 +147,35 @@ export interface IcsImportResult {
   message?: string
 }
 
+export interface IcsExportResult {
+  success: boolean
+  /** Where the calendar was saved. */
+  filePath?: string
+  /** 'cancelled' when the save dialog was dismissed. */
+  message?: string
+}
+
+/** An .ics file the OS handed to xrncal, read and waiting to be imported. */
+export interface OpenedIcsFile {
+  name: string
+  content: string
+}
+
+export interface RestoreResult {
+  success: boolean
+  /** 'cancelled', or why the file was refused: 'notDatabase' (not a readable
+   *  SQLite file), 'notXrncal' (no xrncal tables) or 'newer' (made by a newer
+   *  xrncal than this one). On success the app restarts instead of answering. */
+  message?: string
+}
+
+/** Whether this build can sign in to Google and Microsoft: an official build
+ *  carries the OAuth client ids, a build from source needs its own. */
+export interface ProviderStatus {
+  google: boolean
+  microsoft: boolean
+}
+
 /** A reminder that has rung and is still waiting for the user. */
 export interface ActiveReminder {
   /** The occurrence id: one entry per occurrence, however many reminders it has. */
@@ -162,6 +200,14 @@ export interface XrncalAPI {
     pickBackgroundImage: () => Promise<{ dataUrl: string } | null>
     /** Write a consistent snapshot of the whole database to a file the user picks. */
     backupDatabase: () => Promise<BackupResult>
+    /** Replace the database with a backup the user picks, then restart. The
+     *  current data is saved next to it first. */
+    restoreDatabase: () => Promise<RestoreResult>
+    /** Show the main process's log file in the file manager (its folder when
+     *  nothing has been logged yet). False when there is no log to show. */
+    showLogFile: () => Promise<boolean>
+    /** Quit for real - closing the window only hides xrncal in the tray. */
+    quit: () => Promise<void>
   }
   settings: {
     getAll: () => Promise<AppSettings>
@@ -179,6 +225,7 @@ export interface XrncalAPI {
     /** Keep this account's calendars and events but sever the provider link,
      *  turning them into ordinary local data. */
     detachAccount: (accountId: string) => Promise<DetachAccountResult>
+    providerStatus: () => Promise<ProviderStatus>
   }
   sync: {
     triggerNow: () => Promise<SyncResult>
@@ -230,7 +277,12 @@ export interface XrncalAPI {
   }
   ics: {
     importIcs: (targetCalendarId: string, icsContent: string) => Promise<IcsImportResult>
-    exportIcs: (calendarId: string) => Promise<string>
+    /** Save a calendar as an .ics file where the user picks. */
+    exportIcs: (calendarId: string) => Promise<IcsExportResult>
+    /** Collect the .ics files the OS opened xrncal with since the last call. */
+    takeOpenedFiles: () => Promise<OpenedIcsFile[]>
+    /** Fires when an opened file is waiting. Returns an unsubscribe. */
+    onFileOpened: (callback: () => void) => () => void
   },
   mini: {
     openMain: () => Promise<void>

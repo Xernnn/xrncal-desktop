@@ -51,7 +51,7 @@ People on Windows and Linux need one native window that unifies Google Calendar,
 - **Date:** 2026-08-18
 
 ### PDR-002 — SQLite engine: `node:sqlite` primary, `better-sqlite3` fallback
-- **Decision:** Use `node:sqlite` (Electron built-in, available from Electron 35+) as primary. Fall back to `better-sqlite3` only if the Electron build was compiled without SQLite support.
+- **Decision:** Use `node:sqlite` (Electron built-in, available from Electron 35+; the app is on 44) as primary. Fall back to `better-sqlite3` only if the Electron build was compiled without SQLite support.
 - **Rationale:** Avoids native addon rebuild. Electron 35+ ships with SQLite enabled. Pin away from 37.2.0 regression.
 - **Alternatives considered:** `sql.js` (WASM); `better-sqlite3` primary (requires asarUnpack and native rebuild).
 
@@ -87,6 +87,16 @@ People on Windows and Linux need one native window that unifies Google Calendar,
 - **Decision:** Recurring events stored as RRULE/RDATE/EXDATE strings. Expansion via the `rrule` library. Exceptions in `event_exceptions` table.
 - **Rationale:** Keeps provider mapping clean; adapters normalize Google/Graph recurrence into RFC 5545.
 
+### PDR-011 — Clicks open the full editor; right-click menus beside it
+- **Decision:** A click on an empty slot or on an event opens the full editor (URD principle 2). Right-click menus add Edit, Duplicate and Delete on an event, and a new event or the day itself on a day. An event's colour is changed in the editor only.
+- **Rationale:** A quick-create box and a read-only event card in front of the editor were built for 0.2.0 and taken out before release: the app's own user works editor-first, and the extra layer cost a click on every edit. Right-click adds shortcuts without changing what a click does.
+- **Date:** 2026-10-20
+
+### PDR-012 — Keep running in the tray; official builds carry the OAuth clients
+- **Decision:** Closing the main window destroys it but leaves the app in the tray (a setting turns this off), and the app can start at sign-in. Release builds bake in the Google and Microsoft OAuth client ids from repository secrets; builds from source read their own from `xrncal.env`.
+- **Rationale:** Reminders only ring while the app runs, and a calendar a user has to configure an OAuth client for is not one they will use. A desktop client's id and secret are not confidential (Google's own guidance; Microsoft's public clients have no secret).
+- **Date:** 2026-10-19
+
 ---
 
 ## Key Constraints
@@ -94,7 +104,7 @@ People on Windows and Linux need one native window that unifies Google Calendar,
 | Area | Decision |
 |------|----------|
 | Delivery | New Electron app. No reuse of GNOME source |
-| UI stack | Electron 35+ · React 19 · Vite (electron-vite) · TypeScript 5 |
+| UI stack | Electron 44 · React 19 · Vite (electron-vite) · TypeScript 6 |
 | Calendar UI | Custom views. No FullCalendar/Schedule-X as shell |
 | OS | Windows 10/11 and Linux. No macOS, iOS, Android |
 | Microsoft | Microsoft Graph only. No Exchange on-prem / EWS |

@@ -261,9 +261,12 @@ export class ReminderScheduler {
   private notify(occ: ExpandedOccurrence, nowMs: number): void {
     if (!Notification.isSupported()) return
     const location = occ.location ? ` · ${occ.location}` : ''
+    const body = `${this.describeWhen(occ, nowMs)}${location}`
     const notification = new Notification({
       title: occ.title,
-      body: `${this.describeWhen(occ, nowMs)}${location}`,
+      // Linux notification servers read the body as markup - links, images -
+      // and a place comes from whoever sent the invitation.
+      body: process.platform === 'linux' ? escapeNotificationMarkup(body) : body,
       silent: false
     })
     notification.on('click', () => this.showMainWindow())
@@ -307,4 +310,9 @@ export class ReminderScheduler {
 function endMs(occ: ExpandedOccurrence): number {
   if (!occ.allDay) return DateTime.fromISO(occ.endUtc, { zone: 'utc' }).toMillis()
   return DateTime.fromISO(occ.endUtc.slice(0, 10), { zone: 'local' }).endOf('day').toMillis()
+}
+
+/** `&`, `<` and `>` as entities, which every notification server shows as text. */
+export function escapeNotificationMarkup(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }

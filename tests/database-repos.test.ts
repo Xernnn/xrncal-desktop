@@ -233,4 +233,42 @@ describe('Database Repositories & Read-Only Protections', () => {
     expect(names).toContain('Outer Cal')
     expect(names).toContain('Inner Cal')
   })
+
+  it('keeps a feed of rules that never match from starving the user\'s own series', () => {
+    // More such rules than one calendar's expansion allowance covers, so the
+    // feed runs out of work - and the user's calendar, queried with it, has its own.
+    const ownCal = calendarsRepo.listCalendars()[0].id
+    const feed = calendarsRepo.createCalendar({ name: 'Feed', color: '#999999' })
+    db.transaction(() => {
+      for (let i = 0; i < 1_000; i++) {
+        eventsRepo.createEvent({
+          calendarId: feed.id,
+          title: `never ${i}`,
+          dtStartUtc: '2026-01-01T09:00:00.000Z',
+          dtEndUtc: '2026-01-01T09:01:00.000Z',
+          tzid: 'UTC',
+          allDay: false,
+          rrule: 'FREQ=DAILY;BYMONTH=2;BYMONTHDAY=30'
+        })
+      }
+    })()
+    expect(eventsRepo.queryEventsByCalendar(feed.id)).toHaveLength(1_000)
+    eventsRepo.createEvent({
+      calendarId: ownCal,
+      title: 'Standup',
+      dtStartUtc: '2026-10-05T09:00:00.000Z',
+      dtEndUtc: '2026-10-05T09:15:00.000Z',
+      tzid: 'UTC',
+      allDay: false,
+      rrule: 'FREQ=WEEKLY;BYDAY=MO'
+    })
+
+    const occurrences = eventsRepo.queryEventsByRange([feed.id, ownCal], '2026-10-01T00:00:00.000Z', '2026-10-31T23:59:59.999Z')
+    expect(occurrences.map((o) => o.startUtc)).toEqual([
+      '2026-10-05T09:00:00.000Z',
+      '2026-10-12T09:00:00.000Z',
+      '2026-10-19T09:00:00.000Z',
+      '2026-10-26T09:00:00.000Z'
+    ])
+  })
 })
