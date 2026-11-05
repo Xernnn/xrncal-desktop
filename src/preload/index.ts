@@ -29,7 +29,10 @@ const xrncalApi: XrncalAPI = {
     listAccounts: () => ipcRenderer.invoke(IPC_CHANNELS.AUTH.LIST_ACCOUNTS),
     detachAccount: (accountId: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.AUTH.DETACH_ACCOUNT, accountId),
-    providerStatus: () => ipcRenderer.invoke(IPC_CHANNELS.AUTH.PROVIDER_STATUS)
+    providerStatus: () => ipcRenderer.invoke(IPC_CHANNELS.AUTH.PROVIDER_STATUS),
+    oauthClient: (provider) => ipcRenderer.invoke(IPC_CHANNELS.AUTH.GET_OAUTH_CLIENT, provider),
+    saveOAuthClient: (provider, client) => ipcRenderer.invoke(IPC_CHANNELS.AUTH.SAVE_OAUTH_CLIENT, provider, client),
+    clearOAuthClient: (provider) => ipcRenderer.invoke(IPC_CHANNELS.AUTH.CLEAR_OAUTH_CLIENT, provider)
   },
   sync: {
     triggerNow: () => ipcRenderer.invoke(IPC_CHANNELS.SYNC.TRIGGER_NOW),

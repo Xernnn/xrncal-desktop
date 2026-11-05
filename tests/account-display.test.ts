@@ -159,6 +159,13 @@ describe('classifySyncError', () => {
     expect(classifySyncError('The saved password could not be read: the system keyring is locked or unavailable')).toBe('keyring')
   })
 
+  it('blames the sign-in details when connecting, and asks for a new sign-in once connected', () => {
+    const refused = 'Token exchange failed: {"error":"unauthorized_client"}'
+    expect(classifyConnectError(refused)).toBe('clientRejected')
+    expect(classifyConnectError('Token exchange failed: {"error":"invalid_client"}')).toBe('clientRejected')
+    expect(classifySyncError(refused)).toBe('auth')
+  })
+
   it('has no connect-only answers', () => {
     expect(classifySyncError('No calendars found')).toBe('unknown')
     expect(classifySyncError('Sign-in was cancelled')).toBe('unknown')

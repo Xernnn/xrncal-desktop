@@ -57,7 +57,7 @@ export const WelcomeDialog: React.FC<WelcomeDialogProps> = ({
 
   if (!isOpen) return null
 
-  const unavailable = (p: Exclude<WelcomeNext, null>): boolean =>
+  const needsSetup = (p: Exclude<WelcomeNext, null>): boolean =>
     (p === 'google' && !status.google) || (p === 'graph' && !status.microsoft)
 
   const dots = (
@@ -138,11 +138,10 @@ export const WelcomeDialog: React.FC<WelcomeDialogProps> = ({
                   icon={<ProviderMark kind={provider} />}
                   title={t(`addAccount.providers.${provider}.title`)}
                   subtitle={
-                    unavailable(provider)
-                      ? t('addAccount.notInThisBuild')
+                    needsSetup(provider)
+                      ? t('addAccount.needsSetup')
                       : t(`addAccount.providers.${provider}.detail`)
                   }
-                  disabled={unavailable(provider)}
                   onClick={() => onFinish(provider, launchAtLogin)}
                 />
               ))}

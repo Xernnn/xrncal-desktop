@@ -81,7 +81,10 @@ describe('IPC Channels and Contracts', () => {
         disconnectCalDav: async () => true,
         listAccounts: async () => [],
         detachAccount: async () => ({ success: true, calendarCount: 0, eventCount: 0 }),
-        providerStatus: async () => ({ google: true, microsoft: true })
+        providerStatus: async () => ({ google: true, microsoft: true }),
+        oauthClient: async () => ({ source: 'none', hasSecret: false, canSave: true }),
+        saveOAuthClient: async () => undefined,
+        clearOAuthClient: async () => undefined
       },
       sync: {
         triggerNow: async () => ({ success: true, pulledCount: 0, pushedCount: 0, errorCount: 0 }),

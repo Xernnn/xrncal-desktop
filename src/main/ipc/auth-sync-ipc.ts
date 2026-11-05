@@ -1,14 +1,15 @@
 import { ipcMain } from 'electron'
 import { IPC_CHANNELS, type ConnectCalDavInput, type ProviderStatus } from '@shared/ipc-contract'
+import { isOAuthProvider, type OAuthClientInfo, type OAuthProvider } from '@shared/oauth-client'
 import { getDatabase } from '../db/database'
-import { credentialsFilePath, isConfigured } from '../load-credentials'
 import { GoogleOAuthManager } from '../oauth/google-oauth'
 import { MicrosoftOAuthManager } from '../oauth/microsoft-oauth'
+import { activeOAuthClient, oauthClientInfo, saveOAuthClient } from '../oauth/oauth-clients'
 import { SecureStore } from '../secure-store'
 import { normalizeCalDavUrl, defaultCalDavName } from '../sync/caldav-discover'
 import { CalDavAdapter, type CalDavCredentials } from '../sync/caldav-adapter'
 import { resolveCalDavAccount } from '../sync/caldav-account-id'
-import { SyncWorker } from '../sync/sync-worker'
+import { SyncWorker, type SyncOAuthClients } from '../sync/sync-worker'
 import { describeError } from '../sync/http'
 import { AccountsRepo } from '../db/repos/accounts-repo'
 import { detachAccount } from '../db/repos/detach-account'
@@ -20,21 +21,14 @@ export function getSyncWorker(): SyncWorker | null {
   return syncWorkerInstance
 }
 
-function initSync(
-  googleClientId?: string,
-  googleClientSecret?: string,
-  msClientId?: string,
-  msClientSecret?: string
-): void {
-  const db = getDatabase()
-  syncWorkerInstance = new SyncWorker(
-    db,
-    googleClientId,
-    googleClientSecret,
-    msClientId,
-    msClientSecret
-  )
+function initSync(oauthClients: () => SyncOAuthClients): void {
+  syncWorkerInstance = new SyncWorker(getDatabase(), oauthClients)
   syncWorkerInstance.start()
+}
+
+function requireOAuthProvider(provider: unknown): OAuthProvider {
+  if (!isOAuthProvider(provider)) throw new Error(`Unknown sign-in provider: ${String(provider)}`)
+  return provider
 }
 
 export function registerAuthSyncIpcHandlers(): void {
@@ -45,11 +39,10 @@ export function registerAuthSyncIpcHandlers(): void {
   const accounts = new AccountsRepo(db)
 
   if (!syncWorkerInstance) {
-    const googleClientId = process.env.GOOGLE_OAUTH_CLIENT_ID
-    const googleClientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET
-    const msClientId = process.env.MICROSOFT_CLIENT_ID
-    const msClientSecret = process.env.MICROSOFT_CLIENT_SECRET
-    initSync(googleClientId, googleClientSecret, msClientId, msClientSecret)
+    initSync(() => ({
+      google: activeOAuthClient(secureStore, 'google'),
+      microsoft: activeOAuthClient(secureStore, 'microsoft')
+    }))
   }
 
   ipcMain.removeHandler(IPC_CHANNELS.AUTH.CONNECT_GOOGLE)
@@ -61,32 +54,38 @@ export function registerAuthSyncIpcHandlers(): void {
   ipcMain.removeHandler(IPC_CHANNELS.AUTH.LIST_ACCOUNTS)
   ipcMain.removeHandler(IPC_CHANNELS.AUTH.DETACH_ACCOUNT)
   ipcMain.removeHandler(IPC_CHANNELS.AUTH.PROVIDER_STATUS)
+  ipcMain.removeHandler(IPC_CHANNELS.AUTH.GET_OAUTH_CLIENT)
+  ipcMain.removeHandler(IPC_CHANNELS.AUTH.SAVE_OAUTH_CLIENT)
+  ipcMain.removeHandler(IPC_CHANNELS.AUTH.CLEAR_OAUTH_CLIENT)
   ipcMain.removeHandler(IPC_CHANNELS.SYNC.TRIGGER_NOW)
   ipcMain.removeHandler(IPC_CHANNELS.SYNC.GET_STATUS)
 
-  // The account picker asks first, so a build without an OAuth client says
-  // so up front instead of failing after "Continue in browser".
+  // The account picker asks first, so a copy without an OAuth client says
+  // so up front and leads to the form, instead of failing in the browser.
   ipcMain.handle(IPC_CHANNELS.AUTH.PROVIDER_STATUS, (): ProviderStatus => ({
-    google: isConfigured(process.env.GOOGLE_OAUTH_CLIENT_ID),
-    microsoft: isConfigured(process.env.MICROSOFT_CLIENT_ID)
+    google: activeOAuthClient(secureStore, 'google') !== null,
+    microsoft: activeOAuthClient(secureStore, 'microsoft') !== null
   }))
+
+  ipcMain.handle(IPC_CHANNELS.AUTH.GET_OAUTH_CLIENT, (_event, provider: unknown): OAuthClientInfo =>
+    oauthClientInfo(secureStore, requireOAuthProvider(provider))
+  )
+
+  ipcMain.handle(IPC_CHANNELS.AUTH.SAVE_OAUTH_CLIENT, (_event, provider: unknown, client: unknown) => {
+    saveOAuthClient(secureStore, requireOAuthProvider(provider), client)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.AUTH.CLEAR_OAUTH_CLIENT, (_event, provider: unknown) => {
+    secureStore.deleteOAuthClient(requireOAuthProvider(provider))
+  })
 
   // Google OAuth
   ipcMain.handle(IPC_CHANNELS.AUTH.CONNECT_GOOGLE, async () => {
     try {
-      const activeClientId = process.env.GOOGLE_OAUTH_CLIENT_ID
-      const activeClientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET
-      if (!isConfigured(activeClientId)) {
-        return {
-          success: false,
-          message:
-            `Google sign-in isn't configured. Create a Google OAuth "Desktop app" client at ` +
-            `console.cloud.google.com/apis/credentials, then add GOOGLE_OAUTH_CLIENT_ID and ` +
-            `GOOGLE_OAUTH_CLIENT_SECRET to:\n${credentialsFilePath()}\nand restart the app.`
-        }
-      }
+      const client = activeOAuthClient(secureStore, 'google')
+      if (!client) return { success: false, message: "Google sign-in isn't configured." }
 
-      const result = await googleOAuth.startAuthFlow(activeClientId!, activeClientSecret)
+      const result = await googleOAuth.startAuthFlow(client.clientId, client.clientSecret)
       if (syncWorkerInstance) {
         syncWorkerInstance.triggerSync().catch(() => {})
       }
@@ -108,19 +107,10 @@ export function registerAuthSyncIpcHandlers(): void {
   // Microsoft OAuth
   ipcMain.handle(IPC_CHANNELS.AUTH.CONNECT_MICROSOFT, async () => {
     try {
-      const activeClientId = process.env.MICROSOFT_CLIENT_ID
-      const activeClientSecret = process.env.MICROSOFT_CLIENT_SECRET
-      if (!isConfigured(activeClientId)) {
-        return {
-          success: false,
-          message:
-            `Microsoft sign-in isn't configured. Register an app at ` +
-            `portal.azure.com (Azure AD → App registrations), then add MICROSOFT_CLIENT_ID ` +
-            `(and MICROSOFT_CLIENT_SECRET if required) to:\n${credentialsFilePath()}\nand restart the app.`
-        }
-      }
+      const client = activeOAuthClient(secureStore, 'microsoft')
+      if (!client) return { success: false, message: "Microsoft sign-in isn't configured." }
 
-      const result = await msOAuth.startAuthFlow(activeClientId!, activeClientSecret)
+      const result = await msOAuth.startAuthFlow(client.clientId, client.clientSecret)
       if (syncWorkerInstance) {
         syncWorkerInstance.triggerSync().catch(() => {})
       }

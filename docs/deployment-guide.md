@@ -47,7 +47,7 @@ npm run typecheck:web    # Renderer (tsconfig.web.json)
 
 ```bash
 npm run test
-# Runs: vitest run (the whole suite, ~930 tests)
+# Runs: vitest run (the whole suite, ~950 tests)
 ```
 
 Test files live in `tests/` at the project root and use `:memory:` SQLite for database tests.
@@ -69,7 +69,8 @@ profile takes its clock and first day of the week from the computer), and checks
 the settings IPC, search without diacritics, an edit in another time zone, creating and opening
 an event from the grid, the editor's own time step, the right-click menu, the zone an event saved
 without one opens in, a change of the computer's zone being recorded, keyboard commands with undo, a setting surviving a
-relaunch, a sync landing mid-edit, dates read from a new event's title, saving the week and month as one-page PDFs, and that
+relaunch, a sync landing mid-edit, dates read from a new event's title, saving the week and month as one-page PDFs, entering sign-in
+details in the app, and that
 closing the window leaves the app in the tray. `launchApp()` marks the welcome done unless a test passes `{ welcome: true }`. These need
 the real Electron binary and a display; on a Linux machine without one, run them under
 `xvfb-run -a`.
@@ -158,8 +159,8 @@ A build signs in to Google and Microsoft only if it knows an OAuth client. The r
 passes three repository secrets to `npm run build`, and `electron.vite.config.ts` bakes them into
 the main process; `src/main/load-credentials.ts` falls back to them when the environment and the
 `xrncal.env` files name none. A build without them still works - local calendars, CalDAV,
-iCloud and subscriptions - and the account picker marks Google and Microsoft "Needs the official
-download" instead of failing after the browser opens.
+iCloud and subscriptions - and Google and Microsoft lead to a form for a client of the user's own
+(next section) instead of failing after the browser opens.
 
 Shipping these in the app is how desktop OAuth works: Google's documentation says an installed
 app's client secret is not treated as a secret, and a Microsoft public client has none. What
@@ -198,7 +199,9 @@ Add them in **Settings → Secrets and variables → Actions → Secrets**:
 1. In the [Entra admin centre](https://entra.microsoft.com/) → App registrations → New
    registration: name `xrncal`; supported account types *Accounts in any organizational
    directory and personal Microsoft accounts*; redirect URI platform *Public client/native
-   (mobile & desktop)* with `http://localhost`.
+   (mobile & desktop)* with `http://localhost/oauth2callback`. The app sends
+   `http://localhost:<port>/oauth2callback`: Microsoft ignores a `localhost` port but not the path,
+   and its portal will not take an `http://127.0.0.1` address.
 2. **Authentication** → *Allow public client flows*: **Yes**. No client secret: the app uses
    the authorization-code flow with PKCE (`src/main/oauth/microsoft-oauth.ts`).
 3. **API permissions** → Microsoft Graph, delegated: `Calendars.ReadWrite`, `User.Read`,
@@ -207,6 +210,24 @@ Add them in **Settings → Secrets and variables → Actions → Secrets**:
    Partner Network id. Without it the consent screen says "unverified", and some work tenants
    do not let users consent to unverified multi-tenant apps.
 5. Put the *Application (client) ID* in `XRNCAL_MICROSOFT_CLIENT_ID`.
+
+### A build without a client
+
+Nobody has to edit a file to sign in. With no client, **Add account** and the welcome mark Google
+and Microsoft "Set up once, then sign in", and their page is `OAuthClientSetup`: the steps with a
+link for each, and fields for the details, which take effect at once. Saved details are encrypted
+with `safeStorage` under `oauth-client:<provider>`, like a token; without a keyring the form says
+so and stores nothing. The secret is write-only: the renderer can learn the id and whether a secret
+exists, never the secret (`oauthClientInfo()`). Saved details come before everything in
+`load-credentials.ts`, and removing them falls back to it.
+
+What the form cannot do is make this easy: the person still goes through Google Cloud or Azure,
+Google warns that the app is unverified, and a personal Microsoft account needs a free Azure account
+first (app registrations have needed a directory since June 2024). Baking a client into the release,
+as above, is what makes sign-in work with no setup at all.
+
+Refresh tokens belong to the client that issued them, so accounts connected under other details have
+to sign in again after a change; the form says so when there are any.
 
 ### Code signing
 
@@ -315,8 +336,9 @@ GOOGLE_OAUTH_CLIENT_ID=1234567890-abcdef.apps.googleusercontent.com
 GOOGLE_OAUTH_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxxxxxx
 ```
 
-Restart the app after editing. With no client at all, the account picker shows Google and
-Microsoft as needing the official download, and does not open the browser.
+Restart the app after editing. With no client at all, Google and Microsoft lead to the form in
+[A build without a client](#a-build-without-a-client) and do not open the browser. Details saved
+there come before these.
 
 > **Note:** `.env` is in `.gitignore`. Never commit OAuth credentials. Without these vars
 > the app still runs in local + CalDAV mode; only Google/Microsoft sync is disabled.
@@ -332,11 +354,12 @@ See `.env.example` for the full list of environment variables.
 3. Enable the **Google Calendar API**.
 4. Create OAuth credentials: **Desktop app** type.
 5. Download the client ID and client secret.
-6. Set `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` in your environment.
+6. Enter them in the app, or set `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` in your
+   environment.
 7. Add test users in the OAuth consent screen (while in testing mode). For a client that ships in
    releases, see [OAuth for an official build](#oauth-for-an-official-build).
 
-The app uses a loopback redirect URI (`http://127.0.0.1:<random-port>/oauth/callback`) — no redirect URI pre-registration is needed for Desktop app type.
+The app uses a loopback redirect URI (`http://127.0.0.1:<random-port>/oauth2callback`) — no redirect URI pre-registration is needed for Desktop app type.
 
 ---
 
@@ -344,10 +367,11 @@ The app uses a loopback redirect URI (`http://127.0.0.1:<random-port>/oauth/call
 
 1. Go to [Azure Portal → Entra](https://portal.azure.com/).
 2. Register a new application.
-3. Set redirect URI to `http://localhost` (Desktop app).
+3. Set redirect URI to `http://localhost/oauth2callback` (platform *Public client/native (mobile &
+   desktop)*). Microsoft ignores the port of a `localhost` redirect, not its path.
 4. Add API permissions: `Calendars.ReadWrite`, `User.Read`, `offline_access`, and turn on
    *Allow public client flows*.
-5. Set `MICROSOFT_CLIENT_ID` in your environment (or, for releases, the
+5. Enter it in the app, or set `MICROSOFT_CLIENT_ID` in your environment (or, for releases, the
    `XRNCAL_MICROSOFT_CLIENT_ID` secret - see [OAuth for an official build](#oauth-for-an-official-build)).
 
 `src/main/oauth/microsoft-oauth.ts` implements the auth-code + PKCE loopback flow

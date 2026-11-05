@@ -12,7 +12,9 @@ import { app } from 'electron'
  *    from the release workflow's secrets.
  *
  * So the official build signs in out of the box, and anyone can still point
- * their copy at an OAuth client of their own. Google calls a desktop client's
+ * their copy at an OAuth client of their own: a developer through these, anyone
+ * else from the form in the accounts dialog, which is saved encrypted and comes
+ * before all of this (`activeOAuthClient()`). Google calls a desktop client's
  * secret "not treated as a secret" (an installed app cannot keep one), and
  * Microsoft's public clients have none, which is why shipping them is normal.
  */
@@ -39,13 +41,10 @@ function bakedCredentials(): Partial<Record<CredentialKey, string>> {
     MICROSOFT_CLIENT_ID: typeof __XRNCAL_MICROSOFT_CLIENT_ID__ === 'string' ? __XRNCAL_MICROSOFT_CLIENT_ID__ : ''
   }
 }
-export function credentialsFilePath(): string {
-  return join(app.getPath('userData'), 'xrncal.env')
-}
 
 export function loadCredentialsFile(): void {
   const candidates = [
-    credentialsFilePath(),
+    join(app.getPath('userData'), 'xrncal.env'),
     join(dirname(app.getPath('exe')), 'xrncal.env'),
     // The working directory is wherever the app happened to be started from;
     // an installed build has no business reading a .env out of it.

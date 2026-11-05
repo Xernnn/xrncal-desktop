@@ -162,9 +162,11 @@ npm run dev            # electron-vite, renderer hot reload
 
 ### Connecting accounts
 
-In a downloaded release, **Google and Microsoft sign in from the browser with no setup** - the official build carries xrncal's OAuth client. CalDAV (Nextcloud, Synology, Fastmail, …) and iCloud need only an address and your credentials (an app-specific password for iCloud).
+CalDAV (Nextcloud, Synology, Fastmail, …) and iCloud need only an address and your credentials (an app-specific password for iCloud).
 
-A copy you **build yourself** has no OAuth client: the account picker marks Google and Microsoft "Needs the official download". To sign in from your own build, use your own OAuth client: copy [`.env.example`](.env.example) to `.env` and fill in:
+**Google and Microsoft** sign in from the browser, using an OAuth client: sign-in details that identify the app to them. A build that carries one signs in with no setup. In a copy without one, **Add account → Google or Microsoft** walks you through making your own, step by step, and takes the details right there: nothing to edit, no restart. They are stored encrypted by your system's keyring, the same as your account tokens, and the secret is never shown again.
+
+Developers can set the same thing outside the app: copy [`.env.example`](.env.example) to `.env` and fill in:
 
 ```ini
 GOOGLE_OAUTH_CLIENT_ID=

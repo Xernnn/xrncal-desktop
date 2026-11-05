@@ -361,7 +361,45 @@ export const resources = {
       },
       addAccount: {
         title: 'Add account',
-        notInThisBuild: 'Needs the official download of xrncal',
+        needsSetup: 'Set up once, then sign in',
+        clientSetup: {
+          open: 'Open',
+          clientId: 'Client ID',
+          clientSecret: 'Client secret',
+          applicationId: 'Application (client) ID',
+          secretKept: 'Saved. Leave empty to keep it',
+          privacy: 'Saved encrypted on this computer, and sent only to {{provider}}.',
+          reconnect: '{{provider}} accounts already connected will have to sign in again if these change.',
+          save: 'Save and continue',
+          change: 'Change your {{provider}} sign-in details',
+          remove: 'Remove',
+          removeConfirm: 'Remove these sign-in details? {{provider}} accounts already connected will stop syncing until they are set up again.',
+          problems: {
+            idMissing: 'Paste the ID here.',
+            secretMissing: 'Paste the Client secret here.',
+            secretFormat: 'That is not a Client secret. Check that it is not the Client ID.'
+          },
+          google: {
+            intro: 'Google asks for sign-in details made for this copy of xrncal. You make them once in your Google account. It is free and takes about ten minutes.',
+            project: 'Create a project. Any name is fine.',
+            calendarApi: 'Turn on the Google Calendar API for that project.',
+            branding: 'Press Get started, enter any app name and your email, and choose External.',
+            publish: 'Under Audience, press Publish app. Without this, Google signs you out every 7 days.',
+            client: 'Create a client of the type Desktop app, then copy its Client ID and Client secret below.',
+            unverified: 'When you sign in, Google will warn that it has not verified this app. That is expected, since the app is your own: choose Advanced, then continue to it.',
+            idFormat: 'A Client ID ends in .apps.googleusercontent.com.'
+          },
+          microsoft: {
+            intro: 'Microsoft asks for sign-in details made for this copy of xrncal. You make them once in Azure. It takes about ten minutes, and a personal Microsoft account needs a free Azure account first.',
+            register: 'Open App registrations and press New registration. Any name is fine.',
+            audience: 'Under supported account types, choose the option that includes personal Microsoft accounts.',
+            redirect: 'Under Redirect URI, choose Public client/native and enter',
+            permissions: 'Once registered, open API permissions and add Microsoft Graph, Delegated: Calendars.ReadWrite and offline_access.',
+            publicClient: 'Under Authentication, set Allow public client flows to Yes.',
+            copyId: 'On the Overview page, copy the Application (client) ID below.',
+            idFormat: 'An Application (client) ID looks like 12345678-1234-1234-1234-123456789012.'
+          }
+        },
         allSet: 'Account added',
         providers: {
           google: { title: 'Google', detail: 'Gmail and Google Workspace calendars' },
@@ -412,7 +450,8 @@ export const resources = {
           certificate: 'The server\'s security certificate is not trusted.',
           noCalendars: 'Signed in, but no calendars were found at that address.',
           keyring: 'Your system keyring is unavailable, so the password could not be stored safely.',
-          notConfigured: '{{provider}} sign-in is not set up in this copy of xrncal.',
+          notConfigured: '{{provider}} sign-in is not set up yet.',
+          clientRejected: '{{provider}} did not accept these sign-in details. Check that they were copied in full.',
           cancelled: 'Sign-in was cancelled.',
           unknown: 'Could not connect.'
         },
@@ -1007,7 +1046,45 @@ export const resources = {
       },
       addAccount: {
         title: 'Thêm tài khoản',
-        notInThisBuild: 'Cần bản tải chính thức của xrncal',
+        needsSetup: 'Thiết lập một lần rồi đăng nhập',
+        clientSetup: {
+          open: 'Mở',
+          clientId: 'Client ID',
+          clientSecret: 'Client secret',
+          applicationId: 'Application (client) ID',
+          secretKept: 'Đã lưu. Để trống để giữ nguyên',
+          privacy: 'Được mã hóa và lưu trên máy này, chỉ gửi cho {{provider}}.',
+          reconnect: 'Nếu đổi thông tin này, các tài khoản {{provider}} đã kết nối sẽ phải đăng nhập lại.',
+          save: 'Lưu và tiếp tục',
+          change: 'Đổi thông tin đăng nhập {{provider}}',
+          remove: 'Xóa',
+          removeConfirm: 'Xóa thông tin đăng nhập này? Các tài khoản {{provider}} đã kết nối sẽ ngừng đồng bộ cho đến khi được thiết lập lại.',
+          problems: {
+            idMissing: 'Hãy dán ID vào đây.',
+            secretMissing: 'Hãy dán Client secret vào đây.',
+            secretFormat: 'Đây không phải Client secret. Hãy kiểm tra xem có nhầm với Client ID không.'
+          },
+          google: {
+            intro: 'Google yêu cầu thông tin đăng nhập tạo riêng cho bản xrncal này. Bạn chỉ cần tạo một lần trong tài khoản Google. Việc này miễn phí và mất khoảng mười phút.',
+            project: 'Tạo một project, đặt tên gì cũng được.',
+            calendarApi: 'Bật Google Calendar API cho project đó.',
+            branding: 'Bấm Get started, nhập tên ứng dụng tùy ý và email của bạn, rồi chọn External.',
+            publish: 'Trong mục Audience, bấm Publish app. Nếu không, cứ 7 ngày Google lại đăng xuất bạn.',
+            client: 'Tạo một client loại Desktop app, rồi chép Client ID và Client secret của nó vào bên dưới.',
+            unverified: 'Khi đăng nhập, Google sẽ cảnh báo chưa xác minh ứng dụng này. Điều đó là bình thường vì đây là ứng dụng của chính bạn: chọn Advanced rồi tiếp tục vào ứng dụng.',
+            idFormat: 'Client ID kết thúc bằng .apps.googleusercontent.com.'
+          },
+          microsoft: {
+            intro: 'Microsoft yêu cầu thông tin đăng nhập tạo riêng cho bản xrncal này. Bạn chỉ cần tạo một lần trong Azure, mất khoảng mười phút. Tài khoản Microsoft cá nhân cần có tài khoản Azure miễn phí trước.',
+            register: 'Mở App registrations rồi bấm New registration, đặt tên gì cũng được.',
+            audience: 'Ở phần supported account types, chọn mục có bao gồm tài khoản Microsoft cá nhân.',
+            redirect: 'Ở phần Redirect URI, chọn Public client/native rồi nhập',
+            permissions: 'Sau khi đăng ký, mở API permissions và thêm Microsoft Graph, Delegated: Calendars.ReadWrite và offline_access.',
+            publicClient: 'Trong mục Authentication, đặt Allow public client flows thành Yes.',
+            copyId: 'Ở trang Overview, chép Application (client) ID vào bên dưới.',
+            idFormat: 'Application (client) ID có dạng 12345678-1234-1234-1234-123456789012.'
+          }
+        },
         allSet: 'Đã thêm tài khoản',
         providers: {
           google: { title: 'Google', detail: 'Lịch Gmail và Google Workspace' },
@@ -1058,7 +1135,8 @@ export const resources = {
           certificate: 'Chứng chỉ bảo mật của máy chủ không đáng tin cậy.',
           noCalendars: 'Đã đăng nhập, nhưng không tìm thấy lịch nào ở địa chỉ đó.',
           keyring: 'Kho khóa của hệ thống không khả dụng nên không thể lưu mật khẩu an toàn.',
-          notConfigured: 'Bản xrncal này chưa được thiết lập để đăng nhập {{provider}}.',
+          notConfigured: 'Chưa thiết lập đăng nhập {{provider}}.',
+          clientRejected: '{{provider}} không chấp nhận thông tin đăng nhập này. Hãy kiểm tra xem đã chép đủ chưa.',
           cancelled: 'Đã hủy đăng nhập.',
           unknown: 'Không kết nối được.'
         },

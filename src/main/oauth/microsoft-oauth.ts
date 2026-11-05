@@ -8,6 +8,7 @@ import type { ISqliteDatabase } from '../db/sqlite-driver'
 import { SecureStore } from '../secure-store'
 import { AccountsRepo } from '../db/repos/accounts-repo'
 import { mt } from '../i18n-main'
+import { microsoftRedirectUri } from '@shared/oauth-client'
 
 export interface MicrosoftTokens {
   accessToken: string
@@ -119,7 +120,7 @@ export class MicrosoftOAuthManager {
           }
 
           const address = server.address() as AddressInfo
-          const redirectUri = `http://127.0.0.1:${address.port}/oauth2callback`
+          const redirectUri = microsoftRedirectUri(address.port)
 
           const tokenParams = new URLSearchParams({
             client_id: clientId,
@@ -207,7 +208,7 @@ export class MicrosoftOAuthManager {
       // Bind exclusively to 127.0.0.1 on random port
       server.listen(0, '127.0.0.1', () => {
         const address = server.address() as AddressInfo
-        const redirectUri = `http://127.0.0.1:${address.port}/oauth2callback`
+        const redirectUri = microsoftRedirectUri(address.port)
 
         const authUrl = new URL(MS_AUTH_ENDPOINT)
         authUrl.searchParams.set('client_id', clientId)

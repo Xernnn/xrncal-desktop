@@ -1,4 +1,5 @@
 import { safeStorage } from 'electron'
+import type { OAuthClient, OAuthProvider } from '@shared/oauth-client'
 import type { ISqliteDatabase } from './db/sqlite-driver'
 
 export class EncryptionUnavailableError extends Error {
@@ -53,10 +54,45 @@ export class SecureStore {
    * Store token for an account in SQLite encrypted
    */
   storeToken(accountId: string, tokenData: unknown): void {
+    this.put(`token:${accountId}`, tokenData)
+  }
+
+  /**
+   * Retrieve and decrypt token for an account
+   */
+  getToken<T = unknown>(accountId: string): T | null {
+    return this.read<T>(`token:${accountId}`)
+  }
+
+  /**
+   * Remove stored token for an account
+   */
+  deleteToken(accountId: string): void {
+    this.remove(`token:${accountId}`)
+  }
+
+  /**
+   * The OAuth client typed into the app. Encrypted like a token, under a key
+   * the settings IPC never serves (it serves only `AppSettings` keys).
+   */
+  storeOAuthClient(provider: OAuthProvider, client: OAuthClient): void {
+    this.put(`oauth-client:${provider}`, client)
+  }
+
+  /** Null when there is none, or it cannot be read: a locked keyring, a backup from another computer. */
+  getOAuthClient(provider: OAuthProvider): OAuthClient | null {
+    return this.read<OAuthClient>(`oauth-client:${provider}`)
+  }
+
+  deleteOAuthClient(provider: OAuthProvider): void {
+    this.remove(`oauth-client:${provider}`)
+  }
+
+  private put(key: string, data: unknown): void {
     if (!this.db) {
       throw new Error('Database instance required to persist tokens')
     }
-    const serialized = JSON.stringify(tokenData)
+    const serialized = JSON.stringify(data)
     const encrypted = this.encrypt(serialized)
     const now = new Date().toISOString()
 
@@ -66,17 +102,12 @@ export class SecureStore {
          VALUES (?, ?, ?)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
       )
-      .run(`token:${accountId}`, encrypted, now)
+      .run(key, encrypted, now)
   }
 
-  /**
-   * Retrieve and decrypt token for an account
-   */
-  getToken<T = unknown>(accountId: string): T | null {
+  private read<T>(key: string): T | null {
     if (!this.db) return null
-    const row = this.db
-      .prepare('SELECT value FROM settings WHERE key = ?')
-      .get<{ value: string }>(`token:${accountId}`)
+    const row = this.db.prepare('SELECT value FROM settings WHERE key = ?').get<{ value: string }>(key)
 
     if (!row || !row.value) return null
     try {
@@ -87,11 +118,8 @@ export class SecureStore {
     }
   }
 
-  /**
-   * Remove stored token for an account
-   */
-  deleteToken(accountId: string): void {
+  private remove(key: string): void {
     if (!this.db) return
-    this.db.prepare('DELETE FROM settings WHERE key = ?').run(`token:${accountId}`)
+    this.db.prepare('DELETE FROM settings WHERE key = ?').run(key)
   }
 }
