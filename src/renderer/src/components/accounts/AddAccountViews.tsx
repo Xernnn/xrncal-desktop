@@ -4,6 +4,7 @@ import { AlertCircle, Check, ExternalLink, Loader2, Palette, RefreshCw, Trash2 }
 import { DateTime } from 'luxon'
 import type { Calendar, CalendarAccount } from '@shared/event-model'
 import type { ProviderStatus } from '@shared/ipc-contract'
+import type { OAuthClientInfo, OAuthProvider } from '@shared/oauth-client'
 import {
   classifyConnectError,
   groupCalendars,
@@ -16,6 +17,8 @@ import HolidayCalendarToggle from '../HolidayCalendarToggle'
 import { CalendarRow, ColorPalette } from './CalendarToggle'
 import ProviderMark from './ProviderMark'
 import { NavRow } from './AccountViews'
+import { OAuthClientSetup } from './OAuthClientSetup'
+import { ProblemPanel } from './ProblemPanel'
 import type { AccountsPageProps, AddableProvider } from './accounts-nav'
 
 /* ---------------------------------------------------------------- picker */
@@ -24,9 +27,8 @@ const PROVIDERS: AddableProvider[] = ['google', 'graph', 'icloud', 'caldav', 'su
 
 /**
  * OneCalendar's "Account type" page: one choice, each with a line saying what
- * it covers. Google and Microsoft need the OAuth client an official build
- * carries; a build without one says so here, rather than after "Continue in
- * browser" with instructions meant for whoever built it.
+ * it covers. Google and Microsoft need an OAuth client; a copy without one says
+ * here that there is a step first, and the provider's page leads through it.
  */
 export const ProviderPickView: React.FC<AccountsPageProps> = (props) => {
   const { t } = useTranslation()
@@ -41,7 +43,7 @@ export const ProviderPickView: React.FC<AccountsPageProps> = (props) => {
       alive = false
     }
   }, [])
-  const unavailable = (provider: AddableProvider): boolean =>
+  const needsSetup = (provider: AddableProvider): boolean =>
     (provider === 'google' && !status.google) || (provider === 'graph' && !status.microsoft)
 
   return (
@@ -52,11 +54,10 @@ export const ProviderPickView: React.FC<AccountsPageProps> = (props) => {
           icon={<ProviderMark kind={provider} />}
           title={t(`addAccount.providers.${provider}.title`)}
           subtitle={
-            unavailable(provider)
-              ? t('addAccount.notInThisBuild')
+            needsSetup(provider)
+              ? t('addAccount.needsSetup')
               : t(`addAccount.providers.${provider}.detail`)
           }
-          disabled={unavailable(provider)}
           onClick={() =>
             props.push(
               provider === 'holidays'
@@ -78,28 +79,11 @@ export const ProviderPickView: React.FC<AccountsPageProps> = (props) => {
 
 type ConnectResult = { success: boolean; account?: CalendarAccount; message?: string }
 
-/** Why it failed, in words, with the raw message kept underneath for anything we did not recognise. */
-const ProblemPanel: React.FC<{ problem: ConnectProblem; raw?: string; provider: string }> = ({ problem, raw, provider }) => {
-  const { t } = useTranslation()
-  return (
-    <div
-      role="alert"
-      className="flex gap-2 border border-today/40 px-3 py-2.5 text-xs"
-      style={{ borderRadius: 'var(--radius-control)' }}
-    >
-      <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-today" />
-      <div className="min-w-0 space-y-1">
-        <div className="text-primary">{t(`addAccount.problems.${problem}`, { provider })}</div>
-        {raw && <div className="break-words text-muted select-text">{t('addAccount.details', { msg: raw })}</div>}
-      </div>
-    </div>
-  )
-}
-
 /**
  * The details page for one provider. Google and Microsoft sign in in the
  * browser, so there is nothing to type - just what is about to happen and a
- * wait. iCloud and CalDAV ask only for what they need, with no example
+ * wait - once the copy has an OAuth client: until then this is the form for
+ * one (`OAuthClientSetup`), and saving turns it into the sign-in page. iCloud and CalDAV ask only for what they need, with no example
  * addresses pre-filled to delete, and a failure stays on screen in plain words
  * until the form changes, instead of a message that vanished after five seconds.
  */
@@ -114,6 +98,22 @@ export const ConnectView: React.FC<AccountsPageProps & { provider: 'google' | 'g
   const [failure, setFailure] = useState<{ problem: ConnectProblem; raw?: string } | null>(null)
   const alive = useRef(true)
   useEffect(() => () => void (alive.current = false), [])
+
+  const oauthProvider: OAuthProvider | null =
+    props.provider === 'google' ? 'google' : props.provider === 'graph' ? 'microsoft' : null
+  const [client, setClient] = useState<OAuthClientInfo | null>(null)
+  const [changingClient, setChangingClient] = useState(false)
+  useEffect(() => {
+    if (!oauthProvider) return
+    let current = true
+    window.xrncal?.auth
+      ?.oauthClient?.(oauthProvider)
+      .then((next) => current && setClient(next))
+      .catch(() => {})
+    return () => {
+      current = false
+    }
+  }, [oauthProvider])
 
   // Editing the form is the user acting on the error; stop showing it.
   const edit = (setter: (value: string) => void) => (value: string) => {
@@ -147,10 +147,45 @@ export const ConnectView: React.FC<AccountsPageProps & { provider: 'google' | 'g
   const isOAuth = props.provider === 'google' || props.provider === 'graph'
 
   if (isOAuth) {
+    if (oauthProvider && client && (client.source === 'none' || changingClient)) {
+      return (
+        <OAuthClientSetup
+          // Keyed so that removing saved details clears what the form was holding.
+          key={client.source}
+          provider={oauthProvider}
+          providerName={providerName}
+          info={client}
+          connected={props.accounts.filter((account) => account.type === props.provider).length}
+          // Stays on the form until the answer is in: dropping out of it first
+          // showed the sign-in page for a moment on the way to an empty form.
+          onDone={() => {
+            void auth
+              ?.oauthClient(oauthProvider)
+              .then(setClient)
+              .catch(() => {})
+              .finally(() => {
+                setFailure(null)
+                setChangingClient(false)
+              })
+          }}
+          onCancel={client.source === 'none' ? undefined : () => setChangingClient(false)}
+        />
+      )
+    }
     return (
       <div className="flex flex-col gap-3">
         <p className="text-sm text-primary">{t('addAccount.browser.body', { provider: providerName })}</p>
         <p className="text-xs text-muted">{t('addAccount.browser.privacy')}</p>
+        {client?.source === 'saved' && (
+          <button
+            type="button"
+            className="self-start text-xs text-accent hover:underline"
+            disabled={busy}
+            onClick={() => setChangingClient(true)}
+          >
+            {t('addAccount.clientSetup.change', { provider: providerName })}
+          </button>
+        )}
         {failure && <ProblemPanel problem={failure.problem} raw={failure.raw} provider={providerName} />}
         {busy ? (
           <div className="flex items-center gap-2 px-1 py-2 text-xs text-muted">

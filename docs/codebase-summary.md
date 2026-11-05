@@ -61,7 +61,7 @@ xrncal/
 │   │   ├── opened-ics-files.ts  # .ics files the OS opened xrncal with, held for the renderer
 │   │   ├── restore-database.ts  # Restore from a backup: check, set the current data aside, swap, restart
 │   │   ├── updater.ts           # electron-updater against GitHub releases (packaged builds only)
-│   │   └── secure-store.ts      # safeStorage wrapper for OAuth tokens and CalDAV credentials
+│   │   └── secure-store.ts      # safeStorage wrapper for OAuth tokens, CalDAV credentials and OAuth clients typed into the app
 │   ├── preload/
 │   │   ├── index.ts             # contextBridge: exposes window.xrncal API (XrncalAPI typed)
 │   │   └── index.d.ts           # TypeScript declarations for preload
@@ -115,6 +115,7 @@ xrncal/
 │       ├── keyboard-nav.ts      # Keyboard cursor, nudge and resize maths
 │       ├── keyboard-commands.ts # Which command a key press is (commandForKey), and stepAnchor for paging
 │       ├── natural-entry.ts     # Dates, times and repeats typed into a new event's title (vi + en), and applying them
+│       ├── oauth-client.ts      # An OAuth client typed into the app: checks on it, what the renderer may know, Microsoft's redirect
 │       ├── print-layout.ts      # A printed week or month: its days, bars, hour window, lines per cell, file name
 │       ├── all-day.ts           # Floating-date vs instant: inclusive/exclusive ends, day keys
 │       ├── occurrence-order.ts  # Within-day ordering (all-day first, then by time)
@@ -133,7 +134,7 @@ xrncal/
 │       ├── locale-defaults.ts   # A new profile's language, clock and week start from the computer's locale
 │       ├── zone-history.ts      # Where the user was, from when: the zone of an event saved without one; moves added as the computer's zone changes
 │       └── ipc-contract.ts      # IPC_CHANNELS constants and XrncalAPI interface
-├── tests/                       # Vitest unit tests (~930 tests / 88 files); e2e/ drives the built app
+├── tests/                       # Vitest unit tests (~950 tests / 89 files); e2e/ drives the built app
 │   ├── integration/             # CalDAV sync against a real Radicale (`npm run test:caldav`, not in `npm run test`)
 │   └── stubs/electron.ts        # `electron` module stub for main-process tests
 └── docs/
@@ -182,7 +183,7 @@ xrncal/
 |-----------|---------|
 | `app` | `getVersion`, `getLocale`, `setLocale`, `getPlatform`, `pickBackgroundImage`, `backupDatabase`, `restoreDatabase`, `showLogFile`, `quit` |
 | `settings` | `getAll`, `get`, `set` |
-| `auth` | `connectGoogle`, `disconnectGoogle`, `connectMicrosoft`, `disconnectMicrosoft`, `connectCalDav`, `disconnectCalDav`, `listAccounts`, `detachAccount`, `providerStatus` |
+| `auth` | `connectGoogle`, `disconnectGoogle`, `connectMicrosoft`, `disconnectMicrosoft`, `connectCalDav`, `disconnectCalDav`, `listAccounts`, `detachAccount`, `providerStatus`, `oauthClient`, `saveOAuthClient`, `clearOAuthClient` |
 | `sync` | `triggerNow`, `getStatus`, `onChanged` |
 | `reminders` | `listActive`, `dismiss`, `snooze`, `onChanged` |
 | `calendars` | `list`, `create`, `update`, `delete` |
@@ -337,7 +338,7 @@ tests/
 └── undo-restore.test.ts           # Bringing a deleted event back, before and after its push
 ```
 
-**Total: 932 unit tests across 88 files, all passing**, plus 19 Playwright tests in `e2e/` that
+**Total: 954 unit tests across 89 files, all passing**, plus 25 Playwright tests in `e2e/` that
 drive the built app and 12 in `tests/integration/` that sync with a real Radicale server
 (`docs/deployment-guide.md`, "Running Tests").
 

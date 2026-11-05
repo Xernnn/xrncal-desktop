@@ -93,7 +93,7 @@ People on Windows and Linux need one native window that unifies Google Calendar,
 - **Date:** 2026-10-20
 
 ### PDR-012 — Keep running in the tray; official builds carry the OAuth clients
-- **Decision:** Closing the main window destroys it but leaves the app in the tray (a setting turns this off), and the app can start at sign-in. Release builds bake in the Google and Microsoft OAuth client ids from repository secrets; builds from source read their own from `xrncal.env`.
+- **Decision:** Closing the main window destroys it but leaves the app in the tray (a setting turns this off), and the app can start at sign-in. Release builds bake in the Google and Microsoft OAuth client ids from repository secrets; a copy without a client takes one in a form in the accounts dialog, stored encrypted; developers can also use `xrncal.env`.
 - **Rationale:** Reminders only ring while the app runs, and a calendar a user has to configure an OAuth client for is not one they will use. A desktop client's id and secret are not confidential (Google's own guidance; Microsoft's public clients have no secret).
 - **Date:** 2026-10-19
 

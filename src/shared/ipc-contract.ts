@@ -23,6 +23,7 @@ import type {
 } from './event-model'
 import type { SuggestTitlesOptions, TitleSuggestion } from './title-suggestions'
 import type { AppSettings } from './settings-contract'
+import type { OAuthClientForm, OAuthClientInfo, OAuthProvider } from './oauth-client'
 
 export const IPC_CHANNELS = {
   APP: {
@@ -50,7 +51,10 @@ export const IPC_CHANNELS = {
     DISCONNECT_CALDAV: 'xrncal:auth:disconnect-caldav',
     LIST_ACCOUNTS: 'xrncal:auth:list-accounts',
     DETACH_ACCOUNT: 'xrncal:auth:detach-account',
-    PROVIDER_STATUS: 'xrncal:auth:provider-status'
+    PROVIDER_STATUS: 'xrncal:auth:provider-status',
+    GET_OAUTH_CLIENT: 'xrncal:auth:get-oauth-client',
+    SAVE_OAUTH_CLIENT: 'xrncal:auth:save-oauth-client',
+    CLEAR_OAUTH_CLIENT: 'xrncal:auth:clear-oauth-client'
   },
   SYNC: {
     TRIGGER_NOW: 'xrncal:sync:trigger-now',
@@ -244,6 +248,11 @@ export interface XrncalAPI {
      *  turning them into ordinary local data. */
     detachAccount: (accountId: string) => Promise<DetachAccountResult>
     providerStatus: () => Promise<ProviderStatus>
+    /** What the renderer may know of a provider's client; never its secret. */
+    oauthClient: (provider: OAuthProvider) => Promise<OAuthClientInfo>
+    /** Throws when the details are invalid or there is no keyring to encrypt them with. */
+    saveOAuthClient: (provider: OAuthProvider, client: OAuthClientForm) => Promise<void>
+    clearOAuthClient: (provider: OAuthProvider) => Promise<void>
   }
   sync: {
     triggerNow: () => Promise<SyncResult>

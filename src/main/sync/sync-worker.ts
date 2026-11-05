@@ -6,6 +6,7 @@ import { MicrosoftSyncEngine } from './microsoft-sync-engine'
 import { CalDavSyncEngine } from './caldav-sync-engine'
 import { refreshDueSubscriptions } from '../subscriptions/ics-subscription'
 import type { SyncStatus, SyncResult } from '@shared/event-model'
+import type { OAuthClient } from '@shared/oauth-client'
 import { mt } from '../i18n-main'
 import { BrowserWindow } from 'electron'
 import { IPC_CHANNELS } from '@shared/ipc-contract'
@@ -32,6 +33,11 @@ export function accountErrorChanges(
   return lines
 }
 
+export interface SyncOAuthClients {
+  google: OAuthClient | null
+  microsoft: OAuthClient | null
+}
+
 export class SyncWorker {
   private googleEngine: GoogleSyncEngine
   private microsoftEngine: MicrosoftSyncEngine
@@ -53,12 +59,10 @@ export class SyncWorker {
 
   private currentIntervalMs = 5 * 60 * 1000
 
+  /** `oauthClients` is asked on every sync, so details saved in the app apply without a restart. */
   constructor(
     private db: ISqliteDatabase,
-    private googleClientId?: string,
-    private googleClientSecret?: string,
-    private msClientId?: string,
-    private msClientSecret?: string
+    private oauthClients: () => SyncOAuthClients
   ) {
     this.googleEngine = new GoogleSyncEngine(db)
     this.microsoftEngine = new MicrosoftSyncEngine(db)
@@ -135,12 +139,13 @@ export class SyncWorker {
       // Run the three providers concurrently and settle independently: in
       // sequence, a slow provider delays the other two and a throw from the
       // first skips the rest entirely.
+      const { google, microsoft } = this.oauthClients()
       const [googleRes, msRes, caldavRes, feedsRes] = await Promise.all([
         this.googleEngine
-          .syncAll(this.googleClientId, this.googleClientSecret)
+          .syncAll(google?.clientId, google?.clientSecret)
           .catch((err) => this.engineFailure('Google', err)),
         this.microsoftEngine
-          .syncAll(this.msClientId, this.msClientSecret)
+          .syncAll(microsoft?.clientId, microsoft?.clientSecret)
           .catch((err) => this.engineFailure('Microsoft', err)),
         this.caldavEngine.syncAll().catch((err) => this.engineFailure('CalDAV', err)),
         // Calendars subscribed to by link; each is fetched only when it is due.

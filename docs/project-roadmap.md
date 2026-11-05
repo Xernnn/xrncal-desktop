@@ -161,6 +161,10 @@ Built to make xrncal usable by someone who is not its developer:
   cancelled override with no start, which the server refused, so the whole series stopped
   syncing; it now goes up as an `EXDATE`, and undoing the delete works after the sync. Found by
   the new CI job that syncs with a real Radicale server.
+- ✅ **Sign-in details in the app** (2026-11): a copy with no OAuth client no longer sends anyone
+  to a file. Google and Microsoft in Add account and the welcome lead to the steps and a form; the
+  details are encrypted like a token, apply at once, and the secret is never read back. Microsoft's
+  redirect now matches what its portal can register (`http://localhost/oauth2callback`).
 - ✅ **Sign-in ready for release builds:** OAuth client ids baked in from repository secrets; a
   build without them says so instead of failing in the browser. The credentials file accepts only
   the four sign-in keys, and installed builds no longer read a `.env` from the working directory.

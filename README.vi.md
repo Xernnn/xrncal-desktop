@@ -162,9 +162,11 @@ npm run dev            # electron-vite, renderer hot-reload
 
 ### Kết nối tài khoản
 
-Với bản tải từ Releases, **Google và Microsoft đăng nhập qua trình duyệt, không cần cấu hình gì** — bản chính thức có sẵn OAuth client của xrncal. CalDAV (Nextcloud, Synology, Fastmail, …) và iCloud chỉ cần địa chỉ + tài khoản (iCloud dùng mật khẩu dành riêng cho ứng dụng).
+CalDAV (Nextcloud, Synology, Fastmail, …) và iCloud chỉ cần địa chỉ + tài khoản (iCloud dùng mật khẩu dành riêng cho ứng dụng).
 
-Bản **tự build** không có OAuth client: mục Google và Microsoft trong danh sách tài khoản sẽ ghi "Cần bản tải chính thức của xrncal". Muốn đăng nhập từ bản tự build thì dùng OAuth client của chính bạn: chép [`.env.example`](.env.example) thành `.env` rồi điền:
+**Google và Microsoft** đăng nhập qua trình duyệt, dùng một OAuth client: thông tin đăng nhập giúp họ nhận ra ứng dụng. Bản build có sẵn OAuth client thì đăng nhập được ngay. Với bản chưa có, **Thêm tài khoản → Google hoặc Microsoft** sẽ hướng dẫn từng bước để bạn tự tạo, rồi nhập luôn ở đó: không phải sửa file, không phải khởi động lại. Thông tin được mã hóa bằng kho khóa của hệ thống, giống token tài khoản, và secret không bao giờ hiện lại.
+
+Lập trình viên có thể đặt cùng thông tin đó bên ngoài ứng dụng: chép [`.env.example`](.env.example) thành `.env` rồi điền:
 
 ```ini
 GOOGLE_OAUTH_CLIENT_ID=

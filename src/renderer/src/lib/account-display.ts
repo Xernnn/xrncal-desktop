@@ -122,6 +122,7 @@ export function showAllChanges(calendars: Calendar[]): { id: string; isVisible: 
 /** Why connecting failed, in terms the person at the keyboard can act on. */
 export type ConnectProblem =
   | 'auth'
+  | 'clientRejected'
   | 'notFound'
   | 'unreachable'
   | 'certificate'
@@ -142,6 +143,8 @@ export function classifyConnectError(message: string | undefined): ConnectProble
   if (!text) return 'unknown'
   if (text.includes('no calendars found')) return 'noCalendars'
   if (text.includes("isn't configured") || text.includes('not configured')) return 'notConfigured'
+  // Before the 401 check below: `unauthorized_client` is the client, not the user.
+  if (text.includes('invalid_client') || text.includes('unauthorized_client')) return 'clientRejected'
   if (text.includes('keyring') || text.includes('safestorage') || text.includes('encryption is unavailable')) return 'keyring'
   if (/\b401\b/.test(text) || text.includes('unauthorized') || text.includes('invalid_grant') || text.includes('authentication failed')) return 'auth'
   if (text.includes('cancel') || text.includes('denied') || text.includes('access_denied')) return 'cancelled'
@@ -172,6 +175,8 @@ const SYNC_PROBLEMS: ReadonlySet<ConnectProblem> = new Set(['auth', 'notFound', 
 export function classifySyncError(message: string | undefined): SyncProblem {
   if (/\bhttp 5\d\d\b/i.test(message ?? '')) return 'server'
   const problem = classifyConnectError(message)
+  // Details changed after the account signed in: signing in again is the answer.
+  if (problem === 'clientRejected') return 'auth'
   return SYNC_PROBLEMS.has(problem) ? (problem as SyncProblem) : 'unknown'
 }
 
