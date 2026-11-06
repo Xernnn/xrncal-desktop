@@ -305,6 +305,12 @@ See [`electron-builder.yml`](../electron-builder.yml) at the project root. Key s
 - `linux.target`: AppImage
 - `publish`: GitHub, `Xernnn/xrncal-desktop`, as a draft release (see Releases above)
 
+### The logo
+
+`resources/icon.svg` is the xrn family design and the only file to edit. `npm run icons` (needs
+`rsvg-convert` and ImageMagick) builds `icon.png`, `icon.ico` and the marks the website and the
+README show from it; `tests/logo.test.ts` fails if the ICO or a mark is left behind.
+
 ---
 
 ## Environment Variables
