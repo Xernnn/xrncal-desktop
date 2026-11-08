@@ -203,12 +203,12 @@ describe('calendar colours', () => {
 
 describe('where the CalDAV password goes', () => {
   it('only to the account\'s server and its own domain, never down to plain HTTP', () => {
-    const home = 'https://homeserver.tail12bde9.ts.net/sonn/'
-    expect(mayCarryCredentials(home, 'https://homeserver.tail12bde9.ts.net/sonn/work/x.ics')).toBe(true)
-    expect(mayCarryCredentials(home, 'https://other.tail12bde9.ts.net/sonn/')).toBe(true)
+    const home = 'https://calendar.tail0123ab.ts.net/sonn/'
+    expect(mayCarryCredentials(home, 'https://calendar.tail0123ab.ts.net/sonn/work/x.ics')).toBe(true)
+    expect(mayCarryCredentials(home, 'https://other.tail0123ab.ts.net/sonn/')).toBe(true)
     expect(mayCarryCredentials(home, 'https://evil.example/collect')).toBe(false)
     expect(mayCarryCredentials(home, 'https://ts.net.evil.example/')).toBe(false)
-    expect(mayCarryCredentials(home, 'http://homeserver.tail12bde9.ts.net/sonn/')).toBe(false)
+    expect(mayCarryCredentials(home, 'http://calendar.tail0123ab.ts.net/sonn/')).toBe(false)
     expect(mayCarryCredentials(home, 'file:///etc/passwd')).toBe(false)
     // iCloud answers from per-user hosts in its own domain.
     expect(mayCarryCredentials('https://caldav.icloud.com', 'https://p42-caldav.icloud.com/123/calendars/')).toBe(true)

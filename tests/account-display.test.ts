@@ -150,7 +150,7 @@ describe('server address input', () => {
 describe('classifySyncError', () => {
   it('says why an account stopped syncing', () => {
     expect(classifySyncError('fetch failed: getaddrinfo ENOTFOUND homeserver.example.ts.net')).toBe('notFound')
-    expect(classifySyncError('fetch failed: connect ECONNREFUSED 100.68.210.10:443')).toBe('unreachable')
+    expect(classifySyncError('fetch failed: connect ECONNREFUSED 100.101.102.103:443')).toBe('unreachable')
     expect(classifySyncError('Request timed out after 30000ms: https://dav.example/')).toBe('unreachable')
     expect(classifySyncError('CalDAV discovery failed with HTTP 401: Unauthorized')).toBe('auth')
     expect(classifySyncError('Token refresh failed: invalid_grant')).toBe('auth')
