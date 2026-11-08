@@ -30,8 +30,8 @@ describe('redactSecrets', () => {
   it('leaves ordinary errors alone, status codes included', () => {
     const text = 'HTTP 401 Unauthorized: {"error":{"code":401,"message":"Invalid Credentials"}}'
     expect(redactSecrets(text)).toBe(text)
-    expect(redactSecrets('fetch failed: connect ECONNREFUSED 100.68.210.10:443')).toBe(
-      'fetch failed: connect ECONNREFUSED 100.68.210.10:443'
+    expect(redactSecrets('fetch failed: connect ECONNREFUSED 100.101.102.103:443')).toBe(
+      'fetch failed: connect ECONNREFUSED 100.101.102.103:443'
     )
   })
 })

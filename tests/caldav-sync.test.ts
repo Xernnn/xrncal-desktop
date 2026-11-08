@@ -463,14 +463,14 @@ describe('CalDAV sync', () => {
       vi.stubGlobal(
         'fetch',
         vi.fn(async () => {
-          throw new TypeError('fetch failed', { cause: new Error('connect ECONNREFUSED 100.68.210.10:443') })
+          throw new TypeError('fetch failed', { cause: new Error('connect ECONNREFUSED 100.101.102.103:443') })
         })
       )
 
       const res = await engine.syncAll()
 
       expect(res.success).toBe(false)
-      expect(res.accountErrors).toEqual({ acc_caldav_test: 'fetch failed: connect ECONNREFUSED 100.68.210.10:443' })
+      expect(res.accountErrors).toEqual({ acc_caldav_test: 'fetch failed: connect ECONNREFUSED 100.101.102.103:443' })
     })
 
     it('says the saved password could not be read, instead of skipping the account quietly', async () => {
