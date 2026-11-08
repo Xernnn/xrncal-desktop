@@ -7,7 +7,8 @@ import { launchApp, type RunningApp } from './app'
 // Ctrl+P prints, or saves as PDF, the week or month on screen: one A4
 // landscape page, light whatever the theme.
 
-/** Events this week on this machine's clock: a timed one today, an all-day one tomorrow. */
+/** Events on this machine's clock: a timed one and an all-day one, both today. Any other day can fall
+ *  outside the week or month on screen (tomorrow is next week on the last day of the week). */
 async function addEvents(page: Page): Promise<void> {
   await page.evaluate(async () => {
     const now = new Date()
@@ -21,7 +22,7 @@ async function addEvents(page: Page): Promise<void> {
       tzid: 'Asia/Ho_Chi_Minh'
     })
     const pad = (n: number) => String(n).padStart(2, '0')
-    const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
+    const day = new Date(now.getFullYear(), now.getMonth(), now.getDate())
     const date = `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`
     await window.xrncal.events.create({
       calendarId: 'calendar-local-default',
