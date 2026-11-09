@@ -530,9 +530,35 @@ WHERE all_day IS NULL
   AND NOT (dtstart_utc LIKE '%T00:00:00.000Z' AND dtend_utc LIKE '%T23:59:59.999Z');
 `
 
-/** The newest migration this build knows. Raise it with every new one: a
- *  restore refuses a backup made by a build with a newer schema. */
-export const SCHEMA_VERSION = 22
+/** Every migration in order: the one at index i is version i + 1. */
+const MIGRATIONS: readonly string[] = [
+  MIGRATION_001_SQL,
+  MIGRATION_002_SQL,
+  MIGRATION_003_SQL,
+  MIGRATION_004_SQL,
+  MIGRATION_005_SQL,
+  MIGRATION_006_SQL,
+  MIGRATION_007_SQL,
+  MIGRATION_008_SQL,
+  MIGRATION_009_SQL,
+  MIGRATION_010_SQL,
+  MIGRATION_011_SQL,
+  MIGRATION_012_SQL,
+  MIGRATION_013_SQL,
+  MIGRATION_014_SQL,
+  MIGRATION_015_SQL,
+  MIGRATION_016_SQL,
+  MIGRATION_017_SQL,
+  MIGRATION_018_SQL,
+  MIGRATION_019_SQL,
+  MIGRATION_020_SQL,
+  MIGRATION_021_SQL,
+  MIGRATION_022_SQL
+]
+
+/** The newest migration this build knows: a restore refuses a backup made by
+ *  a build with a newer schema. */
+export const SCHEMA_VERSION = MIGRATIONS.length
 
 /**
  * Execute all schema migrations in order
@@ -548,182 +574,22 @@ export function runMigrations(db: ISqliteDatabase): void {
 
   const row = db.prepare('SELECT MAX(version) as max_version FROM schema_migrations').get<{ max_version: number | null }>()
   const currentVersion = row?.max_version ?? 0
+  const record = db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)')
 
-  if (currentVersion < 1) {
-    db.exec(MIGRATION_001_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      1,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 2) {
-    db.exec(MIGRATION_002_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      2,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 3) {
-    db.exec(MIGRATION_003_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      3,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 4) {
-    db.exec(MIGRATION_004_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      4,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 5) {
-    db.exec(MIGRATION_005_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      5,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 6) {
-    db.exec(MIGRATION_006_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      6,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 7) {
-    db.exec(MIGRATION_007_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      7,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 8) {
-    db.exec(MIGRATION_008_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      8,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 9) {
-    db.exec(MIGRATION_009_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      9,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 10) {
-    db.exec(MIGRATION_010_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      10,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 11) {
-    db.exec(MIGRATION_011_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      11,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 12) {
-    db.exec(MIGRATION_012_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      12,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 13) {
-    db.exec(MIGRATION_013_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      13,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 14) {
-    db.exec(MIGRATION_014_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      14,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 15) {
-    db.exec(MIGRATION_015_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      15,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 16) {
-    db.exec(MIGRATION_016_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      16,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 17) {
-    db.exec(MIGRATION_017_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      17,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 18) {
-    db.exec(MIGRATION_018_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      18,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 19) {
-    db.exec(MIGRATION_019_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      19,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 20) {
-    db.exec(MIGRATION_020_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      20,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 21) {
-    db.exec(MIGRATION_021_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      21,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 22) {
-    db.exec(MIGRATION_022_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      22,
-      new Date().toISOString()
-    )
-  }
+  // Each migration commits together with the row that records it. Run
+  // statement by statement, a migration the app was closed (or crashed) in the
+  // middle of stayed half applied with no version recorded - 007 adds three
+  // columns - so the next start ran it again, failed on the first column that
+  // was already there, and the app never opened again. SQLite rolls the
+  // schema changes back with everything else.
+  MIGRATIONS.forEach((sql, index) => {
+    const version = index + 1
+    if (version <= currentVersion) return
+    db.transaction(() => {
+      db.exec(sql)
+      record.run(version, new Date().toISOString())
+    })()
+  })
 }
 
 /**
