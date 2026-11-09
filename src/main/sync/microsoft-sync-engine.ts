@@ -553,12 +553,14 @@ export class MicrosoftSyncEngine {
         // Graph's id, not ours; identical only for rows that synced before the
         // two were separated.
         const eventId = row.provider_event_id || row.id
+        // None once the user has chosen this version over Outlook's ("keep mine").
+        const ifMatch = row.keep_mine === 1 ? null : row.etag
 
         if (isDeleted) {
           const delRes = await fetchWithTimeout(`${GRAPH_BASE}/me/events/${encodeURIComponent(eventId)}`, {
             method: 'DELETE',
-            headers: row.etag
-              ? { Authorization: `Bearer ${accessToken}`, 'if-match': row.etag }
+            headers: ifMatch
+              ? { Authorization: `Bearer ${accessToken}`, 'if-match': ifMatch }
               : { Authorization: `Bearer ${accessToken}` }
           })
           if (delRes.ok || delRes.status === 404) {
@@ -603,7 +605,7 @@ export class MicrosoftSyncEngine {
                 'Content-Type': 'application/json',
                 // Graph honours the precondition only as a header; without it
                 // the 412 branch below is unreachable.
-                'if-match': row.etag
+                ...(ifMatch ? { 'if-match': ifMatch } : {})
               },
               body: JSON.stringify(payload)
             })

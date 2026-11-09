@@ -62,6 +62,9 @@ export interface EventRow {
   rsvp_pending: string | null
   /** The calendar the event was moved out of here, until the move reaches the provider. */
   moved_from_calendar_id: string | null
+  /** 1 when a conflict was resolved as "keep mine": the next push goes without
+   *  If-Match, over whatever the provider has now (migration 023). */
+  keep_mine: number
   created_at: string
   updated_at: string
 }
@@ -748,7 +751,8 @@ export class EventsRepo {
    * was in flight (drag, then resize before the PUT came back) used to be
    * marked clean with it, so it was never sent and the next pull could
    * overwrite it. Returns whether the row was marked clean; false means a
-   * newer local edit is still waiting to go.
+   * newer local edit is still waiting to go. A "keep mine" is done either way:
+   * the provider now has this version, so later edits check against it.
    */
   markEventPushed(
     id: string,
@@ -757,7 +761,7 @@ export class EventsRepo {
     const now = new Date().toISOString()
     return this.db.transaction(() => {
       this.db
-        .prepare('UPDATE events SET provider_event_id = ?, etag = ?, has_conflict = 0 WHERE id = ?')
+        .prepare('UPDATE events SET provider_event_id = ?, etag = ?, has_conflict = 0, keep_mine = 0 WHERE id = ?')
         .run(push.providerEventId, push.etag, id)
       return (
         this.db
@@ -781,7 +785,7 @@ export class EventsRepo {
       const gone =
         this.db.prepare('DELETE FROM events WHERE id = ? AND updated_at = ?').run(id, sentUpdatedAt).changes > 0
       if (!gone) {
-        this.db.prepare('UPDATE events SET provider_event_id = NULL, etag = NULL WHERE id = ?').run(id)
+        this.db.prepare('UPDATE events SET provider_event_id = NULL, etag = NULL, keep_mine = 0 WHERE id = ?').run(id)
       }
       return gone
     })()
@@ -1629,8 +1633,10 @@ export class EventsRepo {
 
   /**
    * Resolve a sync conflict:
-   * - 'keepMine' clears the stored etag so the next push goes through unconditionally,
-   *   overwriting whatever's on the server.
+   * - 'keepMine' marks the row so its next push goes without If-Match, overwriting
+   *   whatever's on the server. The etag stays: clearing it, as this used to,
+   *   made the row read as never pushed, so Google and Outlook created the event
+   *   again beside the original, and its guest list went out as if complete.
    * - 'keepTheirs' drops the local edit (dirty=0) and clears the calendar's sync token
    *   where one exists, forcing a full resync that pulls the server's version back in -
    *   CalDAV already does a full pull every cycle, so no token to clear there.
@@ -1645,11 +1651,11 @@ export class EventsRepo {
 
     if (resolution === 'keepMine') {
       this.db
-        .prepare('UPDATE events SET etag = NULL, has_conflict = 0, dirty = 1 WHERE id = ?')
+        .prepare('UPDATE events SET keep_mine = 1, has_conflict = 0, dirty = 1 WHERE id = ?')
         .run(eventId)
     } else {
       this.db
-        .prepare('UPDATE events SET dirty = 0, has_conflict = 0 WHERE id = ?')
+        .prepare('UPDATE events SET dirty = 0, has_conflict = 0, keep_mine = 0 WHERE id = ?')
         .run(eventId)
       this.db
         .prepare('UPDATE sync_state SET sync_token = NULL WHERE calendar_id = ?')

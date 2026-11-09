@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { initDatabase, closeDatabase, runMigrations } from '../src/main/db/database'
+import { initDatabase, closeDatabase, MIGRATION_019_SQL } from '../src/main/db/database'
 import type { ISqliteDatabase } from '../src/main/db/sqlite-driver'
 import { EventsRepo } from '../src/main/db/repos/events-repo'
 
@@ -130,7 +130,9 @@ describe('SQLite FTS5 Full-Text Search and Attendees', () => {
   })
 
   it('replaces the old index, which never matched, and indexes what is already there', () => {
-    // Back to schema 18, with migration 002's contentless index.
+    // Back to migration 002's contentless index, then 019's own SQL. Rewinding
+    // schema_migrations and replaying every later migration broke as soon as
+    // one of them added a column (ALTER TABLE ADD COLUMN cannot run twice).
     db.exec(`
       DROP TRIGGER trg_events_fts_insert;
       DROP TRIGGER trg_events_fts_update;
@@ -142,7 +144,6 @@ describe('SQLite FTS5 Full-Text Search and Attendees', () => {
         INSERT INTO events_fts(event_id, title, notes, location)
         VALUES (new.id, new.title, COALESCE(new.notes, ''), COALESCE(new.location, ''));
       END;
-      DELETE FROM schema_migrations WHERE version >= 19;
     `)
     repo.createEvent({
       calendarId: calId,
@@ -152,7 +153,7 @@ describe('SQLite FTS5 Full-Text Search and Attendees', () => {
     })
     expect(repo.searchEvents('hop')).toHaveLength(0)
 
-    runMigrations(db)
+    db.exec(MIGRATION_019_SQL)
 
     expect(repo.searchEvents('hop').map((e) => e.title)).toEqual(['Họp phụ huynh'])
   })

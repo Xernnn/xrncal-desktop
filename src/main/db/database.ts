@@ -439,7 +439,7 @@ UPDATE sync_state SET sync_token = NULL;
  * and VACUUM INTO keep those), is touched only when a title, notes or location
  * actually changes, and folds diacritics, so "gio" finds "Giỗ".
  */
-const MIGRATION_019_SQL = `
+export const MIGRATION_019_SQL = `
 DROP TRIGGER IF EXISTS trg_events_fts_insert;
 DROP TRIGGER IF EXISTS trg_events_fts_update;
 DROP TRIGGER IF EXISTS trg_events_fts_delete;
@@ -530,6 +530,19 @@ WHERE all_day IS NULL
   AND NOT (dtstart_utc LIKE '%T00:00:00.000Z' AND dtend_utc LIKE '%T23:59:59.999Z');
 `
 
+/**
+ * "Keep mine" on a sync conflict, waiting to go out. Resolving one used to
+ * clear the etag, and every engine reads a missing etag as "never pushed":
+ * Google and Outlook created the event a second time (inviting its guests
+ * again, with the original left on the server), and the guest list was sent
+ * whole even when it had never been read here. The etag now stays, so the row
+ * is still the provider's event, and this says its next push goes without
+ * If-Match - overwriting, or deleting, whatever the provider has now.
+ */
+const MIGRATION_023_SQL = `
+ALTER TABLE events ADD COLUMN keep_mine INTEGER NOT NULL DEFAULT 0;
+`
+
 /** Every migration in order: the one at index i is version i + 1. */
 const MIGRATIONS: readonly string[] = [
   MIGRATION_001_SQL,
@@ -553,7 +566,8 @@ const MIGRATIONS: readonly string[] = [
   MIGRATION_019_SQL,
   MIGRATION_020_SQL,
   MIGRATION_021_SQL,
-  MIGRATION_022_SQL
+  MIGRATION_022_SQL,
+  MIGRATION_023_SQL
 ]
 
 /** The newest migration this build knows: a restore refuses a backup made by

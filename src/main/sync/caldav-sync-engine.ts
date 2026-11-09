@@ -461,7 +461,9 @@ export class CalDavSyncEngine {
               attendees: sendsGuests
                 ? withOrganizer(this.eventsRepo.getEventById(row.id)?.event.attendees ?? [], selfEmail)
                 : undefined,
-              etag: row.etag ?? undefined,
+              // The precondition: none once the user has chosen this version
+              // over the server's ("keep mine" on a conflict).
+              etag: row.keep_mine === 1 ? undefined : row.etag ?? undefined,
               dirty: false,
               isDeleted: false,
               createdAt: row.created_at,

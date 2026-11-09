@@ -345,6 +345,9 @@ export class GoogleSyncEngine {
         // URL below needs. They are the same string only for rows that synced
         // before the two were separated.
         const googleEventId = row.provider_event_id || row.id
+        // The precondition every write carries - none once the user has chosen
+        // this version over the server's ("keep mine" on a conflict).
+        const ifMatch = row.keep_mine === 1 ? null : row.etag
 
         if (isDeleted) {
           // DELETE
@@ -352,8 +355,8 @@ export class GoogleSyncEngine {
             `${GOOGLE_API_BASE}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(googleEventId)}`,
             {
               method: 'DELETE',
-              headers: row.etag
-                ? { Authorization: `Bearer ${accessToken}`, 'If-Match': row.etag }
+              headers: ifMatch
+                ? { Authorization: `Bearer ${accessToken}`, 'If-Match': ifMatch }
                 : { Authorization: `Bearer ${accessToken}` }
             }
           )
@@ -446,7 +449,7 @@ export class GoogleSyncEngine {
                   // Optimistic concurrency. Google honours the precondition
                   // only as a header - an etag in the request body is ignored,
                   // so without this the 412 branch below is unreachable.
-                  'If-Match': row.etag
+                  ...(ifMatch ? { 'If-Match': ifMatch } : {})
                 },
                 body: JSON.stringify(payload)
               }
