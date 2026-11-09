@@ -76,7 +76,7 @@ describe('occurrence exception sync', () => {
       isCancelled: true
     })
 
-    repo.markExceptionSynced(exc.id, 'google-instance-id', 'etag-2')
+    repo.markExceptionSynced(exc.id, 'google-instance-id', 'etag-2', exc.updatedAt)
     expect(repo.listDirtyExceptions(CAL_ID)).toHaveLength(0)
 
     // A later edit re-dirties it, and the cached instance id survives.

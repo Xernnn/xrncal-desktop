@@ -562,7 +562,7 @@ export class MicrosoftSyncEngine {
               : { Authorization: `Bearer ${accessToken}` }
           })
           if (delRes.ok || delRes.status === 404) {
-            this.db.prepare('DELETE FROM events WHERE id = ?').run(row.id)
+            this.eventsRepo.forgetPushedDelete(row.id, row.updated_at)
             pushedCount++
           } else if (delRes.status === 412) {
             this.db.prepare('UPDATE events SET has_conflict = 1 WHERE id = ?').run(row.id)
@@ -621,18 +621,16 @@ export class MicrosoftSyncEngine {
 
           if (res.ok) {
             const resJson = await res.json()
-            const now = new Date().toISOString()
             // Ours stays ours; only the provider's id is recorded.
-            this.db
-              .prepare(
-                `UPDATE events
-                 SET provider_event_id = ?, etag = ?, dirty = 0, has_conflict = 0, updated_at = ?
-                 WHERE id = ?`
-              )
-              .run(resJson.id || eventId, resJson['@odata.etag'] || row.etag, now, row.id)
-            // The response is the event as Graph now holds it, guests and all.
+            const unchanged = this.eventsRepo.markEventPushed(row.id, {
+              providerEventId: resJson.id || eventId,
+              etag: resJson['@odata.etag'] || row.etag,
+              sentUpdatedAt: row.updated_at
+            })
+            // The response is the event as Graph now holds it, guests and all -
+            // but a guest list edited while the request was out is newer than that.
             if (Array.isArray(resJson.attendees)) {
-              if (!row.rsvp_pending) {
+              if (unchanged && !row.rsvp_pending) {
                 this.eventsRepo.replaceAttendees(row.id, graphAttendeesToDomain(resJson, selfEmail))
               }
               this.db.prepare('UPDATE events SET attendees_synced = 1 WHERE id = ?').run(row.id)
@@ -728,7 +726,7 @@ export class MicrosoftSyncEngine {
 
         // A cancelled instance that is already gone counts as delivered.
         if (res.ok || res.status === 204 || res.status === 404) {
-          this.eventsRepo.markExceptionSynced(exception.id, instanceId, null)
+          this.eventsRepo.markExceptionSynced(exception.id, instanceId, null, exception.updatedAt)
           pushedCount++
         } else {
           errorCount++

@@ -359,7 +359,7 @@ export class GoogleSyncEngine {
           )
 
           if (delRes.ok || delRes.status === 404 || delRes.status === 410) {
-            this.db.prepare('DELETE FROM events WHERE id = ?').run(row.id)
+            this.eventsRepo.forgetPushedDelete(row.id, row.updated_at)
             pushedCount++
           } else if (delRes.status === 412) {
             // Someone edited the event remotely after our last pull. Surface it
@@ -468,21 +468,19 @@ export class GoogleSyncEngine {
 
           if (putRes.ok) {
             const resJson = await putRes.json()
-            const now = new Date().toISOString()
             // The row keeps its own id. Rewriting it to whatever the provider
             // assigned is what used to break the renderer mid-edit, and it took
             // `event_exceptions.master_event_id` along with it.
-            this.db
-              .prepare(
-                `UPDATE events
-                 SET provider_event_id = ?, etag = ?, dirty = 0, has_conflict = 0, updated_at = ?
-                 WHERE id = ?`
-              )
-              .run(resJson.id || googleEventId, resJson.etag || row.etag, now, row.id)
-            // The response is the event as Google now holds it, guests and all.
+            const unchanged = this.eventsRepo.markEventPushed(row.id, {
+              providerEventId: resJson.id || googleEventId,
+              etag: resJson.etag || row.etag,
+              sentUpdatedAt: row.updated_at
+            })
+            // The response is the event as Google now holds it, guests and all -
+            // but a guest list edited while the PUT was out is newer than that.
             if (Array.isArray(resJson.attendees) || attendees) {
               attendees = googleAttendeesToDomain(resJson.attendees)
-              if (!row.rsvp_pending) this.eventsRepo.replaceAttendees(row.id, attendees)
+              if (unchanged && !row.rsvp_pending) this.eventsRepo.replaceAttendees(row.id, attendees)
               this.db.prepare('UPDATE events SET attendees_synced = 1 WHERE id = ?').run(row.id)
             }
             pushedCount++
@@ -573,7 +571,7 @@ export class GoogleSyncEngine {
 
         if (res.ok) {
           const json = await res.json().catch(() => ({}))
-          this.eventsRepo.markExceptionSynced(exception.id, instanceId, json?.etag ?? null)
+          this.eventsRepo.markExceptionSynced(exception.id, instanceId, json?.etag ?? null, exception.updatedAt)
           pushedCount++
         } else {
           errorCount++

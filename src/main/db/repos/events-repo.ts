@@ -740,24 +740,85 @@ export class EventsRepo {
     return out
   }
 
-  markExceptionSynced(id: string, providerInstanceId?: string | null, etag?: string | null): void {
+  /**
+   * Record that a push of this event landed. The provider's id and etag are
+   * kept either way - the server now holds what was sent - but the row is only
+   * marked clean while it is still the version that was sent: `sentUpdatedAt`
+   * is its updated_at when the push read it. An edit made while the request
+   * was in flight (drag, then resize before the PUT came back) used to be
+   * marked clean with it, so it was never sent and the next pull could
+   * overwrite it. Returns whether the row was marked clean; false means a
+   * newer local edit is still waiting to go.
+   */
+  markEventPushed(
+    id: string,
+    push: { providerEventId: string | null; etag: string | null; sentUpdatedAt: string; clearRsvp?: boolean }
+  ): boolean {
+    const now = new Date().toISOString()
+    return this.db.transaction(() => {
+      this.db
+        .prepare('UPDATE events SET provider_event_id = ?, etag = ?, has_conflict = 0 WHERE id = ?')
+        .run(push.providerEventId, push.etag, id)
+      return (
+        this.db
+          .prepare(
+            `UPDATE events SET dirty = 0, updated_at = ?${push.clearRsvp ? ', rsvp_pending = NULL' : ''}
+             WHERE id = ? AND updated_at = ?`
+          )
+          .run(now, id, push.sentUpdatedAt).changes > 0
+      )
+    })()
+  }
+
+  /**
+   * Forget an event whose delete reached the provider - unless it was brought
+   * back (undo) while the request was in flight. Then the provider no longer
+   * has it, so it is a new event there: its provider id and etag go, and the
+   * next push creates it again. Returns whether it was forgotten.
+   */
+  forgetPushedDelete(id: string, sentUpdatedAt: string): boolean {
+    return this.db.transaction(() => {
+      const gone =
+        this.db.prepare('DELETE FROM events WHERE id = ? AND updated_at = ?').run(id, sentUpdatedAt).changes > 0
+      if (!gone) {
+        this.db.prepare('UPDATE events SET provider_event_id = NULL, etag = NULL WHERE id = ?').run(id)
+      }
+      return gone
+    })()
+  }
+
+  /** Record a pushed occurrence override; clean only if unchanged since it was
+   *  read for the push (see markEventPushed). */
+  markExceptionSynced(
+    id: string,
+    providerInstanceId: string | null | undefined,
+    etag: string | null | undefined,
+    sentUpdatedAt: string
+  ): void {
     this.db
       .prepare(
         `UPDATE event_exceptions
-         SET dirty = 0,
+         SET dirty = CASE WHEN updated_at = ? THEN 0 ELSE dirty END,
              provider_instance_id = COALESCE(?, provider_instance_id),
              etag = COALESCE(?, etag)
          WHERE id = ?`
       )
-      .run(providerInstanceId ?? null, etag ?? null, id)
+      .run(sentUpdatedAt, providerInstanceId ?? null, etag ?? null, id)
   }
 
-  /** Clear the dirty flag on every pending exception of a master (CalDAV pushes
-   *  the whole series as one resource, so they all land together). */
-  markExceptionsSyncedForMaster(masterEventId: string): void {
-    this.db
-      .prepare('UPDATE event_exceptions SET dirty = 0 WHERE master_event_id = ? AND dirty = 1')
-      .run(masterEventId)
+  /** Clear the dirty flag on the exceptions a series push carried (CalDAV pushes
+   *  the whole series as one resource, so they land together) - each only if
+   *  it is unchanged since then, so one edited mid-push still goes next time. */
+  markExceptionsSyncedForMaster(
+    masterEventId: string,
+    sent: readonly Pick<EventException, 'id' | 'updatedAt'>[]
+  ): void {
+    const clear = this.db.prepare(
+      'UPDATE event_exceptions SET dirty = 0 WHERE id = ? AND master_event_id = ? AND updated_at = ? AND dirty = 1'
+    )
+    this.db.transaction(() => {
+      for (const ex of sent) clear.run(ex.id, masterEventId, ex.updatedAt)
+    })()
   }
 
   /** The calendar's series that are on the provider (lunar masters are local). */

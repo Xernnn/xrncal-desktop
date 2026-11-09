@@ -424,7 +424,7 @@ export class CalDavSyncEngine {
         if (isDeleted) {
           const ok = await adapter.deleteEvent(calendarId, row.uid || row.id, row.provider_event_id || undefined)
           if (ok) {
-            this.db.prepare('DELETE FROM events WHERE id = ?').run(row.id)
+            this.eventsRepo.forgetPushedDelete(row.id, row.updated_at)
             pushedCount++
           } else {
             lastError = 'The server refused to delete an event'
@@ -435,6 +435,8 @@ export class CalDavSyncEngine {
             .prepare('SELECT ics FROM event_sources WHERE event_id = ?')
             .get<{ ics: string }>(row.id)?.ics
           const sendsGuests = row.attendees_synced === 1 || !row.etag
+          // What this PUT carries, so only that is marked as landed.
+          const sentExceptions = this.eventsRepo.getExceptionsForEvent(row.id)
           const pushRes = await adapter.pushEvent(
             calendar,
             {
@@ -465,21 +467,19 @@ export class CalDavSyncEngine {
               createdAt: row.created_at,
               updatedAt: row.updated_at
             },
-            this.eventsRepo.getExceptionsForEvent(row.id),
+            sentExceptions,
             serverCopy ? { ics: serverCopy, keepAttendees: !sendsGuests } : undefined
           )
 
           if (pushRes.success) {
-            const now = new Date().toISOString()
-            this.db
-              .prepare(
-                `UPDATE events SET provider_event_id = ?, etag = ?, dirty = 0, has_conflict = 0,
-                   rsvp_pending = NULL, updated_at = ?
-                 WHERE id = ?`
-              )
-              .run(pushRes.href || row.provider_event_id, pushRes.etag || row.etag, now, row.id)
+            this.eventsRepo.markEventPushed(row.id, {
+              providerEventId: pushRes.href || row.provider_event_id,
+              etag: pushRes.etag || row.etag,
+              sentUpdatedAt: row.updated_at,
+              clearRsvp: true
+            })
             if (serverCopy && pushRes.body) this.saveServerCopy(row.id, pushRes.body)
-            this.eventsRepo.markExceptionsSyncedForMaster(row.id)
+            this.eventsRepo.markExceptionsSyncedForMaster(row.id, sentExceptions)
             pushedCount++
           } else if (pushRes.conflict) {
             this.db.prepare('UPDATE events SET has_conflict = 1 WHERE id = ?').run(row.id)
