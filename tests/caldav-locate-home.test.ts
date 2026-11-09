@@ -218,6 +218,20 @@ describe('where the CalDAV password goes', () => {
     expect(mayCarryCredentials('http://192.168.1.5:5232/', 'http://192.168.1.6:5232/sonn/')).toBe(false)
   })
 
+  it('not to the neighbours under a suffix anyone can register a name in', () => {
+    // Two servers under the same dynamic-DNS service belong to two strangers.
+    expect(mayCarryCredentials('https://alice.duckdns.org/dav/', 'https://bob.duckdns.org/collect')).toBe(false)
+    expect(mayCarryCredentials('https://alice.duckdns.org/dav/', 'https://alice.duckdns.org/dav/x.ics')).toBe(true)
+    expect(mayCarryCredentials('https://nas.synology.me/', 'https://other.synology.me/')).toBe(false)
+    expect(mayCarryCredentials('https://box1.myfritz.net/', 'https://box2.myfritz.net/')).toBe(false)
+    // A country's own second level is shared the same way.
+    expect(mayCarryCredentials('https://x.co.uk/dav/', 'https://y.co.uk/')).toBe(false)
+    expect(mayCarryCredentials('https://lich.com.vn/', 'https://khac.com.vn/')).toBe(false)
+    // A name someone owns under one still covers that name's own hosts.
+    expect(mayCarryCredentials('https://dav.example.co.uk/', 'https://p1-dav.example.co.uk/')).toBe(true)
+    expect(mayCarryCredentials('https://dav.alice.duckdns.org/', 'https://cal.alice.duckdns.org/')).toBe(true)
+  })
+
   it('leaves the password off a request to a host a server named', async () => {
     const url = 'https://homeserver.example.ts.net/sonn/'
     const seen: Record<string, string | undefined> = {}
