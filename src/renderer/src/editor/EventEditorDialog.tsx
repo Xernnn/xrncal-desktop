@@ -4,6 +4,7 @@ import { DateTime, IANAZone } from 'luxon'
 import { Trash2, X, Share2, MapPin, Link as LinkIcon, Users, Check, Sparkles } from 'lucide-react'
 import type {
   Calendar,
+  CalendarAccount,
   CalendarEvent,
   ExpandedOccurrence,
   Attendee,
@@ -12,7 +13,7 @@ import type {
   LunarRecurrenceSpec,
   RsvpResponse
 } from '@shared/event-model'
-import { invitationSelf } from '@shared/event-model'
+import { calendarMoveBlock, invitationSelf } from '@shared/event-model'
 import type { TitleSuggestion } from '@shared/title-suggestions'
 import { endDateForTimes, formatClockTime, formatClockTimeStr } from '@shared/time-format'
 import { convertSolarToLunar, resolveLunarOccurrence } from '@shared/lunar-vietnam'
@@ -70,6 +71,8 @@ export interface EventEditorDraftPreview {
  *  form always starts from what it was opened on. */
 interface EventEditorDialogProps {
   calendars: Calendar[]
+  /** Which provider each calendar's account is: where an event may move depends on it. */
+  accounts?: CalendarAccount[]
   data: EventEditorInitialData | null
   onSave: (payload: {
     isNew: boolean
@@ -320,6 +323,7 @@ const ColorSwatch: React.FC<{ hex: string; selected: boolean; label: string; onC
 
 export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
   calendars,
+  accounts,
   data,
   onSave,
   onDelete,
@@ -382,6 +386,12 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
   // opened from the grid deleted its guests.
   const [attendeesLoaded, setAttendeesLoaded] = useState<boolean>(initial.attendeesLoaded)
   const attendeesTouchedRef = useRef(false)
+  // The event as stored - whether a provider has it, and its guests - which
+  // decides where it may move (see calendarOptions). An occurrence's is read
+  // with its guest list.
+  const [stored, setStored] = useState<Pick<CalendarEvent, 'etag' | 'providerEventId' | 'attendees'> | null>(
+    data?.event ?? null
+  )
 
   // null: the event follows the default reminders.
   const [reminders, setReminders] = useState<EventReminder[] | null>(initial.reminders)
@@ -428,6 +438,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
         )
         if (!remindersTouchedRef.current) setReminders(res.event.reminders ?? null)
         setAttendeesLoaded(true)
+        setStored(res.event)
       })
       .catch(() => {
         // Attendees stay unloaded, so a save leaves them as they are.
@@ -450,16 +461,33 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
     return dt.isValid ? dt.toUTC().toISO()! : ''
   }, [startDateStr, startTimeStr, allDay, recurrencePreset, tzid])
 
+  // Where the event may go (calendarMoveBlock): once a provider has it, only
+  // to its own account's calendars - and nowhere for an invitation, or for a
+  // meeting only Google could move. Every writable calendar used to be offered,
+  // and a move to another account's failed on every sync from then on.
+  const moveFrom = useMemo(() => {
+    const cal = isEditing ? (calendars || []).find((c) => c.id === initial.calendarId) : undefined
+    return cal
+      ? { calendarId: cal.id, accountId: cal.accountId, provider: accounts?.find((a) => a.id === cal.accountId)?.type }
+      : undefined
+  }, [isEditing, calendars, initial.calendarId, accounts])
+  const calendarLocked = Boolean(stored && moveFrom && calendarMoveBlock(stored, moveFrom, moveFrom))
+
   const calendarOptions = useMemo(
     () =>
-      (calendars || []).map((cal) => ({
-        value: cal.id,
-        label: cal.name,
-        color: cal.color,
-        badge: cal.isReadOnly ? t('editor.readOnlyBadge') : undefined,
-        disabled: cal.isReadOnly
-      })),
-    [calendars, t]
+      (calendars || []).map((cal) => {
+        const otherAccount =
+          Boolean(stored && moveFrom && cal.id !== moveFrom.calendarId) &&
+          calendarMoveBlock(stored!, moveFrom!, cal) === 'otherAccount'
+        return {
+          value: cal.id,
+          label: cal.name,
+          color: cal.color,
+          badge: cal.isReadOnly ? t('editor.readOnlyBadge') : otherAccount ? t('editor.otherAccountBadge') : undefined,
+          disabled: cal.isReadOnly || otherAccount
+        }
+      }),
+    [calendars, t, stored, moveFrom]
   )
 
   const recurrenceOptions = useMemo(
@@ -1116,6 +1144,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
                 onChange={(val) => handleFieldChange(setCalendarId, val)}
                 options={calendarOptions}
                 placeholder={t('editor.chooseCalendar')}
+                disabled={calendarLocked}
               />
             </FormRow>
 

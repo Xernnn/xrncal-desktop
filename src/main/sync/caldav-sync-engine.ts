@@ -112,11 +112,21 @@ export class CalDavSyncEngine {
     // missed every event xrncal had pushed and inserted a second copy. Prefer the
     // href, then the locally created row, which exceptions and lunar links name.
     // Two lookups, not one with an OR: that could use neither index and scanned
-    // the calendar for every event, which on a whole-calendar pull is n².
+    // the calendar for every event, which on a whole-calendar pull is n². An
+    // event moved out of this calendar here is still in it on the server until
+    // the move is pushed, under its old href; read as new, it was pulled back
+    // in, a second copy beside the moved one.
+    const movingOut = new Map(
+      this.db
+        .prepare('SELECT provider_event_id, id FROM events WHERE moved_from_calendar_id = ? AND provider_event_id IS NOT NULL')
+        .all<{ provider_event_id: string; id: string }>(calendarId)
+        .map((r) => [r.provider_event_id, r.id])
+    )
     const findLocalId = (href: string, uid: string): string | undefined =>
       this.db
         .prepare('SELECT id FROM events WHERE calendar_id = ? AND provider_event_id = ?')
         .get<{ id: string }>(calendarId, href)?.id ??
+      movingOut.get(href) ??
       this.db
         .prepare('SELECT id FROM events WHERE calendar_id = ? AND uid = ? ORDER BY (id <> uid) DESC LIMIT 1')
         .get<{ id: string }>(calendarId, uid)?.id
@@ -273,9 +283,13 @@ export class CalDavSyncEngine {
     }
 
     const stored = new Map<string, string | null>()
+    // With the rows moved out of this calendar whose move is still to be pushed.
     const rows = this.db
-      .prepare('SELECT provider_event_id, etag FROM events WHERE calendar_id = ? AND provider_event_id IS NOT NULL')
-      .all<{ provider_event_id: string; etag: string | null }>(calendarId)
+      .prepare(
+        `SELECT provider_event_id, etag FROM events
+         WHERE (calendar_id = ? OR moved_from_calendar_id = ?) AND provider_event_id IS NOT NULL`
+      )
+      .all<{ provider_event_id: string; etag: string | null }>(calendarId, calendarId)
     for (const { provider_event_id: href, etag } of rows) {
       // Rows read from one resource that disagree get it read again.
       stored.set(href, stored.has(href) && stored.get(href) !== etag ? null : etag)
@@ -422,7 +436,9 @@ export class CalDavSyncEngine {
         const isDeleted = row.is_deleted === 1
 
         if (isDeleted) {
-          const ok = await adapter.deleteEvent(calendarId, row.uid || row.id, row.provider_event_id || undefined)
+          // From where the server has it, which a move not yet pushed has not changed.
+          const holder = row.moved_from_calendar_id || calendarId
+          const ok = await adapter.deleteEvent(holder, row.uid || row.id, row.provider_event_id || undefined)
           if (ok) {
             this.eventsRepo.forgetPushedDelete(row.id, row.updated_at)
             pushedCount++
@@ -437,11 +453,19 @@ export class CalDavSyncEngine {
           const sendsGuests = row.attendees_synced === 1 || !row.etag
           // What this PUT carries, so only that is marked as landed.
           const sentExceptions = this.eventsRepo.getExceptionsForEvent(row.id)
+          // A move from another calendar of this account (see recordCalendarMove).
+          // The PUT used to go to the old href - back into the old calendar - and
+          // the next pulls undid the move. Now the resource is PUT into this
+          // calendar as a new one and only then deleted from the old, so the
+          // server never goes without it. Until the delete lands the row keeps
+          // the old href, and a retry PUTs to the same new address again.
+          const movedFrom =
+            row.moved_from_calendar_id && row.moved_from_calendar_id !== calendarId ? row.moved_from_calendar_id : null
           const pushRes = await adapter.pushEvent(
             calendar,
             {
               id: row.id,
-              providerEventId: row.provider_event_id || undefined,
+              providerEventId: movedFrom ? undefined : row.provider_event_id || undefined,
               calendarId: row.calendar_id,
               uid: row.uid,
               title: row.title,
@@ -461,9 +485,9 @@ export class CalDavSyncEngine {
               attendees: sendsGuests
                 ? withOrganizer(this.eventsRepo.getEventById(row.id)?.event.attendees ?? [], selfEmail)
                 : undefined,
-              // The precondition: none once the user has chosen this version
-              // over the server's ("keep mine" on a conflict).
-              etag: row.keep_mine === 1 ? undefined : row.etag ?? undefined,
+              // The precondition: none for a new resource, or once the user has
+              // chosen this version over the server's ("keep mine" on a conflict).
+              etag: movedFrom || row.keep_mine === 1 ? undefined : row.etag ?? undefined,
               dirty: false,
               isDeleted: false,
               createdAt: row.created_at,
@@ -474,12 +498,22 @@ export class CalDavSyncEngine {
           )
 
           if (pushRes.success) {
-            this.eventsRepo.markEventPushed(row.id, {
-              providerEventId: pushRes.href || row.provider_event_id,
-              etag: pushRes.etag || row.etag,
-              sentUpdatedAt: row.updated_at,
-              clearRsvp: true
-            })
+            if (movedFrom && !(await adapter.deleteEvent(movedFrom, row.uid || row.id, row.provider_event_id || undefined))) {
+              lastError = 'The server refused to delete a moved event from the calendar it was moved out of'
+              errorCount++
+              continue
+            }
+            // The new href and the end of the move together: one without the
+            // other would leave a retry deleting the copy it had just made.
+            this.db.transaction(() => {
+              this.eventsRepo.markEventPushed(row.id, {
+                providerEventId: pushRes.href || row.provider_event_id,
+                etag: movedFrom ? pushRes.etag || null : pushRes.etag || row.etag,
+                sentUpdatedAt: row.updated_at,
+                clearRsvp: true
+              })
+              if (movedFrom) this.db.prepare('UPDATE events SET moved_from_calendar_id = NULL WHERE id = ?').run(row.id)
+            })()
             if (serverCopy && pushRes.body) this.saveServerCopy(row.id, pushRes.body)
             this.eventsRepo.markExceptionsSyncedForMaster(row.id, sentExceptions)
             pushedCount++

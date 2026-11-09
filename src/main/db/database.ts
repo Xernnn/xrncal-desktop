@@ -543,6 +543,39 @@ const MIGRATION_023_SQL = `
 ALTER TABLE events ADD COLUMN keep_mine INTEGER NOT NULL DEFAULT 0;
 `
 
+/**
+ * Moves to another account's calendar, made before they were refused (see
+ * calendarMoveBlock). The account an event went to cannot reach its old copy:
+ * each push addressed an id that calendar had never issued - Google's move
+ * endpoint was handed a CalDAV URL - and failed on every sync, while the old
+ * account's pull brought the original back. Each such row becomes a new event
+ * in the calendar it was moved to, which is what a copy is; the original stays
+ * where it was. An invitation from someone else goes without its guest list,
+ * as an undone delete does (EventsRepo.restoreEvent): with it, the copy would
+ * make this account the organizer and invite every guest again. A move whose
+ * old calendar is gone altogether counts as one across accounts.
+ */
+export const MIGRATION_024_SQL = `
+CREATE TEMP TABLE moved_across AS
+SELECT e.id FROM events e
+WHERE e.moved_from_calendar_id IS NOT NULL
+  AND (SELECT account_id FROM calendars WHERE id = e.moved_from_calendar_id)
+      IS NOT (SELECT account_id FROM calendars WHERE id = e.calendar_id);
+
+UPDATE event_exceptions SET provider_instance_id = NULL, etag = NULL, dirty = 1
+WHERE master_event_id IN (SELECT id FROM moved_across);
+
+DELETE FROM attendees
+WHERE event_id IN (SELECT id FROM moved_across)
+  AND event_id IN (SELECT event_id FROM attendees WHERE is_self = 1 AND is_organizer = 0);
+
+UPDATE events
+SET provider_event_id = NULL, etag = NULL, moved_from_calendar_id = NULL, keep_mine = 0, has_conflict = 0, dirty = 1
+WHERE id IN (SELECT id FROM moved_across);
+
+DROP TABLE moved_across;
+`
+
 /** Every migration in order: the one at index i is version i + 1. */
 const MIGRATIONS: readonly string[] = [
   MIGRATION_001_SQL,
@@ -567,7 +600,8 @@ const MIGRATIONS: readonly string[] = [
   MIGRATION_020_SQL,
   MIGRATION_021_SQL,
   MIGRATION_022_SQL,
-  MIGRATION_023_SQL
+  MIGRATION_023_SQL,
+  MIGRATION_024_SQL
 ]
 
 /** The newest migration this build knows: a restore refuses a backup made by

@@ -231,14 +231,23 @@ export class GoogleSyncEngine {
       // before the two were separated is keyed by Google's id. Never another
       // calendar's: Google gives a meeting the same id in every calendar it is
       // in, and looking it up by id alone put the second copy on the first
-      // one's row, swapping their data and etags on every poll.
+      // one's row, swapping their data and etags on every poll. An event moved
+      // out of this calendar here is still this calendar's on Google until the
+      // move is pushed; without it a copy would be pulled back in meanwhile.
+      const movingOut = new Map(
+        this.db
+          .prepare('SELECT id, COALESCE(provider_event_id, id) AS remote FROM events WHERE moved_from_calendar_id = ?')
+          .all<{ id: string; remote: string }>(calendarId)
+          .map((r) => [r.remote, r.id])
+      )
       const findLocalId = (providerId: string): string | undefined =>
         this.db
           .prepare('SELECT id FROM events WHERE calendar_id = ? AND provider_event_id = ?')
           .get<{ id: string }>(calendarId, providerId)?.id ??
         this.db
           .prepare('SELECT id FROM events WHERE id = ? AND calendar_id = ?')
-          .get<{ id: string }>(providerId, calendarId)?.id
+          .get<{ id: string }>(providerId, calendarId)?.id ??
+        movingOut.get(providerId)
       // A new event is keyed by Google's id, unless another calendar's copy of
       // it already is.
       const newLocalId = (providerId: string): string =>
@@ -444,14 +453,17 @@ export class GoogleSyncEngine {
         // URL below needs. They are the same string only for rows that synced
         // before the two were separated.
         const googleEventId = row.provider_event_id || row.id
+        let etag = row.etag
         // The precondition every write carries - none once the user has chosen
         // this version over the server's ("keep mine" on a conflict).
-        const ifMatch = row.keep_mine === 1 ? null : row.etag
+        let ifMatch = row.keep_mine === 1 ? null : etag
 
         if (isDeleted) {
-          // DELETE
+          // DELETE - from the calendar Google has it in, which a move not yet
+          // pushed has not changed.
+          const holder = row.moved_from_calendar_id || calendarId
           const delRes = await fetchWithTimeout(
-            `${GOOGLE_API_BASE}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(googleEventId)}`,
+            `${GOOGLE_API_BASE}/calendars/${encodeURIComponent(holder)}/events/${encodeURIComponent(googleEventId)}`,
             {
               method: 'DELETE',
               headers: ifMatch
@@ -489,9 +501,14 @@ export class GoogleSyncEngine {
             )
 
             if (moveRes.ok) {
+              // Moving changes the event, and its etag with it: the PUT below,
+              // checked against the old one, failed as a conflict nobody caused.
+              const moved = (await moveRes.json().catch(() => null)) as { etag?: string } | null
+              etag = moved?.etag || etag
+              if (row.keep_mine !== 1) ifMatch = etag
               this.db
-                .prepare('UPDATE events SET moved_from_calendar_id = NULL WHERE id = ?')
-                .run(row.id)
+                .prepare('UPDATE events SET moved_from_calendar_id = NULL, etag = ? WHERE id = ?')
+                .run(etag, row.id)
             } else if (moveRes.status === 404 || moveRes.status === 410) {
               // Already gone from the origin - somebody moved or deleted it
               // there. Clearing the marker lets the normal push decide what to
@@ -512,7 +529,7 @@ export class GoogleSyncEngine {
           // list once attendees_synced is set. A row edited before its list
           // was ever fetched asks Google for it first - leaving it out of a PUT
           // would delete every guest.
-          let attendees = row.attendees_synced === 1 || !row.etag
+          let attendees = row.attendees_synced === 1 || !etag
             ? this.eventsRepo.getEventById(row.id)?.event.attendees ?? []
             : await this.fetchAttendees(calendarId, googleEventId, accessToken)
 
@@ -536,7 +553,7 @@ export class GoogleSyncEngine {
           })
 
           let putRes: Response
-          if (row.etag) {
+          if (etag) {
             // Existing event update
             putRes = await fetchWithTimeout(
               `${GOOGLE_API_BASE}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(googleEventId)}`,
@@ -575,7 +592,7 @@ export class GoogleSyncEngine {
             // `event_exceptions.master_event_id` along with it.
             const unchanged = this.eventsRepo.markEventPushed(row.id, {
               providerEventId: resJson.id || googleEventId,
-              etag: resJson.etag || row.etag,
+              etag: resJson.etag || etag,
               sentUpdatedAt: row.updated_at
             })
             // The response is the event as Google now holds it, guests and all -
