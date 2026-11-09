@@ -54,6 +54,16 @@ interface GoogleEventsPage {
   nextSyncToken?: string
 }
 
+/** What a pull carries from one page of a listing to the next. */
+interface GoogleListing {
+  /** Overrides whose series the calendar did not have when their page came. */
+  orphans: GoogleCalendarApiEvent[]
+}
+
+/** An occurrence override: its series is named by recurringEventId. */
+const isOverride = (gEvent: GoogleCalendarApiEvent): boolean =>
+  Boolean(gEvent.recurringEventId && gEvent.originalStartTime)
+
 export class GoogleSyncEngine {
   private oauthManager: GoogleOAuthManager
   private eventsRepo: EventsRepo
@@ -139,6 +149,7 @@ export class GoogleSyncEngine {
     let pulledCount = 0
     let pages = 0
     let resyncedAfterGone = false
+    const listing: GoogleListing = { orphans: [] }
 
     // Walk every page. Google caps a response at maxResults and hands back a
     // nextPageToken; it only emits nextSyncToken on the FINAL page. Reading one
@@ -162,6 +173,7 @@ export class GoogleSyncEngine {
         queryUrl = baseUrl
         pageToken = undefined
         pulledCount = 0
+        listing.orphans = []
         continue
       }
 
@@ -170,7 +182,7 @@ export class GoogleSyncEngine {
       }
 
       const data: GoogleEventsPage = await res.json()
-      pulledCount += this.applyPulledPage(calendarId, data)
+      pulledCount += this.applyPulledPage(calendarId, data, listing)
 
       pageToken = data.nextPageToken
       if (!pageToken) break
@@ -180,8 +192,20 @@ export class GoogleSyncEngine {
     return { pulledCount }
   }
 
-  /** Apply one page of listing results. Returns how many rows it touched. */
-  private applyPulledPage(calendarId: string, data: GoogleEventsPage): number {
+  /**
+   * Apply one page of listing results. Returns how many rows it touched.
+   *
+   * An occurrence override is stored on its series, which Google names by
+   * `recurringEventId` whether or not this calendar has it. When it did not,
+   * the insert broke the foreign key and rolled the whole page back - on every
+   * poll, as the sync token only comes after the last page. Google lists in no
+   * particular order, so such an override waits for the end of the listing,
+   * which may still bring its series. One whose series never comes is an
+   * occurrence on its own - an invitation to one occurrence of someone else's
+   * series - and is kept as an event of its own, under the instance's id,
+   * which an edit or a reply to it addresses.
+   */
+  private applyPulledPage(calendarId: string, data: GoogleEventsPage, listing: GoogleListing): number {
     const items = data.items || []
     let pulledCount = 0
 
@@ -209,128 +233,150 @@ export class GoogleSyncEngine {
           ? `evt_${Math.random().toString(36).slice(2, 10)}`
           : providerId
 
-      for (const gEvent of items) {
-        const mapped = mapGoogleEventToDomain(gEvent, calendarId)
+      /** Store an override on its series; false when the calendar has no such series. */
+      const applyOverride = (gEvent: GoogleCalendarApiEvent): boolean => {
+        const now = new Date().toISOString()
+        const exc = mapGoogleEventToDomain(gEvent, calendarId).exception!
+        // `recurringEventId` names the master the provider's way.
+        const masterLocalId = findLocalId(exc.masterEventId)
+        if (!masterLocalId) return false
+        const excId = `exc_${masterLocalId}_${exc.originalStartUtc.replace(/[:.]/g, '')}`
 
-        if (mapped.isException && mapped.exception) {
-          // Occurrence exception
-          const now = new Date().toISOString()
-          const exc = mapped.exception
-          // `recurringEventId` names the master the provider's way.
-          const masterLocalId = findLocalId(exc.masterEventId) ?? exc.masterEventId
-          const excId = `exc_${masterLocalId}_${exc.originalStartUtc.replace(/[:.]/g, '')}`
-
-          this.db
-            .prepare(
-              `INSERT INTO event_exceptions (
-                id, master_event_id, original_start_utc, is_cancelled,
-                title, notes, location, dtstart_utc, dtend_utc, tzid, all_day, color,
-                created_at, updated_at
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-              ON CONFLICT(master_event_id, original_start_utc) DO UPDATE SET
-                is_cancelled = excluded.is_cancelled,
-                title = excluded.title,
-                notes = excluded.notes,
-                location = excluded.location,
-                dtstart_utc = excluded.dtstart_utc,
-                dtend_utc = excluded.dtend_utc,
-                tzid = excluded.tzid,
-                all_day = excluded.all_day,
-                color = excluded.color,
-                updated_at = excluded.updated_at
-              WHERE event_exceptions.dirty = 0`
-            )
-            .run(
-              excId,
-              masterLocalId,
-              exc.originalStartUtc,
-              exc.isCancelled ? 1 : 0,
-              exc.title || null,
-              exc.notes || null,
-              exc.location || null,
-              exc.dtStartUtc || null,
-              exc.dtEndUtc || null,
-              exc.tzid || null,
-              exc.allDay === undefined ? null : exc.allDay ? 1 : 0,
-              exc.color || null,
-              now,
-              now
-            )
-          pulledCount++
-        } else if (mapped.event) {
-          // Master event
-          const evt = mapped.event
-          const now = new Date().toISOString()
-          const found = findLocalId(evt.id)
-          // A cancellation of an event this calendar never had is nothing to
-          // store (an event moved out, or taken off a calendar shared with us).
-          if (!found && evt.isDeleted) continue
-          const localId = found ?? newLocalId(evt.id)
-          const stored = this.db
-            .prepare('SELECT reminders, rsvp_pending FROM events WHERE id = ?')
-            .get<{ reminders: string | null; rsvp_pending: string | null }>(localId)
-          const reminders = mergePulledReminders(
-            'google',
-            stored ? parseRemindersJson(stored.reminders) : undefined,
-            evt.reminders ?? undefined
+        this.db
+          .prepare(
+            `INSERT INTO event_exceptions (
+              id, master_event_id, original_start_utc, is_cancelled,
+              title, notes, location, dtstart_utc, dtend_utc, tzid, all_day, color,
+              created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(master_event_id, original_start_utc) DO UPDATE SET
+              is_cancelled = excluded.is_cancelled,
+              title = excluded.title,
+              notes = excluded.notes,
+              location = excluded.location,
+              dtstart_utc = excluded.dtstart_utc,
+              dtend_utc = excluded.dtend_utc,
+              tzid = excluded.tzid,
+              all_day = excluded.all_day,
+              color = excluded.color,
+              updated_at = excluded.updated_at
+            WHERE event_exceptions.dirty = 0`
           )
-
-          const upsert = this.db
-            .prepare(
-              `INSERT INTO events (
-                id, provider_event_id, calendar_id, uid, title, notes, location,
-                dtstart_utc, dtend_utc, tzid, all_day, rrule, color,
-                meeting_url, reminders, etag, dirty, is_deleted, attendees_synced, created_at, updated_at
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 1, ?, ?)
-              ON CONFLICT(id) DO UPDATE SET
-                provider_event_id = excluded.provider_event_id,
-                title = excluded.title,
-                notes = excluded.notes,
-                location = excluded.location,
-                dtstart_utc = excluded.dtstart_utc,
-                dtend_utc = excluded.dtend_utc,
-                tzid = excluded.tzid,
-                all_day = excluded.all_day,
-                rrule = excluded.rrule,
-                color = excluded.color,
-                meeting_url = excluded.meeting_url,
-                reminders = excluded.reminders,
-                etag = excluded.etag,
-                dirty = 0,
-                is_deleted = excluded.is_deleted,
-                attendees_synced = 1,
-                updated_at = excluded.updated_at
-              WHERE events.dirty = 0 AND events.has_conflict = 0`
-            )
-          const applied = upsert.run(
-            localId,
-            evt.id,
-            evt.calendarId,
-            evt.uid || `${evt.id}@google.com`,
-            evt.title,
-            evt.notes || null,
-            evt.location || null,
-            evt.dtStartUtc,
-            evt.dtEndUtc,
-            evt.tzid || 'UTC',
-            evt.allDay ? 1 : 0,
-            evt.rrule || null,
-            evt.color || null,
-            evt.meetingUrl || null,
-            serializeReminders(reminders),
-            evt.etag || null,
-            evt.isDeleted ? 1 : 0,
+          .run(
+            excId,
+            masterLocalId,
+            exc.originalStartUtc,
+            exc.isCancelled ? 1 : 0,
+            exc.title || null,
+            exc.notes || null,
+            exc.location || null,
+            exc.dtStartUtc || null,
+            exc.dtEndUtc || null,
+            exc.tzid || null,
+            exc.allDay === undefined ? null : exc.allDay ? 1 : 0,
+            exc.color || null,
             now,
             now
           )
-          // A reply still on its way would be overwritten by the old answer.
-          if (applied.changes > 0 && !stored?.rsvp_pending) {
-            this.eventsRepo.replaceAttendees(localId, evt.attendees)
-          }
+        // Kept on its own until now (see above): its series has it from here.
+        this.db
+          .prepare(
+            `DELETE FROM events
+             WHERE calendar_id = ? AND provider_event_id = ? AND rrule IS NULL AND dirty = 0 AND rsvp_pending IS NULL`
+          )
+          .run(calendarId, gEvent.id)
+        return true
+      }
+
+      /** Store a series, a single event or an occurrence on its own; false when there was nothing to store. */
+      const applyEvent = (gEvent: GoogleCalendarApiEvent): boolean => {
+        const evt = mapGoogleEventToDomain(gEvent, calendarId).event!
+        const now = new Date().toISOString()
+        const found = findLocalId(evt.id)
+        // A cancellation of an event this calendar never had is nothing to
+        // store (an event moved out, or taken off a calendar shared with us).
+        if (!found && evt.isDeleted) return false
+        const localId = found ?? newLocalId(evt.id)
+        const stored = this.db
+          .prepare('SELECT reminders, rsvp_pending FROM events WHERE id = ?')
+          .get<{ reminders: string | null; rsvp_pending: string | null }>(localId)
+        const reminders = mergePulledReminders(
+          'google',
+          stored ? parseRemindersJson(stored.reminders) : undefined,
+          evt.reminders ?? undefined
+        )
+
+        const upsert = this.db
+          .prepare(
+            `INSERT INTO events (
+              id, provider_event_id, calendar_id, uid, title, notes, location,
+              dtstart_utc, dtend_utc, tzid, all_day, rrule, color,
+              meeting_url, reminders, etag, dirty, is_deleted, attendees_synced, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 1, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              provider_event_id = excluded.provider_event_id,
+              title = excluded.title,
+              notes = excluded.notes,
+              location = excluded.location,
+              dtstart_utc = excluded.dtstart_utc,
+              dtend_utc = excluded.dtend_utc,
+              tzid = excluded.tzid,
+              all_day = excluded.all_day,
+              rrule = excluded.rrule,
+              color = excluded.color,
+              meeting_url = excluded.meeting_url,
+              reminders = excluded.reminders,
+              etag = excluded.etag,
+              dirty = 0,
+              is_deleted = excluded.is_deleted,
+              attendees_synced = 1,
+              updated_at = excluded.updated_at
+            WHERE events.dirty = 0 AND events.has_conflict = 0`
+          )
+        const applied = upsert.run(
+          localId,
+          evt.id,
+          evt.calendarId,
+          evt.uid || `${evt.id}@google.com`,
+          evt.title,
+          evt.notes || null,
+          evt.location || null,
+          evt.dtStartUtc,
+          evt.dtEndUtc,
+          evt.tzid || 'UTC',
+          evt.allDay ? 1 : 0,
+          evt.rrule || null,
+          evt.color || null,
+          evt.meetingUrl || null,
+          serializeReminders(reminders),
+          evt.etag || null,
+          evt.isDeleted ? 1 : 0,
+          now,
+          now
+        )
+        // A reply still on its way would be overwritten by the old answer.
+        if (applied.changes > 0 && !stored?.rsvp_pending) {
+          this.eventsRepo.replaceAttendees(localId, evt.attendees)
+        }
+        return true
+      }
+
+      for (const gEvent of items) {
+        if (!isOverride(gEvent)) {
+          if (applyEvent(gEvent)) pulledCount++
+        } else if (applyOverride(gEvent)) {
           pulledCount++
+        } else {
+          listing.orphans.push(gEvent)
         }
       }
 
+      // The last page: every series the listing had is stored by now.
+      if (!data.nextPageToken) {
+        for (const gEvent of listing.orphans.splice(0)) {
+          if (applyOverride(gEvent) || applyEvent({ ...gEvent, recurringEventId: undefined })) pulledCount++
+        }
+      }
     })()
 
     // Only the final page carries a sync token; store it outside the row loop.
