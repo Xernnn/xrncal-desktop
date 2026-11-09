@@ -141,8 +141,12 @@ describe('starting at login on Linux', () => {
   it('starts the AppImage in the tray, with the path quoted for the desktop entry', () => {
     const entry = linuxAutostartEntry('/home/a "b"/Apps/xrncal.AppImage')
     expect(entry).toContain('[Desktop Entry]')
-    expect(entry).toContain(`Exec="/home/a \\"b\\"/Apps/xrncal.AppImage" --ozone-platform=x11 ${START_HIDDEN_ARG}`)
-    expect(linuxAutostartEntry('/opt/$HOME`x`.AppImage')).toContain('Exec="/opt/\\$HOME\\`x\\`.AppImage"')
+    expect(entry).toContain(
+      `Exec=env NO_CLEANUP=1 "/home/a \\"b\\"/Apps/xrncal.AppImage" --appimage-extract-and-run --ozone-platform=x11 ${START_HIDDEN_ARG}`
+    )
+    expect(linuxAutostartEntry('/opt/$HOME`x`.AppImage')).toContain(
+      'Exec=env NO_CLEANUP=1 "/opt/\\$HOME\\`x\\`.AppImage"'
+    )
   })
 })
 

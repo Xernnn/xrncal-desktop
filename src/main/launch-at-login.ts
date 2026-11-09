@@ -18,16 +18,17 @@ function execArg(value: string): string {
 
 /**
  * The freedesktop autostart entry that starts the AppImage at login. The path
- * is the AppImage's own, which only an AppImage run knows (`APPIMAGE`); the X11
- * switch matches the launcher `npm run app:install` writes, for the same reason
- * (see electron-builder.yml).
+ * is the AppImage's own, which only an AppImage run knows (`APPIMAGE`). The X11
+ * switch and the extract-and-run launch match the launcher `npm run app:install`
+ * writes, for the same reasons (see scripts/install-linux-app.sh): run from the
+ * FUSE mount, the app dies with SIGBUS if the mount goes away under it.
  */
 export function linuxAutostartEntry(appImagePath: string): string {
   return [
     '[Desktop Entry]',
     'Type=Application',
     'Name=xrncal',
-    `Exec=${execArg(appImagePath)} --ozone-platform=x11 ${START_HIDDEN_ARG}`,
+    `Exec=env NO_CLEANUP=1 ${execArg(appImagePath)} --appimage-extract-and-run --ozone-platform=x11 ${START_HIDDEN_ARG}`,
     'Terminal=false',
     'X-GNOME-Autostart-enabled=true',
     ''

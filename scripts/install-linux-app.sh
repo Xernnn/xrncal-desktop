@@ -42,12 +42,23 @@ install -m 644 resources/icon.png "$ICON_DIR/${APP_ID}.png"
 # --ozone-platform=x11: under Wayland the app would otherwise run as a native
 # Wayland client, where the tray's mini window can neither place itself nor
 # stay on top (see executableArgs in electron-builder.yml).
+#
+# --appimage-extract-and-run with NO_CLEANUP=1: run from an extracted copy in
+# ${TMPDIR:-/tmp}, not from the FUSE mount. The mount lives only as long as the
+# AppImage runtime process does; if that process goes while the app is still
+# running, the app dies with SIGBUS the next time it pages in code from the
+# mount. app.relaunch() (database restore) hits the same thing: the old process
+# exits, the runtime unmounts, and the relaunched process loses its code.
+# NO_CLEANUP keeps the extracted copy after the runtime exits. Without it, a
+# second launch that only hands off to the running instance would delete that
+# instance's files on its way out. The runtime still sets APPIMAGE to this
+# file, which launch-at-login relies on.
 cat > "$DESKTOP_DIR/${APP_ID}.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=${APP_NAME}
 Comment=Modern desktop calendar with multi-provider sync
-Exec="${TARGET_APPIMAGE}" --ozone-platform=x11 %U
+Exec=env NO_CLEANUP=1 "${TARGET_APPIMAGE}" --appimage-extract-and-run --ozone-platform=x11 %U
 Icon=${ICON_DIR}/${APP_ID}.png
 Terminal=false
 Categories=Office;Calendar;
@@ -55,6 +66,20 @@ MimeType=text/calendar;
 StartupWMClass=xrncal
 EOF
 chmod 644 "$DESKTOP_DIR/${APP_ID}.desktop"
+
+# Each build extracts to its own ${TMPDIR:-/tmp}/appimage_extracted_<digest>,
+# and NO_CLEANUP keeps it there, so remove the copies no running process uses.
+for dir in "${TMPDIR:-/tmp}"/appimage_extracted_*; do
+  [[ -x "$dir/$APP_NAME" && -f "$dir/${APP_ID}.desktop" ]] || continue
+  in_use=0
+  for exe in /proc/[0-9]*/exe; do
+    if [[ "$(readlink "$exe" 2>/dev/null)" == "$dir/"* ]]; then
+      in_use=1
+      break
+    fi
+  done
+  (( in_use )) || rm -rf -- "$dir"
+done
 
 if command -v update-desktop-database >/dev/null 2>&1; then
   update-desktop-database "$DESKTOP_DIR" >/dev/null 2>&1 || true
