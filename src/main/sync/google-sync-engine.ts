@@ -187,13 +187,27 @@ export class GoogleSyncEngine {
 
     // Database transaction to apply batch updates
     this.db.transaction(() => {
-      // A locally created event keeps its own id, so the provider's id no longer
-      // finds it by primary key. Without this the next pull would not recognise
-      // the event it had just accepted and would insert a second copy.
-      const localIdFor = (providerId: string): string =>
+      // This calendar's row for one of Google's events. A locally created event
+      // keeps its own id, so the provider's id no longer finds it by primary
+      // key - without this the next pull would not recognise the event it had
+      // just accepted and would insert a second copy - while a row synced
+      // before the two were separated is keyed by Google's id. Never another
+      // calendar's: Google gives a meeting the same id in every calendar it is
+      // in, and looking it up by id alone put the second copy on the first
+      // one's row, swapping their data and etags on every poll.
+      const findLocalId = (providerId: string): string | undefined =>
         this.db
           .prepare('SELECT id FROM events WHERE calendar_id = ? AND provider_event_id = ?')
-          .get<{ id: string }>(calendarId, providerId)?.id ?? providerId
+          .get<{ id: string }>(calendarId, providerId)?.id ??
+        this.db
+          .prepare('SELECT id FROM events WHERE id = ? AND calendar_id = ?')
+          .get<{ id: string }>(providerId, calendarId)?.id
+      // A new event is keyed by Google's id, unless another calendar's copy of
+      // it already is.
+      const newLocalId = (providerId: string): string =>
+        this.db.prepare('SELECT 1 AS taken FROM events WHERE id = ?').get<{ taken: number }>(providerId)
+          ? `evt_${Math.random().toString(36).slice(2, 10)}`
+          : providerId
 
       for (const gEvent of items) {
         const mapped = mapGoogleEventToDomain(gEvent, calendarId)
@@ -203,7 +217,7 @@ export class GoogleSyncEngine {
           const now = new Date().toISOString()
           const exc = mapped.exception
           // `recurringEventId` names the master the provider's way.
-          const masterLocalId = localIdFor(exc.masterEventId)
+          const masterLocalId = findLocalId(exc.masterEventId) ?? exc.masterEventId
           const excId = `exc_${masterLocalId}_${exc.originalStartUtc.replace(/[:.]/g, '')}`
 
           this.db
@@ -247,7 +261,11 @@ export class GoogleSyncEngine {
           // Master event
           const evt = mapped.event
           const now = new Date().toISOString()
-          const localId = localIdFor(evt.id)
+          const found = findLocalId(evt.id)
+          // A cancellation of an event this calendar never had is nothing to
+          // store (an event moved out, or taken off a calendar shared with us).
+          if (!found && evt.isDeleted) continue
+          const localId = found ?? newLocalId(evt.id)
           const stored = this.db
             .prepare('SELECT reminders, rsvp_pending FROM events WHERE id = ?')
             .get<{ reminders: string | null; rsvp_pending: string | null }>(localId)
