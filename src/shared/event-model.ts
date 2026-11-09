@@ -128,6 +128,9 @@ export interface SyncConflict {
   calendarName: string
   title: string
   updatedAt: string
+  /** Deleted here, changed on the server: "keep mine" deletes it there too,
+   *  "keep theirs" brings it back. */
+  deletedHere: boolean
 }
 
 export interface EventException {

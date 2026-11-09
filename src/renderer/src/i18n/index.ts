@@ -564,8 +564,11 @@ export const resources = {
           'These events changed on the server before your edit here could be sent. Pick which version to keep.',
         conflictsNone: 'No conflicts to resolve.',
         conflictsUpdated: 'Last edited here: {{when}}',
+        conflictDeletedHere: 'You deleted this here, but it was changed on the server first.',
         keepMine: 'Keep mine',
-        keepTheirs: 'Keep theirs'
+        keepTheirs: 'Keep theirs',
+        keepDeleted: 'Delete it there too',
+        restoreTheirs: 'Bring it back'
       },
       contextMenu: {
         edit: 'Edit',
@@ -1249,8 +1252,11 @@ export const resources = {
           'Các sự kiện này đã thay đổi trên máy chủ trước khi chỉnh sửa của bạn kịp gửi lên. Chọn phiên bản muốn giữ.',
         conflictsNone: 'Không có xung đột nào cần xử lý.',
         conflictsUpdated: 'Chỉnh sửa ở đây lần cuối: {{when}}',
+        conflictDeletedHere: 'Bạn đã xóa sự kiện này ở đây, nhưng nó đã được sửa trên máy chủ trước đó.',
         keepMine: 'Giữ bản của tôi',
-        keepTheirs: 'Giữ bản trên máy chủ'
+        keepTheirs: 'Giữ bản trên máy chủ',
+        keepDeleted: 'Xóa cả trên máy chủ',
+        restoreTheirs: 'Khôi phục sự kiện'
       },
       contextMenu: {
         edit: 'Sửa',

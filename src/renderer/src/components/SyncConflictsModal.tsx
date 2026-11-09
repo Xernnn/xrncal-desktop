@@ -66,6 +66,9 @@ export const SyncConflictsModal: React.FC<SyncConflictsModalProps> = ({
                     when: DateTime.fromISO(c.updatedAt).setLocale(i18n.language).toFormat('cccc, d MMMM HH:mm')
                   })}
                 </p>
+                {/* A delete here against an edit there: the same two choices,
+                    said as what they do to it. */}
+                {c.deletedHere && <p className="text-[11px] text-muted">{t('sync.conflictDeletedHere')}</p>}
                 <div className="flex items-center gap-2 pt-1">
                   <button
                     type="button"
@@ -73,7 +76,7 @@ export const SyncConflictsModal: React.FC<SyncConflictsModalProps> = ({
                     onClick={() => handleResolve(c.eventId, 'keepMine')}
                     className="gc-btn text-xs disabled:opacity-50"
                   >
-                    {t('sync.keepMine')}
+                    {t(c.deletedHere ? 'sync.keepDeleted' : 'sync.keepMine')}
                   </button>
                   <button
                     type="button"
@@ -81,7 +84,7 @@ export const SyncConflictsModal: React.FC<SyncConflictsModalProps> = ({
                     onClick={() => handleResolve(c.eventId, 'keepTheirs')}
                     className="gc-btn text-xs disabled:opacity-50"
                   >
-                    {t('sync.keepTheirs')}
+                    {t(c.deletedHere ? 'sync.restoreTheirs' : 'sync.keepTheirs')}
                   </button>
                 </div>
               </div>

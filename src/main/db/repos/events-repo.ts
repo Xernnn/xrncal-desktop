@@ -1611,23 +1611,36 @@ export class EventsRepo {
     return result.changes
   }
 
-  /** Events where the last push hit a 412 (someone else changed it first) and still need a resolution. */
+  /**
+   * Events where the last push hit a 412 (someone else changed it first) and
+   * still need a resolution - deletes included. Those used to be left out, and
+   * as neither push nor pull touches a parked row, a delete that met a change
+   * on the server vanished here while the event stayed there for everyone else.
+   */
   listConflicts(): SyncConflict[] {
     const rows = this.db
       .prepare(
-        `SELECT e.id as event_id, e.calendar_id, c.name as calendar_name, e.title, e.updated_at
+        `SELECT e.id as event_id, e.calendar_id, c.name as calendar_name, e.title, e.updated_at, e.is_deleted
          FROM events e
          JOIN calendars c ON c.id = e.calendar_id
-         WHERE e.has_conflict = 1 AND e.is_deleted = 0`
+         WHERE e.has_conflict = 1`
       )
-      .all<{ event_id: string; calendar_id: string; calendar_name: string; title: string; updated_at: string }>()
+      .all<{
+        event_id: string
+        calendar_id: string
+        calendar_name: string
+        title: string
+        updated_at: string
+        is_deleted: number
+      }>()
 
     return rows.map((r) => ({
       eventId: r.event_id,
       calendarId: r.calendar_id,
       calendarName: r.calendar_name,
       title: r.title,
-      updatedAt: r.updated_at
+      updatedAt: r.updated_at,
+      deletedHere: r.is_deleted === 1
     }))
   }
 
@@ -1640,6 +1653,7 @@ export class EventsRepo {
    * - 'keepTheirs' drops the local edit (dirty=0) and clears the calendar's sync token
    *   where one exists, forcing a full resync that pulls the server's version back in -
    *   CalDAV already does a full pull every cycle, so no token to clear there.
+   *   A delete is undone with it: the event is the server's again.
    */
   resolveConflict(eventId: string, resolution: 'keepMine' | 'keepTheirs'): boolean {
     const row = this.db
@@ -1655,7 +1669,7 @@ export class EventsRepo {
         .run(eventId)
     } else {
       this.db
-        .prepare('UPDATE events SET dirty = 0, has_conflict = 0, keep_mine = 0 WHERE id = ?')
+        .prepare('UPDATE events SET dirty = 0, has_conflict = 0, keep_mine = 0, is_deleted = 0 WHERE id = ?')
         .run(eventId)
       this.db
         .prepare('UPDATE sync_state SET sync_token = NULL WHERE calendar_id = ?')
