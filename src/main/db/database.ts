@@ -576,6 +576,25 @@ WHERE id IN (SELECT id FROM moved_across);
 DROP TABLE moved_across;
 `
 
+/**
+ * A CalDAV resource can hold only RECURRENCE-ID components: an invitation to
+ * one or a few dates of someone else's series, which a scheduling server
+ * delivers without the series. The pull dropped those dates, having no series
+ * to put them on. Each is now an event of its own, and `recurrence_id` is the
+ * date it stands for (its RECURRENCE-ID): a push answers it inside the
+ * server's copy of the resource instead of writing a plain event over it.
+ * Several dates share one resource, so the unique index on the provider's id
+ * now counts the date too.
+ */
+const MIGRATION_025_SQL = `
+ALTER TABLE events ADD COLUMN recurrence_id TEXT;
+
+DROP INDEX IF EXISTS idx_events_provider_id;
+CREATE UNIQUE INDEX idx_events_provider_id
+  ON events(calendar_id, provider_event_id, COALESCE(recurrence_id, ''))
+  WHERE provider_event_id IS NOT NULL;
+`
+
 /** Every migration in order: the one at index i is version i + 1. */
 const MIGRATIONS: readonly string[] = [
   MIGRATION_001_SQL,
@@ -601,7 +620,8 @@ const MIGRATIONS: readonly string[] = [
   MIGRATION_021_SQL,
   MIGRATION_022_SQL,
   MIGRATION_023_SQL,
-  MIGRATION_024_SQL
+  MIGRATION_024_SQL,
+  MIGRATION_025_SQL
 ]
 
 /** The newest migration this build knows: a restore refuses a backup made by

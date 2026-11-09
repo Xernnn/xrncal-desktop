@@ -75,6 +75,9 @@ export interface EventRow {
   /** 1 when a conflict was resolved as "keep mine": the next push goes without
    *  If-Match, over whatever the provider has now (migration 023). */
   keep_mine: number
+  /** The date of someone else's series this event stands for, when that
+   *  series is not here (a CalDAV invitation to some of its dates, migration 025). */
+  recurrence_id: string | null
   created_at: string
   updated_at: string
 }
@@ -1292,7 +1295,14 @@ export class EventsRepo {
     const from = accountOf(event.calendarId)
     const to = accountOf(toCalendarId)
     if (!from || !to) return
-    const block = calendarMoveBlock(event, { accountId: from.account_id, provider: from.type }, { accountId: to.account_id })
+    // A date of someone else's series kept on its own lives in the organizer's
+    // resource, with the invitation's other dates.
+    const ofSomeoneElsesSeries = this.db
+      .prepare('SELECT 1 AS found FROM events WHERE id = ? AND recurrence_id IS NOT NULL')
+      .get<{ found: number }>(event.id)
+    const block = ofSomeoneElsesSeries
+      ? 'invitation'
+      : calendarMoveBlock(event, { accountId: from.account_id, provider: from.type }, { accountId: to.account_id })
     if (block) throw new Error(MOVE_REFUSED[block])
   }
 

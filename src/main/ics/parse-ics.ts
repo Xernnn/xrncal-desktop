@@ -6,9 +6,21 @@ import { normalizeReminders, type EventReminder } from '@shared/reminders'
 
 export const MAX_ICS_SIZE_BYTES = 5 * 1024 * 1024 // 5 MB cap
 
+/** An occurrence override, with what it needs to stand as an event of its own
+ *  when its series is not in the file (an invitation to that one date). */
+type ParsedOccurrence = Omit<EventException, 'id' | 'createdAt' | 'updatedAt'> & {
+  masterUid?: string
+  attendees?: Attendee[]
+  reminders?: EventReminder[]
+  meetingUrl?: string
+}
+
 interface ParsedIcsData {
   events: (CreateEventInput & { uid?: string })[]
-  exceptions: (Omit<EventException, 'id' | 'createdAt' | 'updatedAt'> & { masterUid?: string })[]
+  exceptions: ParsedOccurrence[]
+  /** VEVENTs that could not be read and are left out. A caller that takes the
+   *  file as all there is (a CalDAV pull) must not. */
+  skipped: number
 }
 
 /** What `icalTimeToIso()` reads of an ICAL.Time. `timezone` is the TZID
@@ -167,6 +179,13 @@ function parseAttendees(vEvent: ICAL.Component): Attendee[] {
   return out
 }
 
+/** URL and COLOR are what write-ics puts the meeting link and event colour in.
+ *  Reading them back is what stops a CalDAV pull from wiping both. */
+function urlOf(vEvent: ICAL.Component): string | undefined {
+  const url = vEvent.getFirstPropertyValue('url')
+  return typeof url === 'string' && url.trim() ? url.trim() : undefined
+}
+
 /** COLOR (RFC 7986) may be a CSS colour name from another client; only the hex
  *  colours this app writes are kept. */
 function parseColor(vEvent: ICAL.Component): string | undefined {
@@ -186,7 +205,7 @@ export function parseIcsContent(icsContent: string, targetCalendarId: string): P
   }
 
   if (!icsContent.trim()) {
-    return { events: [], exceptions: [] }
+    return { events: [], exceptions: [], skipped: 0 }
   }
 
   let jcal: unknown[]
@@ -200,7 +219,8 @@ export function parseIcsContent(icsContent: string, targetCalendarId: string): P
   const vEvents = comp.getAllSubcomponents('vevent')
 
   const events: (CreateEventInput & { uid?: string })[] = []
-  const exceptions: (Omit<EventException, 'id' | 'createdAt' | 'updatedAt'> & { masterUid?: string })[] = []
+  const exceptions: ParsedOccurrence[] = []
+  let skipped = 0
 
   for (const vEvent of vEvents) {
     try {
@@ -236,7 +256,10 @@ export function parseIcsContent(icsContent: string, targetCalendarId: string): P
           // One week of an all-day series moved to 10:00 is a timed occurrence
           // (and the other way round). Left out, it inherited the series' flag
           // and showed as an all-day event on the day it was moved to.
-          allDay: startInfo.allDay
+          allDay: startInfo.allDay,
+          attendees: parseAttendees(vEvent),
+          reminders: parseAlarms(vEvent),
+          meetingUrl: urlOf(vEvent)
         })
         continue
       }
@@ -268,10 +291,6 @@ export function parseIcsContent(icsContent: string, targetCalendarId: string): P
         }
       }
 
-      // URL and COLOR are what write-ics puts the meeting link and event colour
-      // in. Reading them back is what stops a CalDAV pull from wiping both.
-      const url = vEvent.getFirstPropertyValue('url')
-
       events.push({
         calendarId: targetCalendarId,
         uid,
@@ -284,15 +303,17 @@ export function parseIcsContent(icsContent: string, targetCalendarId: string): P
         allDay: startInfo.allDay,
         rrule: rruleString,
         exdate: exdateString,
-        meetingUrl: typeof url === 'string' && url.trim() ? url.trim() : undefined,
+        meetingUrl: urlOf(vEvent),
         color: parseColor(vEvent),
         reminders: parseAlarms(vEvent),
         attendees: parseAttendees(vEvent)
       })
     } catch {
       // A malformed VEVENT is skipped; the rest of the file still imports.
+      // (ical.js reads values lazily, so one bad EXDATE or alarm lands here.)
+      skipped++
     }
   }
 
-  return { events, exceptions }
+  return { events, exceptions, skipped }
 }
