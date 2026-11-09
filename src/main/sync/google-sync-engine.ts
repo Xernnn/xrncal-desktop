@@ -56,6 +56,10 @@ interface GoogleEventsPage {
 
 /** What a pull carries from one page of a listing to the next. */
 interface GoogleListing {
+  /** Made without a sync token, so it names every event the calendar has. */
+  full: boolean
+  /** The rows it named (see applyPulledPage). */
+  listed: Set<string>
   /** Overrides whose series the calendar did not have when their page came. */
   orphans: GoogleCalendarApiEvent[]
 }
@@ -149,7 +153,7 @@ export class GoogleSyncEngine {
     let pulledCount = 0
     let pages = 0
     let resyncedAfterGone = false
-    const listing: GoogleListing = { orphans: [] }
+    const listing: GoogleListing = { full: !storedToken, listed: new Set(), orphans: [] }
 
     // Walk every page. Google caps a response at maxResults and hands back a
     // nextPageToken; it only emits nextSyncToken on the FINAL page. Reading one
@@ -173,6 +177,8 @@ export class GoogleSyncEngine {
         queryUrl = baseUrl
         pageToken = undefined
         pulledCount = 0
+        listing.full = true
+        listing.listed.clear()
         listing.orphans = []
         continue
       }
@@ -204,6 +210,13 @@ export class GoogleSyncEngine {
    * occurrence on its own - an invitation to one occurrence of someone else's
    * series - and is kept as an event of its own, under the instance's id,
    * which an edit or a reply to it addresses.
+   *
+   * A listing made without a sync token - the first, the one after "keep
+   * theirs", the restart after a 410 - leaves deleted events out rather than
+   * reporting them cancelled, as an incremental one does. So once one has come
+   * to its last page, a stored row it did not name was deleted on Google
+   * meanwhile, and goes - unless it has unsent edits or a conflict, has never
+   * reached Google, or is a lunar master, which never does.
    */
   private applyPulledPage(calendarId: string, data: GoogleEventsPage, listing: GoogleListing): number {
     const items = data.items || []
@@ -237,9 +250,11 @@ export class GoogleSyncEngine {
       const applyOverride = (gEvent: GoogleCalendarApiEvent): boolean => {
         const now = new Date().toISOString()
         const exc = mapGoogleEventToDomain(gEvent, calendarId).exception!
-        // `recurringEventId` names the master the provider's way.
+        // `recurringEventId` names the master the provider's way. In a full
+        // listing the series counts once the listing has named it: a stored
+        // one it leaves out is gone from Google, and goes at the end.
         const masterLocalId = findLocalId(exc.masterEventId)
-        if (!masterLocalId) return false
+        if (!masterLocalId || (listing.full && !listing.listed.has(masterLocalId))) return false
         const excId = `exc_${masterLocalId}_${exc.originalStartUtc.replace(/[:.]/g, '')}`
 
         this.db
@@ -297,6 +312,7 @@ export class GoogleSyncEngine {
         // store (an event moved out, or taken off a calendar shared with us).
         if (!found && evt.isDeleted) return false
         const localId = found ?? newLocalId(evt.id)
+        listing.listed.add(localId)
         const stored = this.db
           .prepare('SELECT reminders, rsvp_pending FROM events WHERE id = ?')
           .get<{ reminders: string | null; rsvp_pending: string | null }>(localId)
@@ -376,6 +392,7 @@ export class GoogleSyncEngine {
         for (const gEvent of listing.orphans.splice(0)) {
           if (applyOverride(gEvent) || applyEvent({ ...gEvent, recurringEventId: undefined })) pulledCount++
         }
+        if (listing.full) pulledCount += this.removeUnlisted(calendarId, listing.listed)
       }
     })()
 
@@ -385,6 +402,24 @@ export class GoogleSyncEngine {
     }
 
     return pulledCount
+  }
+
+  /** Delete the calendar's rows Google has, and a full listing did not name. */
+  private removeUnlisted(calendarId: string, listed: Set<string>): number {
+    const synced = this.db
+      .prepare(
+        `SELECT id FROM events
+         WHERE calendar_id = ? AND dirty = 0 AND has_conflict = 0 AND lunar_rule IS NULL
+           AND (etag IS NOT NULL OR provider_event_id IS NOT NULL)`
+      )
+      .all<{ id: string }>(calendarId)
+    let removed = 0
+    for (const row of synced) {
+      if (listed.has(row.id)) continue
+      this.db.prepare('DELETE FROM events WHERE id = ?').run(row.id)
+      removed++
+    }
+    return removed
   }
 
   /**
