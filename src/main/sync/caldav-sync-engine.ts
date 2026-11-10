@@ -651,6 +651,11 @@ export class CalDavSyncEngine {
                 clearRsvp: true
               })
               if (movedFrom) this.db.prepare('UPDATE events SET moved_from_calendar_id = NULL WHERE id = ?').run(row.id)
+              // The server now holds the list this PUT carried. For a new event
+              // nothing else would say so: the next pull skips the resource as
+              // unchanged, and without the flag every later push went without
+              // guests, replacing the meeting with one that had none.
+              if (sendsGuests) this.db.prepare('UPDATE events SET attendees_synced = 1 WHERE id = ?').run(row.id)
             })()
             if (serverCopy && pushRes.body) this.saveServerCopy(row.id, pushRes.body)
             this.eventsRepo.markExceptionsSyncedForMaster(row.id, sentExceptions)
