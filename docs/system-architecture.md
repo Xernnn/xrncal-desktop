@@ -40,7 +40,7 @@ xrncal follows Electron's multi-process model with strict security boundaries.
 │                                                             │
 │  index.ts - lifecycle, single-instance lock, showMainWindow │
 │  ├── ipc.ts → registers the IPC handler groups              │
-│  ├── DB: sqlite-driver, database.ts (migrations 001-022),   │
+│  ├── DB: sqlite-driver, database.ts (migrations 001-025),   │
 │  │       repos/ (calendars, events, settings, sync-state)   │
 │  ├── Sync: sync-worker.ts → Google, Graph, CalDAV engines,  │
 │  │         and due .ics subscriptions                       │

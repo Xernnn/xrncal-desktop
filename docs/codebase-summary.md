@@ -23,10 +23,10 @@ xrncal/
 │   │   │   ├── settings-ipc.ts  # Settings get/set IPC handlers
 │   │   │   └── subscriptions-ipc.ts # Calendars subscribed to by .ics / webcal link
 │   │   ├── db/                  # Database layer
-│   │   │   ├── database.ts      # initDatabase, runMigrations (inline 001-022), seedDefaultData
+│   │   │   ├── database.ts      # initDatabase, runMigrations (inline 001-025), seedDefaultData
 │   │   │   ├── sqlite-driver.ts # ISqliteDatabase abstraction (node:sqlite / better-sqlite3)
 │   │   │   ├── backup.ts        # VACUUM INTO snapshot for Settings → Back up database
-│   │   │   ├── migrations/      # Reference copies of the inline migrations (001-022)
+│   │   │   ├── migrations/      # Reference copies of the inline migrations (001-025)
 │   │   │   └── repos/           # accounts, calendars, events, settings, sync-state, detach-account
 │   │   ├── holidays/            # Generated holiday calendars, extended at startup
 │   │   ├── subscriptions/       # ics-subscription.ts: fetch, store and refresh feeds
@@ -293,10 +293,10 @@ Key types: `CalendarEvent`, `ExpandedOccurrence`, `Calendar`, `CalendarAccount`,
 
 ---
 
-## Database Schema (17 migrations)
+## Database Schema (25 migrations)
 
-Applied by `runMigrations()` from the inline constants in `src/main/db/database.ts`; the files in
-`src/main/db/migrations/` are reference copies.
+Applied by `runMigrations()` from the inline constants in `src/main/db/database.ts`, each in one
+transaction with the row recording it; the files in `src/main/db/migrations/` are reference copies.
 
 | # | What it added or fixed |
 |---|---|
@@ -320,6 +320,9 @@ Applied by `runMigrations()` from the inline constants in `src/main/db/database.
 | 020 | `event_sources`: the CalDAV server's copy of each event, so an edit here keeps what other clients stored (`merge-ics.ts`) |
 | 021 | `reminder_state`: reminder cards on screen and snoozes survive a restart |
 | 022 | Moved occurrences of all-day series pulled before their own `all_day` was read: set to timed |
+| 023 | `keep_mine`: a conflict resolved as "keep mine" overwrites the provider's event, without If-Match |
+| 024 | Moves to another account's calendar, made before they were refused, become new events there |
+| 025 | `recurrence_id`: a CalDAV invitation to single dates of someone else's series, kept as events |
 
 ## Test Coverage
 

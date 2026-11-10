@@ -3,11 +3,12 @@ import { SecureStore } from '../secure-store'
 import { CalDavAdapter, type CalDavCredentials, type CalDavItem } from './caldav-adapter'
 import { describeError } from './http'
 import { parseIcsContent } from '../ics/parse-ics'
+import { answerOccurrences } from '../ics/merge-ics'
 import { AccountsRepo } from '../db/repos/accounts-repo'
 import { EventsRepo, type EventRow } from '../db/repos/events-repo'
 import { CalendarsRepo } from '../db/repos/calendars-repo'
 import { SyncStateRepo } from '../db/repos/sync-state-repo'
-import type { Attendee, SyncResult } from '@shared/event-model'
+import type { Attendee, AttendeeResponseStatus, SyncResult } from '@shared/event-model'
 import { markSelfAttendee } from '@shared/event-model'
 import { mergePulledReminders, parseRemindersJson, serializeReminders } from '@shared/reminders'
 
@@ -112,13 +113,26 @@ export class CalDavSyncEngine {
     // missed every event xrncal had pushed and inserted a second copy. Prefer the
     // href, then the locally created row, which exceptions and lunar links name.
     // Two lookups, not one with an OR: that could use neither index and scanned
-    // the calendar for every event, which on a whole-calendar pull is n².
+    // the calendar for every event, which on a whole-calendar pull is n². An
+    // event moved out of this calendar here is still in it on the server until
+    // the move is pushed, under its old href; read as new, it was pulled back
+    // in, a second copy beside the moved one. A date of someone else's series
+    // kept on its own shares its resource's href, and is never the one meant.
+    const movingOut = new Map(
+      this.db
+        .prepare('SELECT provider_event_id, id FROM events WHERE moved_from_calendar_id = ? AND provider_event_id IS NOT NULL')
+        .all<{ provider_event_id: string; id: string }>(calendarId)
+        .map((r) => [r.provider_event_id, r.id])
+    )
     const findLocalId = (href: string, uid: string): string | undefined =>
       this.db
-        .prepare('SELECT id FROM events WHERE calendar_id = ? AND provider_event_id = ?')
+        .prepare('SELECT id FROM events WHERE calendar_id = ? AND provider_event_id = ? AND recurrence_id IS NULL')
         .get<{ id: string }>(calendarId, href)?.id ??
+      movingOut.get(href) ??
       this.db
-        .prepare('SELECT id FROM events WHERE calendar_id = ? AND uid = ? ORDER BY (id <> uid) DESC LIMIT 1')
+        .prepare(
+          'SELECT id FROM events WHERE calendar_id = ? AND uid = ? AND recurrence_id IS NULL ORDER BY (id <> uid) DESC LIMIT 1'
+        )
         .get<{ id: string }>(calendarId, uid)?.id
 
     // A new event is keyed by its UID, but ids span every calendar and a UID
@@ -148,6 +162,11 @@ export class CalDavSyncEngine {
       for (const item of rawIcsList) {
         try {
           const parsed = parseIcsContent(item.ics ?? '', calendarId)
+          // A VEVENT the reader had to leave out could be any of the resource's.
+          // Read as all there is, the resource lost it here: its row was deleted
+          // as gone from the server, and never came back, its etag matching
+          // nothing stored. Unreadable instead, so what is stored stays.
+          if (parsed.skipped > 0) throw new Error(`${item.href} holds a VEVENT that could not be read`)
           const now = new Date().toISOString()
 
           const idByUid = new Map<string, string>()
@@ -223,6 +242,14 @@ export class CalDavSyncEngine {
             pulledCount++
           }
 
+          pulledCount += this.pullStandaloneOccurrences(
+            calendarId,
+            item,
+            parsed.exceptions.filter((x) => !x.masterUid || !idByUid.has(x.masterUid)),
+            listedIds,
+            selfEmail,
+            now
+          )
           this.pullOccurrenceExceptions(parsed.exceptions, idByUid, now)
         } catch {
           // An item that will not parse is skipped; the rest of the calendar still syncs.
@@ -273,9 +300,13 @@ export class CalDavSyncEngine {
     }
 
     const stored = new Map<string, string | null>()
+    // With the rows moved out of this calendar whose move is still to be pushed.
     const rows = this.db
-      .prepare('SELECT provider_event_id, etag FROM events WHERE calendar_id = ? AND provider_event_id IS NOT NULL')
-      .all<{ provider_event_id: string; etag: string | null }>(calendarId)
+      .prepare(
+        `SELECT provider_event_id, etag FROM events
+         WHERE (calendar_id = ? OR moved_from_calendar_id = ?) AND provider_event_id IS NOT NULL`
+      )
+      .all<{ provider_event_id: string; etag: string | null }>(calendarId, calendarId)
     for (const { provider_event_id: href, etag } of rows) {
       // Rows read from one resource that disagree get it read again.
       stored.set(href, stored.has(href) && stored.get(href) !== etag ? null : etag)
@@ -302,6 +333,112 @@ export class CalDavSyncEngine {
       unchanged: new Set(all.filter(isUnchanged).map((i) => i.href)),
       missing: 0
     }
+  }
+
+  /**
+   * The dates a resource holds of a series it does not have: an invitation to
+   * one or a few dates of someone else's series, which a scheduling server
+   * delivers without the series. They used to be dropped, with no series to go
+   * on, and the invitation never showed. Each is now an event of its own that
+   * keeps its RECURRENCE-ID (`recurrence_id`), so a push answers it inside the
+   * server's copy (pushOccurrenceAnswers). A date the resource no longer holds
+   * on its own - withdrawn, or on its series now that the resource has that -
+   * goes, unless it has an unsent answer, which its push then finds nothing for.
+   */
+  private pullStandaloneOccurrences(
+    calendarId: string,
+    item: CalDavItem,
+    occurrences: ReturnType<typeof parseIcsContent>['exceptions'],
+    listedIds: Set<string>,
+    selfEmail: string | undefined,
+    now: string
+  ): number {
+    let pulled = 0
+    const kept = new Set<string>()
+    for (const occ of occurrences) {
+      // A date cancelled outright has nothing to show.
+      if (occ.isCancelled || !occ.dtStartUtc || !occ.dtEndUtc) continue
+      const stored = this.db
+        .prepare(
+          'SELECT id, reminders, rsvp_pending FROM events WHERE calendar_id = ? AND provider_event_id = ? AND recurrence_id = ?'
+        )
+        .get<{ id: string; reminders: string | null; rsvp_pending: string | null }>(
+          calendarId,
+          item.href,
+          occ.originalStartUtc
+        )
+      const id = stored?.id ?? `evt_${Math.random().toString(36).slice(2, 10)}`
+      kept.add(id)
+      listedIds.add(id)
+      const reminders = mergePulledReminders(
+        'caldav',
+        stored ? parseRemindersJson(stored.reminders) : undefined,
+        occ.reminders ?? undefined
+      )
+      const applied = this.db
+        .prepare(
+          `INSERT INTO events (
+            id, provider_event_id, recurrence_id, calendar_id, uid, title, notes, location,
+            dtstart_utc, dtend_utc, tzid, all_day, meeting_url, reminders, etag,
+            dirty, is_deleted, attendees_synced, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 1, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            uid = excluded.uid,
+            title = excluded.title,
+            notes = excluded.notes,
+            location = excluded.location,
+            dtstart_utc = excluded.dtstart_utc,
+            dtend_utc = excluded.dtend_utc,
+            tzid = excluded.tzid,
+            all_day = excluded.all_day,
+            meeting_url = excluded.meeting_url,
+            reminders = excluded.reminders,
+            etag = excluded.etag,
+            dirty = 0,
+            is_deleted = 0,
+            attendees_synced = 1,
+            updated_at = excluded.updated_at
+          WHERE events.dirty = 0 AND events.has_conflict = 0`
+        )
+        .run(
+          id,
+          item.href,
+          occ.originalStartUtc,
+          calendarId,
+          occ.masterUid || id,
+          occ.title || 'Untitled Event',
+          occ.notes || null,
+          occ.location || null,
+          occ.dtStartUtc,
+          occ.dtEndUtc,
+          occ.tzid || 'UTC',
+          occ.allDay ? 1 : 0,
+          occ.meetingUrl || null,
+          serializeReminders(reminders),
+          item.etag || null,
+          now,
+          now
+        )
+      // A reply still on its way would be overwritten by the old answer.
+      if (applied.changes > 0 && !stored?.rsvp_pending) {
+        this.eventsRepo.replaceAttendees(id, markSelfAttendee(occ.attendees ?? [], selfEmail))
+      }
+      if (applied.changes > 0) this.saveServerCopy(id, item.ics ?? '')
+      pulled++
+    }
+
+    const before = this.db
+      .prepare(
+        `SELECT id FROM events
+         WHERE calendar_id = ? AND provider_event_id = ? AND recurrence_id IS NOT NULL AND dirty = 0 AND has_conflict = 0`
+      )
+      .all<{ id: string }>(calendarId, item.href)
+    for (const row of before) {
+      if (kept.has(row.id)) continue
+      this.db.prepare('DELETE FROM events WHERE id = ?').run(row.id)
+      pulled++
+    }
+    return pulled
   }
 
   /**
@@ -416,15 +553,32 @@ export class CalDavSyncEngine {
     let errorCount = 0
     /** Why the last push failed; conflicts are left out, as they have their own way out. */
     let lastError: string | undefined
+    /** Resources of dates standing on their own, already sent this pass. */
+    const answered = new Set<string>()
 
     for (const row of dirtyRows) {
       try {
+        // A date of someone else's series kept on its own (see
+        // pullStandaloneOccurrences): the resource is the organizer's, and its
+        // dates go back together, answered inside the server's copy.
+        if (row.recurrence_id !== null) {
+          const href = row.provider_event_id ?? ''
+          if (answered.has(href)) continue
+          answered.add(href)
+          const outcome = await this.pushOccurrenceAnswers(adapter, calendarId, href)
+          if (outcome === 'conflict') errorCount++
+          if (outcome === 'pushed') pushedCount++
+          continue
+        }
+
         const isDeleted = row.is_deleted === 1
 
         if (isDeleted) {
-          const ok = await adapter.deleteEvent(calendarId, row.uid || row.id, row.provider_event_id || undefined)
+          // From where the server has it, which a move not yet pushed has not changed.
+          const holder = row.moved_from_calendar_id || calendarId
+          const ok = await adapter.deleteEvent(holder, row.uid || row.id, row.provider_event_id || undefined)
           if (ok) {
-            this.db.prepare('DELETE FROM events WHERE id = ?').run(row.id)
+            this.eventsRepo.forgetPushedDelete(row.id, row.updated_at)
             pushedCount++
           } else {
             lastError = 'The server refused to delete an event'
@@ -435,11 +589,21 @@ export class CalDavSyncEngine {
             .prepare('SELECT ics FROM event_sources WHERE event_id = ?')
             .get<{ ics: string }>(row.id)?.ics
           const sendsGuests = row.attendees_synced === 1 || !row.etag
+          // What this PUT carries, so only that is marked as landed.
+          const sentExceptions = this.eventsRepo.getExceptionsForEvent(row.id)
+          // A move from another calendar of this account (see recordCalendarMove).
+          // The PUT used to go to the old href - back into the old calendar - and
+          // the next pulls undid the move. Now the resource is PUT into this
+          // calendar as a new one and only then deleted from the old, so the
+          // server never goes without it. Until the delete lands the row keeps
+          // the old href, and a retry PUTs to the same new address again.
+          const movedFrom =
+            row.moved_from_calendar_id && row.moved_from_calendar_id !== calendarId ? row.moved_from_calendar_id : null
           const pushRes = await adapter.pushEvent(
             calendar,
             {
               id: row.id,
-              providerEventId: row.provider_event_id || undefined,
+              providerEventId: movedFrom ? undefined : row.provider_event_id || undefined,
               calendarId: row.calendar_id,
               uid: row.uid,
               title: row.title,
@@ -459,27 +623,42 @@ export class CalDavSyncEngine {
               attendees: sendsGuests
                 ? withOrganizer(this.eventsRepo.getEventById(row.id)?.event.attendees ?? [], selfEmail)
                 : undefined,
-              etag: row.etag ?? undefined,
+              // The precondition: none for a new resource, or once the user has
+              // chosen this version over the server's ("keep mine" on a conflict).
+              etag: movedFrom || row.keep_mine === 1 ? undefined : row.etag ?? undefined,
               dirty: false,
               isDeleted: false,
               createdAt: row.created_at,
               updatedAt: row.updated_at
             },
-            this.eventsRepo.getExceptionsForEvent(row.id),
+            sentExceptions,
             serverCopy ? { ics: serverCopy, keepAttendees: !sendsGuests } : undefined
           )
 
           if (pushRes.success) {
-            const now = new Date().toISOString()
-            this.db
-              .prepare(
-                `UPDATE events SET provider_event_id = ?, etag = ?, dirty = 0, has_conflict = 0,
-                   rsvp_pending = NULL, updated_at = ?
-                 WHERE id = ?`
-              )
-              .run(pushRes.href || row.provider_event_id, pushRes.etag || row.etag, now, row.id)
+            if (movedFrom && !(await adapter.deleteEvent(movedFrom, row.uid || row.id, row.provider_event_id || undefined))) {
+              lastError = 'The server refused to delete a moved event from the calendar it was moved out of'
+              errorCount++
+              continue
+            }
+            // The new href and the end of the move together: one without the
+            // other would leave a retry deleting the copy it had just made.
+            this.db.transaction(() => {
+              this.eventsRepo.markEventPushed(row.id, {
+                providerEventId: pushRes.href || row.provider_event_id,
+                etag: movedFrom ? pushRes.etag || null : pushRes.etag || row.etag,
+                sentUpdatedAt: row.updated_at,
+                clearRsvp: true
+              })
+              if (movedFrom) this.db.prepare('UPDATE events SET moved_from_calendar_id = NULL WHERE id = ?').run(row.id)
+              // The server now holds the list this PUT carried. For a new event
+              // nothing else would say so: the next pull skips the resource as
+              // unchanged, and without the flag every later push went without
+              // guests, replacing the meeting with one that had none.
+              if (sendsGuests) this.db.prepare('UPDATE events SET attendees_synced = 1 WHERE id = ?').run(row.id)
+            })()
             if (serverCopy && pushRes.body) this.saveServerCopy(row.id, pushRes.body)
-            this.eventsRepo.markExceptionsSyncedForMaster(row.id)
+            this.eventsRepo.markExceptionsSyncedForMaster(row.id, sentExceptions)
             pushedCount++
           } else if (pushRes.conflict) {
             this.db.prepare('UPDATE events SET has_conflict = 1 WHERE id = ?').run(row.id)
@@ -569,6 +748,77 @@ export class CalDavSyncEngine {
       message: `CalDAV sync finished: pulled ${totalPulled}, pushed ${totalPushed}`,
       accountErrors
     }
+  }
+
+  /**
+   * Send what changed on the dates a resource holds of someone else's series:
+   * this account's answers, and the dates taken off the calendar here - the
+   * last one takes the resource with it. A guest's other edits are not sent;
+   * there is nowhere in the organizer's resource for them to go.
+   */
+  private async pushOccurrenceAnswers(
+    adapter: CalDavAdapter,
+    calendarId: string,
+    href: string
+  ): Promise<'pushed' | 'conflict' | 'unchanged'> {
+    const dates = this.db
+      .prepare('SELECT * FROM events WHERE calendar_id = ? AND provider_event_id = ? AND recurrence_id IS NOT NULL')
+      .all<EventRow>(calendarId, href)
+    const pending = dates.filter((r) => (r.dirty === 1 || r.rsvp_pending !== null) && r.has_conflict === 0)
+    if (pending.length === 0) return 'unchanged'
+    const serverCopy = this.db
+      .prepare('SELECT ics FROM event_sources WHERE event_id = ?')
+      .get<{ ics: string }>(pending[0].id)?.ics
+    if (!serverCopy) throw new Error('There is no copy of this invitation to answer in')
+
+    const answer = answerOccurrences(
+      serverCopy,
+      pending.map((r) => {
+        const self = this.db
+          .prepare('SELECT email, response_status FROM attendees WHERE event_id = ? AND is_self = 1')
+          .get<{ email: string; response_status: AttendeeResponseStatus }>(r.id)
+        return { recurrenceId: r.recurrence_id!, removed: r.is_deleted === 1, selfEmail: self?.email, response: self?.response_status }
+      })
+    )
+
+    let etag = pending[0].etag
+    if (answer.changed && answer.ics === null) {
+      if (!(await adapter.deleteEvent(calendarId, pending[0].uid, href))) {
+        throw new Error('The server refused to delete an invitation')
+      }
+    } else if (answer.changed && answer.ics !== null) {
+      const res = await adapter.putIcs(href, answer.ics, pending.some((r) => r.keep_mine === 1) ? undefined : etag ?? undefined)
+      if (res.conflict) {
+        for (const r of pending) this.db.prepare('UPDATE events SET has_conflict = 1 WHERE id = ?').run(r.id)
+        return 'conflict'
+      }
+      etag = res.etag ?? null
+    }
+
+    // The resource as it is now, for every date in it, and each date sent
+    // marked done - only while unchanged since it was read here, so one
+    // answered again meanwhile goes next time.
+    const written = answer.changed ? answer.ics : null
+    this.db.transaction(() => {
+      if (written !== null) {
+        for (const r of dates) if (r.is_deleted !== 1) this.saveServerCopy(r.id, written)
+        this.db
+          .prepare(
+            'UPDATE events SET etag = ?, keep_mine = 0 WHERE calendar_id = ? AND provider_event_id = ? AND recurrence_id IS NOT NULL'
+          )
+          .run(etag, calendarId, href)
+      }
+      for (const r of pending) {
+        if (r.is_deleted === 1) {
+          this.db.prepare('DELETE FROM events WHERE id = ? AND updated_at = ?').run(r.id, r.updated_at)
+        } else {
+          this.db
+            .prepare('UPDATE events SET dirty = 0, rsvp_pending = NULL WHERE id = ? AND updated_at = ?')
+            .run(r.id, r.updated_at)
+        }
+      }
+    })()
+    return answer.changed ? 'pushed' : 'unchanged'
   }
 
   private saveServerCopy(eventId: string, ics: string): void {

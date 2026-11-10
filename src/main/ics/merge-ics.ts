@@ -1,5 +1,6 @@
 import ICAL from 'ical.js'
 import { DateTime, IANAZone } from 'luxon'
+import type { AttendeeResponseStatus } from '@shared/event-model'
 import { normalizeReminders, type EventReminder } from '@shared/reminders'
 import { alarmAsReminder } from './parse-ics'
 
@@ -104,6 +105,66 @@ export function mergeServerCopy(generated: string, serverCopy: string, options: 
   }
 
   return out.toString()
+}
+
+/** One date's part in answerOccurrences. */
+export interface OccurrenceAnswer {
+  /** Its RECURRENCE-ID as stored: a UTC instant, or UTC midnight for a date. */
+  recurrenceId: string
+  /** Taken off the calendar here. */
+  removed: boolean
+  /** The account's own address in the guest list, and its answer. */
+  selfEmail?: string
+  response?: AttendeeResponseStatus
+}
+
+const PARTSTAT: Record<AttendeeResponseStatus, string> = {
+  accepted: 'ACCEPTED',
+  declined: 'DECLINED',
+  tentative: 'TENTATIVE',
+  needsAction: 'NEEDS-ACTION'
+}
+
+/**
+ * The server's copy of a resource holding only dates of someone else's series
+ * (an invitation to them), with this account's answers written in and the
+ * dates it removed taken out. `ics` is null when no date is left, `changed`
+ * false when there was nothing to write. Nothing else is touched: the
+ * resource is the organizer's, and a guest only answers - generateIcs() would
+ * have written a plain event, with no RECURRENCE-ID, over it.
+ */
+export function answerOccurrences(
+  serverCopy: string,
+  answers: readonly OccurrenceAnswer[]
+): { ics: string | null; changed: boolean } {
+  const root = new ICAL.Component(ICAL.parse(serverCopy))
+  let changed = false
+  for (const answer of answers) {
+    const ev = root
+      .getAllSubcomponents('vevent')
+      .find((v) => sameRecurrence(v.getFirstPropertyValue('recurrence-id'), answer.recurrenceId))
+    if (!ev) continue
+    if (answer.removed) {
+      root.removeSubcomponent(ev)
+      changed = true
+      continue
+    }
+    const self = answer.selfEmail?.trim().toLowerCase()
+    const partstat = answer.response ? PARTSTAT[answer.response] : undefined
+    if (!self || !partstat) continue
+    for (const prop of ev.getAllProperties('attendee')) {
+      if (addressOf(prop) !== self) continue
+      if (String(prop.getParameter('partstat') ?? '').toUpperCase() === partstat) continue
+      prop.setParameter('partstat', partstat)
+      changed = true
+    }
+  }
+  return { ics: root.getAllSubcomponents('vevent').length > 0 ? root.toString() : null, changed }
+}
+
+function sameRecurrence(value: unknown, iso: string): boolean {
+  if (!(value instanceof ICAL.Time)) return false
+  return value.isDate ? value.toString() === iso.slice(0, 10) : instantOf(value) === String(Date.parse(iso))
 }
 
 function carryOver(ev: ICAL.Component, src: ICAL.Component, options: ServerCopyOptions): void {

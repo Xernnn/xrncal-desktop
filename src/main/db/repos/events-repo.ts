@@ -14,9 +14,10 @@ import type {
   MaterializeLunarInput,
   DetachLunarInput,
   SyncConflict,
-  RsvpResponse
+  RsvpResponse,
+  CalendarMoveBlock
 } from '@shared/event-model'
-import { invitationSelf } from '@shared/event-model'
+import { calendarMoveBlock, invitationSelf } from '@shared/event-model'
 import type { TitleSample } from '@shared/title-suggestions'
 import { parseRemindersJson, serializeReminders, type EventReminder } from '@shared/reminders'
 import { resolveLunarOccurrence } from '@shared/lunar-vietnam'
@@ -29,6 +30,15 @@ export class ReadOnlyCalendarError extends Error {
     super(`Cannot modify events in read-only calendar: ${calendarId}`)
     this.name = 'ReadOnlyCalendarError'
   }
+}
+
+/** What a move the provider cannot make is refused with (see calendarMoveBlock). */
+const MOVE_REFUSED: Record<CalendarMoveBlock, string> = {
+  otherAccount:
+    "This event is already on its account's server, so it can only move to another calendar of the same account. Copy it to the other calendar instead, then delete it here.",
+  invitation: 'An invitation stays in the calendar it was sent to.',
+  meeting:
+    'Only Google can move a meeting with guests to another calendar: Outlook and CalDAV servers would cancel it for every guest and invite them all again.'
 }
 
 /** A row of `events`, as `SELECT *` reads it. */
@@ -62,6 +72,12 @@ export interface EventRow {
   rsvp_pending: string | null
   /** The calendar the event was moved out of here, until the move reaches the provider. */
   moved_from_calendar_id: string | null
+  /** 1 when a conflict was resolved as "keep mine": the next push goes without
+   *  If-Match, over whatever the provider has now (migration 023). */
+  keep_mine: number
+  /** The date of someone else's series this event stands for, when that
+   *  series is not here (a CalDAV invitation to some of its dates, migration 025). */
+  recurrence_id: string | null
   created_at: string
   updated_at: string
 }
@@ -393,6 +409,7 @@ export class EventsRepo {
     const calendarId = input.calendarId ?? existing.calendarId
     if (calendarId !== existing.calendarId) {
       this.checkReadOnlyCalendar(calendarId)
+      this.checkCalendarMove(existing, calendarId)
     }
 
     const now = new Date().toISOString()
@@ -740,24 +757,86 @@ export class EventsRepo {
     return out
   }
 
-  markExceptionSynced(id: string, providerInstanceId?: string | null, etag?: string | null): void {
+  /**
+   * Record that a push of this event landed. The provider's id and etag are
+   * kept either way - the server now holds what was sent - but the row is only
+   * marked clean while it is still the version that was sent: `sentUpdatedAt`
+   * is its updated_at when the push read it. An edit made while the request
+   * was in flight (drag, then resize before the PUT came back) used to be
+   * marked clean with it, so it was never sent and the next pull could
+   * overwrite it. Returns whether the row was marked clean; false means a
+   * newer local edit is still waiting to go. A "keep mine" is done either way:
+   * the provider now has this version, so later edits check against it.
+   */
+  markEventPushed(
+    id: string,
+    push: { providerEventId: string | null; etag: string | null; sentUpdatedAt: string; clearRsvp?: boolean }
+  ): boolean {
+    const now = new Date().toISOString()
+    return this.db.transaction(() => {
+      this.db
+        .prepare('UPDATE events SET provider_event_id = ?, etag = ?, has_conflict = 0, keep_mine = 0 WHERE id = ?')
+        .run(push.providerEventId, push.etag, id)
+      return (
+        this.db
+          .prepare(
+            `UPDATE events SET dirty = 0, updated_at = ?${push.clearRsvp ? ', rsvp_pending = NULL' : ''}
+             WHERE id = ? AND updated_at = ?`
+          )
+          .run(now, id, push.sentUpdatedAt).changes > 0
+      )
+    })()
+  }
+
+  /**
+   * Forget an event whose delete reached the provider - unless it was brought
+   * back (undo) while the request was in flight. Then the provider no longer
+   * has it, so it is a new event there: its provider id and etag go, and the
+   * next push creates it again. Returns whether it was forgotten.
+   */
+  forgetPushedDelete(id: string, sentUpdatedAt: string): boolean {
+    return this.db.transaction(() => {
+      const gone =
+        this.db.prepare('DELETE FROM events WHERE id = ? AND updated_at = ?').run(id, sentUpdatedAt).changes > 0
+      if (!gone) {
+        this.db.prepare('UPDATE events SET provider_event_id = NULL, etag = NULL, keep_mine = 0 WHERE id = ?').run(id)
+      }
+      return gone
+    })()
+  }
+
+  /** Record a pushed occurrence override; clean only if unchanged since it was
+   *  read for the push (see markEventPushed). */
+  markExceptionSynced(
+    id: string,
+    providerInstanceId: string | null | undefined,
+    etag: string | null | undefined,
+    sentUpdatedAt: string
+  ): void {
     this.db
       .prepare(
         `UPDATE event_exceptions
-         SET dirty = 0,
+         SET dirty = CASE WHEN updated_at = ? THEN 0 ELSE dirty END,
              provider_instance_id = COALESCE(?, provider_instance_id),
              etag = COALESCE(?, etag)
          WHERE id = ?`
       )
-      .run(providerInstanceId ?? null, etag ?? null, id)
+      .run(sentUpdatedAt, providerInstanceId ?? null, etag ?? null, id)
   }
 
-  /** Clear the dirty flag on every pending exception of a master (CalDAV pushes
-   *  the whole series as one resource, so they all land together). */
-  markExceptionsSyncedForMaster(masterEventId: string): void {
-    this.db
-      .prepare('UPDATE event_exceptions SET dirty = 0 WHERE master_event_id = ? AND dirty = 1')
-      .run(masterEventId)
+  /** Clear the dirty flag on the exceptions a series push carried (CalDAV pushes
+   *  the whole series as one resource, so they land together) - each only if
+   *  it is unchanged since then, so one edited mid-push still goes next time. */
+  markExceptionsSyncedForMaster(
+    masterEventId: string,
+    sent: readonly Pick<EventException, 'id' | 'updatedAt'>[]
+  ): void {
+    const clear = this.db.prepare(
+      'UPDATE event_exceptions SET dirty = 0 WHERE id = ? AND master_event_id = ? AND updated_at = ? AND dirty = 1'
+    )
+    this.db.transaction(() => {
+      for (const ex of sent) clear.run(ex.id, masterEventId, ex.updatedAt)
+    })()
   }
 
   /** The calendar's series that are on the provider (lunar masters are local). */
@@ -1177,6 +1256,7 @@ export class EventsRepo {
     this.checkReadOnlyCalendar(existing.event.calendarId)
     if (input.targetCalendarId && input.targetCalendarId !== existing.event.calendarId) {
       this.checkReadOnlyCalendar(input.targetCalendarId)
+      this.checkCalendarMove(existing.event, input.targetCalendarId)
     }
 
     const now = new Date().toISOString()
@@ -1206,6 +1286,45 @@ export class EventsRepo {
     return updated!.event
   }
 
+  /** Refuse, before anything is written, a move the provider cannot make (see calendarMoveBlock). */
+  private checkCalendarMove(event: CalendarEvent, toCalendarId: string): void {
+    const accountOf = (calendarId: string) =>
+      this.db
+        .prepare('SELECT c.account_id, a.type FROM calendars c JOIN accounts a ON a.id = c.account_id WHERE c.id = ?')
+        .get<{ account_id: string; type: string }>(calendarId)
+    const from = accountOf(event.calendarId)
+    const to = accountOf(toCalendarId)
+    if (!from || !to) return
+    // A date of someone else's series kept on its own lives in the organizer's
+    // resource, with the invitation's other dates.
+    const ofSomeoneElsesSeries = this.db
+      .prepare('SELECT 1 AS found FROM events WHERE id = ? AND recurrence_id IS NOT NULL')
+      .get<{ found: number }>(event.id)
+    const block = ofSomeoneElsesSeries
+      ? 'invitation'
+      : calendarMoveBlock(event, { accountId: from.account_id, provider: from.type }, { accountId: to.account_id })
+    if (block) throw new Error(MOVE_REFUSED[block])
+  }
+
+  /**
+   * The old copy of a moved event is gone from the provider - Outlook moves an
+   * event as a delete there and a create in the new calendar. The row is a new
+   * event in its calendar from here, and its occurrence overrides wait for the
+   * new series, to be put on it the way an edit to one is.
+   */
+  forgetMovedCopy(id: string): void {
+    this.db.transaction(() => {
+      this.db
+        .prepare(
+          'UPDATE events SET provider_event_id = NULL, etag = NULL, moved_from_calendar_id = NULL, keep_mine = 0 WHERE id = ?'
+        )
+        .run(id)
+      this.db
+        .prepare('UPDATE event_exceptions SET provider_instance_id = NULL, etag = NULL, dirty = 1 WHERE master_event_id = ?')
+        .run(id)
+    })()
+  }
+
   /**
    * Remember which calendar the provider still holds this event in.
    *
@@ -1215,10 +1334,12 @@ export class EventsRepo {
    * origin, and by the time the push runs the local row has already been
    * overwritten with the destination, so the origin has to be kept here.
    *
-   * Only for events the provider has actually seen (`etag IS NOT NULL`); a row
-   * that has never synced just gets created in the right place. And only when
-   * the column is still empty, so moving A -> B -> C before the next poll still
-   * names A, which is where the event really is.
+   * Only for events the provider has actually seen - an etag, or an id it gave
+   * (a CalDAV server need not send an etag back); a row that has never synced
+   * just gets created in the right place. And only when the column is still
+   * empty, so moving A -> B -> C before the next poll still names A, which is
+   * where the event really is. Each engine makes the move its own way: Google
+   * moves the event, CalDAV and Outlook copy it over and delete the old one.
    */
   private recordCalendarMove(eventId: string, fromCalendarId: string, toCalendarId: string): void {
     if (fromCalendarId === toCalendarId) return
@@ -1226,7 +1347,7 @@ export class EventsRepo {
       .prepare(
         `UPDATE events
          SET moved_from_calendar_id = ?
-         WHERE id = ? AND etag IS NOT NULL AND moved_from_calendar_id IS NULL`
+         WHERE id = ? AND (etag IS NOT NULL OR provider_event_id IS NOT NULL) AND moved_from_calendar_id IS NULL`
       )
       .run(fromCalendarId, eventId)
     // Moving back where it came from is not a move at all.
@@ -1546,53 +1667,89 @@ export class EventsRepo {
     return result.changes
   }
 
-  /** Events where the last push hit a 412 (someone else changed it first) and still need a resolution. */
+  /**
+   * Events where the last push hit a 412 (someone else changed it first) and
+   * still need a resolution - deletes included. Those used to be left out, and
+   * as neither push nor pull touches a parked row, a delete that met a change
+   * on the server vanished here while the event stayed there for everyone else.
+   */
   listConflicts(): SyncConflict[] {
     const rows = this.db
       .prepare(
-        `SELECT e.id as event_id, e.calendar_id, c.name as calendar_name, e.title, e.updated_at
+        `SELECT e.id as event_id, e.calendar_id, c.name as calendar_name, e.title, e.updated_at, e.is_deleted
          FROM events e
          JOIN calendars c ON c.id = e.calendar_id
-         WHERE e.has_conflict = 1 AND e.is_deleted = 0`
+         WHERE e.has_conflict = 1`
       )
-      .all<{ event_id: string; calendar_id: string; calendar_name: string; title: string; updated_at: string }>()
+      .all<{
+        event_id: string
+        calendar_id: string
+        calendar_name: string
+        title: string
+        updated_at: string
+        is_deleted: number
+      }>()
 
     return rows.map((r) => ({
       eventId: r.event_id,
       calendarId: r.calendar_id,
       calendarName: r.calendar_name,
       title: r.title,
-      updatedAt: r.updated_at
+      updatedAt: r.updated_at,
+      deletedHere: r.is_deleted === 1
     }))
   }
 
   /**
    * Resolve a sync conflict:
-   * - 'keepMine' clears the stored etag so the next push goes through unconditionally,
-   *   overwriting whatever's on the server.
+   * - 'keepMine' marks the row so its next push goes without If-Match, overwriting
+   *   whatever's on the server. The etag stays: clearing it, as this used to,
+   *   made the row read as never pushed, so Google and Outlook created the event
+   *   again beside the original, and its guest list went out as if complete.
    * - 'keepTheirs' drops the local edit (dirty=0) and clears the calendar's sync token
    *   where one exists, forcing a full resync that pulls the server's version back in -
    *   CalDAV already does a full pull every cycle, so no token to clear there.
+   *   A delete is undone with it: the event is the server's again.
    */
   resolveConflict(eventId: string, resolution: 'keepMine' | 'keepTheirs'): boolean {
     const row = this.db
-      .prepare('SELECT calendar_id FROM events WHERE id = ? AND has_conflict = 1')
-      .get<{ calendar_id: string }>(eventId)
+      .prepare('SELECT calendar_id, moved_from_calendar_id, provider_event_id FROM events WHERE id = ? AND has_conflict = 1')
+      .get<{ calendar_id: string; moved_from_calendar_id: string | null; provider_event_id: string | null }>(eventId)
     if (!row) return false
     // 'keepMine' re-arms a push, so it is a write to the calendar like any other.
     this.checkReadOnlyCalendar(row.calendar_id)
 
     if (resolution === 'keepMine') {
       this.db
-        .prepare('UPDATE events SET etag = NULL, has_conflict = 0, dirty = 1 WHERE id = ?')
+        .prepare('UPDATE events SET keep_mine = 1, has_conflict = 0, dirty = 1 WHERE id = ?')
         .run(eventId)
     } else {
       this.db
-        .prepare('UPDATE events SET dirty = 0, has_conflict = 0 WHERE id = ?')
+        .prepare('UPDATE events SET dirty = 0, has_conflict = 0, keep_mine = 0, is_deleted = 0 WHERE id = ?')
         .run(eventId)
       this.db
         .prepare('UPDATE sync_state SET sync_token = NULL WHERE calendar_id = ?')
         .run(row.calendar_id)
+      // A move the provider refused (Outlook deletes the old copy first, and
+      // that met a change): the event goes back to the calendar the provider
+      // has it in - or, where an older pull already put the server's copy
+      // there, that copy is the one kept.
+      const origin = row.moved_from_calendar_id
+      if (origin) {
+        const twin =
+          row.provider_event_id &&
+          this.db
+            .prepare('SELECT 1 AS found FROM events WHERE calendar_id = ? AND provider_event_id = ?')
+            .get<{ found: number }>(origin, row.provider_event_id)
+        if (twin) {
+          this.db.prepare('DELETE FROM events WHERE id = ?').run(eventId)
+        } else {
+          this.db
+            .prepare('UPDATE events SET calendar_id = ?, moved_from_calendar_id = NULL WHERE id = ?')
+            .run(origin, eventId)
+        }
+        this.db.prepare('UPDATE sync_state SET sync_token = NULL WHERE calendar_id = ?').run(origin)
+      }
     }
     return true
   }

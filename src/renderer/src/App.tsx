@@ -687,6 +687,7 @@ const CalendarApp: React.FC = () => {
         <EventEditorDialog
           key={editorSession}
           calendars={calendars}
+          accounts={accounts}
           data={editorData}
           onSave={commands.saveEvent}
           onDelete={commands.deleteEvent}

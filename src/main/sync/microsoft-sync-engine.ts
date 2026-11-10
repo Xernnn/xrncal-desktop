@@ -379,10 +379,20 @@ export class MicrosoftSyncEngine {
     this.db.transaction(() => {
       // A locally created event keeps its own id, so the provider's id no longer
       // finds it by primary key; without this the next pull inserts a duplicate.
+      // An event moved out of this calendar here is still in it on Outlook until
+      // the move is pushed, and must not be pulled back in meanwhile.
+      const movingOut = new Map(
+        this.db
+          .prepare('SELECT id, COALESCE(provider_event_id, id) AS remote FROM events WHERE moved_from_calendar_id = ?')
+          .all<{ id: string; remote: string }>(calendarId)
+          .map((r) => [r.remote, r.id])
+      )
       const localIdFor = (providerId: string): string =>
         this.db
           .prepare('SELECT id FROM events WHERE calendar_id = ? AND provider_event_id = ?')
-          .get<{ id: string }>(calendarId, providerId)?.id ?? providerId
+          .get<{ id: string }>(calendarId, providerId)?.id ??
+        movingOut.get(providerId) ??
+        providerId
 
       for (const gEvent of items) {
         if (gEvent.lastModifiedDateTime && (!latestModified || gEvent.lastModifiedDateTime > latestModified)) {
@@ -552,17 +562,19 @@ export class MicrosoftSyncEngine {
         const isDeleted = row.is_deleted === 1
         // Graph's id, not ours; identical only for rows that synced before the
         // two were separated.
-        const eventId = row.provider_event_id || row.id
+        let eventId = row.provider_event_id || row.id
+        // None once the user has chosen this version over Outlook's ("keep mine").
+        const ifMatch = row.keep_mine === 1 ? null : row.etag
 
         if (isDeleted) {
           const delRes = await fetchWithTimeout(`${GRAPH_BASE}/me/events/${encodeURIComponent(eventId)}`, {
             method: 'DELETE',
-            headers: row.etag
-              ? { Authorization: `Bearer ${accessToken}`, 'if-match': row.etag }
+            headers: ifMatch
+              ? { Authorization: `Bearer ${accessToken}`, 'if-match': ifMatch }
               : { Authorization: `Bearer ${accessToken}` }
           })
           if (delRes.ok || delRes.status === 404) {
-            this.db.prepare('DELETE FROM events WHERE id = ?').run(row.id)
+            this.eventsRepo.forgetPushedDelete(row.id, row.updated_at)
             pushedCount++
           } else if (delRes.status === 412) {
             this.db.prepare('UPDATE events SET has_conflict = 1 WHERE id = ?').run(row.id)
@@ -573,6 +585,38 @@ export class MicrosoftSyncEngine {
             errorCount++
           }
         } else {
+          let etag = row.etag
+          // A move to another of this account's calendars. Graph cannot move an
+          // event: the PATCH below left it in the old calendar, and the next
+          // listing of each calendar undid the move. So the old copy is deleted
+          // and the event created again here - in that order, as Graph picks the
+          // new id: a create that landed before a failed delete could not be
+          // retried without a second copy, while a row whose old copy is gone is
+          // just a new event, created on this pass or the next. (A meeting with
+          // guests never gets here: see calendarMoveBlock.)
+          if (row.moved_from_calendar_id && row.moved_from_calendar_id !== calendarId) {
+            const delRes = await fetchWithTimeout(`${GRAPH_BASE}/me/events/${encodeURIComponent(eventId)}`, {
+              method: 'DELETE',
+              headers: ifMatch
+                ? { Authorization: `Bearer ${accessToken}`, 'if-match': ifMatch }
+                : { Authorization: `Bearer ${accessToken}` }
+            })
+            if (delRes.status === 412) {
+              // Changed in the old calendar since: the user decides.
+              this.db.prepare('UPDATE events SET has_conflict = 1 WHERE id = ?').run(row.id)
+              errorCount++
+              continue
+            }
+            if (!delRes.ok && delRes.status !== 404) {
+              lastError = await describeHttpFailure(delRes)
+              errorCount++
+              continue
+            }
+            this.eventsRepo.forgetMovedCopy(row.id)
+            etag = null
+            eventId = row.id
+          }
+
           const payload = mapDomainEventToGraph({
             id: row.id,
             calendarId: row.calendar_id,
@@ -588,13 +632,13 @@ export class MicrosoftSyncEngine {
             reminders: parseRemindersJson(row.reminders),
             // Only a list known to be complete; see mapDomainEventToGraph.
             attendees:
-              row.attendees_synced === 1 || !row.etag
+              row.attendees_synced === 1 || !etag
                 ? this.eventsRepo.getEventById(row.id)?.event.attendees ?? []
                 : undefined
           })
 
           let res: Response
-          if (row.etag) {
+          if (etag) {
             // PATCH existing
             res = await fetchWithTimeout(`${GRAPH_BASE}/me/events/${encodeURIComponent(eventId)}`, {
               method: 'PATCH',
@@ -603,7 +647,7 @@ export class MicrosoftSyncEngine {
                 'Content-Type': 'application/json',
                 // Graph honours the precondition only as a header; without it
                 // the 412 branch below is unreachable.
-                'if-match': row.etag
+                ...(ifMatch ? { 'if-match': ifMatch } : {})
               },
               body: JSON.stringify(payload)
             })
@@ -621,18 +665,16 @@ export class MicrosoftSyncEngine {
 
           if (res.ok) {
             const resJson = await res.json()
-            const now = new Date().toISOString()
             // Ours stays ours; only the provider's id is recorded.
-            this.db
-              .prepare(
-                `UPDATE events
-                 SET provider_event_id = ?, etag = ?, dirty = 0, has_conflict = 0, updated_at = ?
-                 WHERE id = ?`
-              )
-              .run(resJson.id || eventId, resJson['@odata.etag'] || row.etag, now, row.id)
-            // The response is the event as Graph now holds it, guests and all.
+            const unchanged = this.eventsRepo.markEventPushed(row.id, {
+              providerEventId: resJson.id || eventId,
+              etag: resJson['@odata.etag'] || etag,
+              sentUpdatedAt: row.updated_at
+            })
+            // The response is the event as Graph now holds it, guests and all -
+            // but a guest list edited while the request was out is newer than that.
             if (Array.isArray(resJson.attendees)) {
-              if (!row.rsvp_pending) {
+              if (unchanged && !row.rsvp_pending) {
                 this.eventsRepo.replaceAttendees(row.id, graphAttendeesToDomain(resJson, selfEmail))
               }
               this.db.prepare('UPDATE events SET attendees_synced = 1 WHERE id = ?').run(row.id)
@@ -728,7 +770,7 @@ export class MicrosoftSyncEngine {
 
         // A cancelled instance that is already gone counts as delivered.
         if (res.ok || res.status === 204 || res.status === 404) {
-          this.eventsRepo.markExceptionSynced(exception.id, instanceId, null)
+          this.eventsRepo.markExceptionSynced(exception.id, instanceId, null, exception.updatedAt)
           pushedCount++
         } else {
           errorCount++

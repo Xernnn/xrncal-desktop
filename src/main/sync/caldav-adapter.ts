@@ -308,6 +308,18 @@ ${refs.join('\n')}
     return { success: true, etag: newEtag, href: eventUrl, body: icsContent }
   }
 
+  /** PUT a resource as it is written - no generating, no merging; `etag`
+   *  makes it conditional. */
+  async putIcs(href: string, ics: string, etag?: string): Promise<{ success: boolean; etag?: string; conflict?: boolean }> {
+    const res = await this.request(href, 'PUT', ics, {
+      'Content-Type': 'text/calendar; charset=utf-8',
+      ...(etag ? { 'If-Match': etag } : {})
+    })
+    if (res.status === 412) return { success: false, conflict: true }
+    if (!res.ok) throw new Error(`CalDAV PUT failed: HTTP ${res.status}`)
+    return { success: true, etag: res.headers.get('ETag') || undefined }
+  }
+
   /**
    * Delete an event from CalDAV collection via DELETE. `href` is where the
    * server keeps it; without one the UID-named address xrncal itself uses.

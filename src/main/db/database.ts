@@ -439,7 +439,7 @@ UPDATE sync_state SET sync_token = NULL;
  * and VACUUM INTO keep those), is touched only when a title, notes or location
  * actually changes, and folds diacritics, so "gio" finds "Giỗ".
  */
-const MIGRATION_019_SQL = `
+export const MIGRATION_019_SQL = `
 DROP TRIGGER IF EXISTS trg_events_fts_insert;
 DROP TRIGGER IF EXISTS trg_events_fts_update;
 DROP TRIGGER IF EXISTS trg_events_fts_delete;
@@ -530,9 +530,103 @@ WHERE all_day IS NULL
   AND NOT (dtstart_utc LIKE '%T00:00:00.000Z' AND dtend_utc LIKE '%T23:59:59.999Z');
 `
 
-/** The newest migration this build knows. Raise it with every new one: a
- *  restore refuses a backup made by a build with a newer schema. */
-export const SCHEMA_VERSION = 22
+/**
+ * "Keep mine" on a sync conflict, waiting to go out. Resolving one used to
+ * clear the etag, and every engine reads a missing etag as "never pushed":
+ * Google and Outlook created the event a second time (inviting its guests
+ * again, with the original left on the server), and the guest list was sent
+ * whole even when it had never been read here. The etag now stays, so the row
+ * is still the provider's event, and this says its next push goes without
+ * If-Match - overwriting, or deleting, whatever the provider has now.
+ */
+const MIGRATION_023_SQL = `
+ALTER TABLE events ADD COLUMN keep_mine INTEGER NOT NULL DEFAULT 0;
+`
+
+/**
+ * Moves to another account's calendar, made before they were refused (see
+ * calendarMoveBlock). The account an event went to cannot reach its old copy:
+ * each push addressed an id that calendar had never issued - Google's move
+ * endpoint was handed a CalDAV URL - and failed on every sync, while the old
+ * account's pull brought the original back. Each such row becomes a new event
+ * in the calendar it was moved to, which is what a copy is; the original stays
+ * where it was. An invitation from someone else goes without its guest list,
+ * as an undone delete does (EventsRepo.restoreEvent): with it, the copy would
+ * make this account the organizer and invite every guest again. A move whose
+ * old calendar is gone altogether counts as one across accounts.
+ */
+export const MIGRATION_024_SQL = `
+CREATE TEMP TABLE moved_across AS
+SELECT e.id FROM events e
+WHERE e.moved_from_calendar_id IS NOT NULL
+  AND (SELECT account_id FROM calendars WHERE id = e.moved_from_calendar_id)
+      IS NOT (SELECT account_id FROM calendars WHERE id = e.calendar_id);
+
+UPDATE event_exceptions SET provider_instance_id = NULL, etag = NULL, dirty = 1
+WHERE master_event_id IN (SELECT id FROM moved_across);
+
+DELETE FROM attendees
+WHERE event_id IN (SELECT id FROM moved_across)
+  AND event_id IN (SELECT event_id FROM attendees WHERE is_self = 1 AND is_organizer = 0);
+
+UPDATE events
+SET provider_event_id = NULL, etag = NULL, moved_from_calendar_id = NULL, keep_mine = 0, has_conflict = 0, dirty = 1
+WHERE id IN (SELECT id FROM moved_across);
+
+DROP TABLE moved_across;
+`
+
+/**
+ * A CalDAV resource can hold only RECURRENCE-ID components: an invitation to
+ * one or a few dates of someone else's series, which a scheduling server
+ * delivers without the series. The pull dropped those dates, having no series
+ * to put them on. Each is now an event of its own, and `recurrence_id` is the
+ * date it stands for (its RECURRENCE-ID): a push answers it inside the
+ * server's copy of the resource instead of writing a plain event over it.
+ * Several dates share one resource, so the unique index on the provider's id
+ * now counts the date too.
+ */
+const MIGRATION_025_SQL = `
+ALTER TABLE events ADD COLUMN recurrence_id TEXT;
+
+DROP INDEX IF EXISTS idx_events_provider_id;
+CREATE UNIQUE INDEX idx_events_provider_id
+  ON events(calendar_id, provider_event_id, COALESCE(recurrence_id, ''))
+  WHERE provider_event_id IS NOT NULL;
+`
+
+/** Every migration in order: the one at index i is version i + 1. */
+const MIGRATIONS: readonly string[] = [
+  MIGRATION_001_SQL,
+  MIGRATION_002_SQL,
+  MIGRATION_003_SQL,
+  MIGRATION_004_SQL,
+  MIGRATION_005_SQL,
+  MIGRATION_006_SQL,
+  MIGRATION_007_SQL,
+  MIGRATION_008_SQL,
+  MIGRATION_009_SQL,
+  MIGRATION_010_SQL,
+  MIGRATION_011_SQL,
+  MIGRATION_012_SQL,
+  MIGRATION_013_SQL,
+  MIGRATION_014_SQL,
+  MIGRATION_015_SQL,
+  MIGRATION_016_SQL,
+  MIGRATION_017_SQL,
+  MIGRATION_018_SQL,
+  MIGRATION_019_SQL,
+  MIGRATION_020_SQL,
+  MIGRATION_021_SQL,
+  MIGRATION_022_SQL,
+  MIGRATION_023_SQL,
+  MIGRATION_024_SQL,
+  MIGRATION_025_SQL
+]
+
+/** The newest migration this build knows: a restore refuses a backup made by
+ *  a build with a newer schema. */
+export const SCHEMA_VERSION = MIGRATIONS.length
 
 /**
  * Execute all schema migrations in order
@@ -548,182 +642,22 @@ export function runMigrations(db: ISqliteDatabase): void {
 
   const row = db.prepare('SELECT MAX(version) as max_version FROM schema_migrations').get<{ max_version: number | null }>()
   const currentVersion = row?.max_version ?? 0
+  const record = db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)')
 
-  if (currentVersion < 1) {
-    db.exec(MIGRATION_001_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      1,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 2) {
-    db.exec(MIGRATION_002_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      2,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 3) {
-    db.exec(MIGRATION_003_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      3,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 4) {
-    db.exec(MIGRATION_004_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      4,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 5) {
-    db.exec(MIGRATION_005_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      5,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 6) {
-    db.exec(MIGRATION_006_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      6,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 7) {
-    db.exec(MIGRATION_007_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      7,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 8) {
-    db.exec(MIGRATION_008_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      8,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 9) {
-    db.exec(MIGRATION_009_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      9,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 10) {
-    db.exec(MIGRATION_010_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      10,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 11) {
-    db.exec(MIGRATION_011_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      11,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 12) {
-    db.exec(MIGRATION_012_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      12,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 13) {
-    db.exec(MIGRATION_013_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      13,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 14) {
-    db.exec(MIGRATION_014_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      14,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 15) {
-    db.exec(MIGRATION_015_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      15,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 16) {
-    db.exec(MIGRATION_016_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      16,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 17) {
-    db.exec(MIGRATION_017_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      17,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 18) {
-    db.exec(MIGRATION_018_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      18,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 19) {
-    db.exec(MIGRATION_019_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      19,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 20) {
-    db.exec(MIGRATION_020_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      20,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 21) {
-    db.exec(MIGRATION_021_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      21,
-      new Date().toISOString()
-    )
-  }
-
-  if (currentVersion < 22) {
-    db.exec(MIGRATION_022_SQL)
-    db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)').run(
-      22,
-      new Date().toISOString()
-    )
-  }
+  // Each migration commits together with the row that records it. Run
+  // statement by statement, a migration the app was closed (or crashed) in the
+  // middle of stayed half applied with no version recorded - 007 adds three
+  // columns - so the next start ran it again, failed on the first column that
+  // was already there, and the app never opened again. SQLite rolls the
+  // schema changes back with everything else.
+  MIGRATIONS.forEach((sql, index) => {
+    const version = index + 1
+    if (version <= currentVersion) return
+    db.transaction(() => {
+      db.exec(sql)
+      record.run(version, new Date().toISOString())
+    })()
+  })
 }
 
 /**

@@ -1,7 +1,8 @@
-import { DateTime, IANAZone } from 'luxon'
+import { DateTime } from 'luxon'
 import { boundedBetween, type ExpansionBudget } from './bounded-rrule'
 import type { CalendarEvent, EventException, ExpandedOccurrence } from './event-model'
 import { resolveLunarOccurrence } from './lunar-vietnam'
+import { ianaZoneFor } from './windows-time-zones'
 
 /**
  * Expand a master calendar event and its exceptions into concrete occurrences
@@ -203,8 +204,12 @@ function expandRruleOccurrences(
     // CalDAV (birthdays, payments) showed once. A timed series in such a zone
     // was read in this computer's zone, so that is where it repeats; one with
     // no zone at all repeats in UTC, as it always has.
-    const zone =
-      event.allDay || !event.tzid ? 'utc' : IANAZone.isValidZone(event.tzid) ? event.tzid : 'local'
+    //
+    // Exchange and Outlook name zones the Windows way ("W. Europe Standard
+    // Time"), which is no IANA zone; read in this computer's zone, a Berlin
+    // meeting viewed from Vietnam sat an hour off for half the year. Those
+    // names are translated first.
+    const zone = event.allDay || !event.tzid ? 'utc' : (ianaZoneFor(event.tzid) ?? 'local')
     const toWallClockUtc = (dt: DateTime): Date =>
       new Date(
         Date.UTC(
@@ -233,12 +238,24 @@ function expandRruleOccurrences(
 
     const masterLocal = masterStart.setZone(zone)
     const dtstartWall = toWallClockUtc(masterLocal)
-    const dtstartUtcStr = DateTime.fromJSDate(dtstartWall, { zone: 'utc' }).toFormat(
-      "yyyyMMdd'T'HHmmss'Z'"
+    const wallStamp = (d: Date): string =>
+      DateTime.fromJSDate(d, { zone: 'utc' }).toFormat("yyyyMMdd'T'HHmmss'Z'")
+
+    // UNTIL is the one part of a rule that is a real instant: RFC 5545 makes it
+    // UTC whenever the start has a zone, and "this and following" writes it as
+    // the second before the cut. Everything else here is wall clock dressed as
+    // UTC, so UNTIL moves into the same space. Left as it was, a New York series
+    // cut at 08:59:59 local (12:59:59Z) still showed its 09:00 that day, and a
+    // Ho Chi Minh series ending at its last 09:00 (02:00Z) lost that occurrence.
+    const inWallClock = (rule: string): string =>
+      rule.replace(/UNTIL=(\d{8}T\d{6})Z/gi, (whole, stamp: string) => {
+        const until = DateTime.fromFormat(stamp, "yyyyMMdd'T'HHmmss", { zone: 'utc' })
+        return until.isValid ? `UNTIL=${wallStamp(toWallClockUtc(until.setZone(zone)))}` : whole
+      })
+
+    const ruleString = inWallClock(
+      rrule.includes('DTSTART') ? rrule : `DTSTART:${wallStamp(dtstartWall)}\nRRULE:${rrule}`
     )
-    const ruleString = rrule.includes('DTSTART')
-      ? rrule
-      : `DTSTART:${dtstartUtcStr}\nRRULE:${rrule}`
 
     // Expand between rangeStart and rangeEnd, in the same wall-clock space.
     // Expand a bit earlier/later to account for duration overlap.

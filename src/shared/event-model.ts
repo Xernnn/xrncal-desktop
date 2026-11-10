@@ -76,6 +76,36 @@ export function invitationSelf(attendees: readonly Attendee[] | undefined): Atte
   return self && !self.isOrganizer ? self : undefined
 }
 
+/** Why an event may not go to another calendar (see calendarMoveBlock). */
+export type CalendarMoveBlock = 'otherAccount' | 'invitation' | 'meeting'
+
+/**
+ * Whether an event may move to a calendar of `to`'s account, and why not when
+ * it may not; `from` is the account of the calendar it is in now.
+ *
+ * An event a provider has lives in a calendar there, so moving it is the
+ * provider's to do: Google moves it, CalDAV and Outlook copy it into the new
+ * calendar and delete the old one. No engine reaches another account's
+ * calendar - that would be a create in one place and a delete in another,
+ * made by two engines with nothing to tie them together - so the move stays
+ * within the account, and a copy is the way to another. Someone else's
+ * invitation stays in the calendar it was sent to: a copy of it would be a new
+ * event this account organizes. And a meeting with guests moves only on
+ * Google; anywhere else the copy and delete would cancel it for every guest
+ * and invite them all again.
+ */
+export function calendarMoveBlock(
+  event: Pick<CalendarEvent, 'etag' | 'providerEventId' | 'attendees'>,
+  from: { accountId: string; provider?: string },
+  to: { accountId: string }
+): CalendarMoveBlock | undefined {
+  // Not on a provider yet: it is created wherever it lands.
+  if (!event.etag && !event.providerEventId) return undefined
+  if (invitationSelf(event.attendees)) return 'invitation'
+  if (from.provider !== 'google' && event.attendees?.some((a) => !a.isOrganizer && !a.isSelf)) return 'meeting'
+  return from.accountId === to.accountId ? undefined : 'otherAccount'
+}
+
 /**
  * Compact spec for an anniversary that repeats on the same Vietnamese lunar
  * (âm lịch) date every year — e.g. a death anniversary (giỗ). Stored as JSON in
@@ -128,6 +158,9 @@ export interface SyncConflict {
   calendarName: string
   title: string
   updatedAt: string
+  /** Deleted here, changed on the server: "keep mine" deletes it there too,
+   *  "keep theirs" brings it back. */
+  deletedHere: boolean
 }
 
 export interface EventException {

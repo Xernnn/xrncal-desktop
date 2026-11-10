@@ -182,6 +182,43 @@ export function parseCalDavMultistatus(xml: string, baseUrl: string): CalDavCale
 }
 
 /**
+ * Domains that hand out names to strangers - what the Public Suffix List calls
+ * public suffixes - which a CalDAV server is often found under: dynamic DNS,
+ * NAS makers' remote-access names, tunnels and hosting platforms. Not the whole
+ * list (the app carries no copy of it), so a suffix missing here is still
+ * caught if it is a country's own second level (`isSharedSuffix`). An entry
+ * that is not a real suffix only costs a 401 from a sibling host; a real one
+ * missing would hand one user's password to another's server.
+ */
+const SHARED_SUFFIXES = new Set([
+  // Dynamic DNS
+  'duckdns.org', 'dedyn.io', 'nsupdate.info', 'dynv6.net', 'dynu.net', 'freeddns.org', 'mywire.org',
+  'ddns.net', 'hopto.org', 'zapto.org', 'sytes.net', 'myftp.org', 'no-ip.org', 'no-ip.biz', 'no-ip.info',
+  'noip.me', 'dyndns.org', 'dyndns.biz', 'dyndns.info', 'homeip.net', 'homelinux.com', 'homelinux.net',
+  'homelinux.org', 'mooo.com', 'us.to', 'ddnss.de', 'spdns.de', 'spdns.org', 'afraid.org',
+  // Routers and NAS boxes
+  'myfritz.net', 'synology.me', 'diskstation.me', 'dscloud.me', 'myds.me', 'dsmynas.com', 'familyds.com',
+  'i234.me', 'myqnapcloud.com', 'asuscomm.com', 'tplinkdns.com', 'myasustor.com',
+  // Tunnels and hosting
+  'ts.net', 'ui.nabu.casa', 'ngrok.io', 'ngrok.app', 'ngrok-free.app', 'loca.lt', 'trycloudflare.com',
+  'github.io', 'gitlab.io', 'netlify.app', 'vercel.app', 'pages.dev', 'workers.dev', 'herokuapp.com',
+  'onrender.com', 'fly.dev', 'azurewebsites.net', 'cloudapp.net', 'appspot.com', 'web.app', 'firebaseapp.com'
+])
+
+/** The labels that make a country's second level - co.uk, com.au, com.vn, ac.jp. */
+const COUNTRY_SECOND_LEVEL = new Set([
+  'ac', 'biz', 'co', 'com', 'edu', 'gen', 'go', 'gob', 'gov', 'info', 'int', 'ltd', 'me', 'mil', 'ne', 'net',
+  'nic', 'nom', 'or', 'org', 'plc', 'sch'
+])
+
+/** Whether every name directly under `domain` may belong to someone different. */
+function isSharedSuffix(domain: string): boolean {
+  const labels = domain.split('.')
+  if (labels.length < 2 || SHARED_SUFFIXES.has(domain)) return true
+  return labels.length === 2 && /^[a-z]{2}$/.test(labels[1]) && COUNTRY_SECOND_LEVEL.has(labels[0])
+}
+
+/**
  * Whether the account's password may go with a request to `requestUrl`.
  *
  * A server hands back addresses of its own - the calendar home, each event's
@@ -189,7 +226,9 @@ export function parseCalDavMultistatus(xml: string, baseUrl: string): CalDavCale
  * a hostile or tampered-with server could point one at another host and
  * collect it. It goes to the account's host and to others in the same domain
  * (iCloud answers from pNN-caldav.icloud.com), and never over plain HTTP when
- * the account is HTTPS.
+ * the account is HTTPS. "The same domain" is never a shared suffix:
+ * alice.duckdns.org and bob.duckdns.org, or x.co.uk and y.co.uk, are two
+ * strangers' servers.
  */
 export function mayCarryCredentials(accountUrl: string, requestUrl: string): boolean {
   let account: URL
@@ -209,5 +248,6 @@ export function mayCarryCredentials(accountUrl: string, requestUrl: string): boo
   const labels = host.split('.')
   if (/^\d+\.\d+\.\d+\.\d+$/.test(host) || host.includes(':') || labels.length < 3) return false
   const domain = labels.slice(1).join('.')
+  if (isSharedSuffix(domain)) return false
   return other === domain || other.endsWith(`.${domain}`)
 }
