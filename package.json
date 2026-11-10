@@ -69,5 +69,16 @@
     "typescript-eslint": "^8.70.0",
     "vite": "^8.3.4",
     "vitest": "^5.0.5"
+  },
+  "overrides": {
+    "app-builder-lib": {
+      "minimatch@>=7.0.0 <11.0.1": "^11.0.1"
+    },
+    "eslint": {
+      "minimatch@>=7.0.0 <11.0.1": "^11.0.1"
+    },
+    "@typescript-eslint/typescript-estree": {
+      "minimatch@>=7.0.0 <11.0.1": "^11.0.1"
+    }
   }
 }
