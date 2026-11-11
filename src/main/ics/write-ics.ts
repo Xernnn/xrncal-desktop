@@ -210,7 +210,10 @@ export function generateIcs(
     // URL and COLOR are both RFC-defined (5545 / 7986) and round-trip through
     // CalDAV servers, so a meeting link or per-event colour survives a push.
     if (event.meetingUrl) {
-      lines.push(`URL:${escapeIcsText(event.meetingUrl)}`)
+      // A URI, not text: escaped like the title, a link with a comma or a
+      // semicolon in it (a map link's "@10.77,106.70") reached the server with
+      // backslashes, which no reader takes out again - this one included.
+      lines.push(`URL:${event.meetingUrl.replace(LINE_BREAK, '')}`)
     }
     if (event.color) {
       lines.push(`COLOR:${escapeIcsText(event.color)}`)
