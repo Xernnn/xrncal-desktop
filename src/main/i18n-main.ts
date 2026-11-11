@@ -38,7 +38,10 @@ const STRINGS: Record<MainLocale, Record<string, string>> = {
     'oauth.canCloseShort': 'You can close this tab.',
     'oauth.profileFailed': 'Signed in, but your account details could not be read (HTTP {status}). Please try again.',
     'oauth.timeout.google': 'Google authentication timed out (5 minutes). Please try again.',
-    'oauth.timeout.microsoft': 'Microsoft authentication timed out (5 minutes). Please try again.'
+    'oauth.timeout.microsoft': 'Microsoft authentication timed out (5 minutes). Please try again.',
+    'startup.dbFailedTitle': 'xrncal could not open your calendar',
+    'startup.dbFailedBody': 'The database {path} could not be opened, so xrncal will close.',
+    'startup.dbFailedLog': 'The log has the details: {path}'
   },
   vi: {
     'tray.openMain': 'Mở xrncal',
@@ -67,7 +70,10 @@ const STRINGS: Record<MainLocale, Record<string, string>> = {
     'oauth.canCloseShort': 'Bạn có thể đóng tab này.',
     'oauth.profileFailed': 'Đã đăng nhập nhưng không đọc được thông tin tài khoản (HTTP {status}). Vui lòng thử lại.',
     'oauth.timeout.google': 'Quá thời gian xác thực Google (5 phút). Vui lòng thử lại.',
-    'oauth.timeout.microsoft': 'Quá thời gian xác thực Microsoft (5 phút). Vui lòng thử lại.'
+    'oauth.timeout.microsoft': 'Quá thời gian xác thực Microsoft (5 phút). Vui lòng thử lại.',
+    'startup.dbFailedTitle': 'xrncal không mở được lịch của bạn',
+    'startup.dbFailedBody': 'Không mở được cơ sở dữ liệu {path}, nên xrncal sẽ đóng lại.',
+    'startup.dbFailedLog': 'Chi tiết có trong nhật ký: {path}'
   }
 }
 

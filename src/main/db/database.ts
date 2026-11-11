@@ -683,6 +683,11 @@ export function seedDefaultData(db: ISqliteDatabase): void {
   }
 }
 
+/** The database file initDatabase() opens for a profile folder (or a file path given as is). */
+export function databaseFilePath(dbDirOrPath: string): string {
+  return dbDirOrPath === ':memory:' ? ':memory:' : dbDirOrPath.endsWith('.sqlite') || dbDirOrPath.endsWith('.db') ? dbDirOrPath : join(dbDirOrPath, 'xrncal.sqlite')
+}
+
 /**
  * Initialize SQLite database
  */
@@ -691,7 +696,7 @@ export function initDatabase(dbDirOrPath: string): ISqliteDatabase {
     return dbInstance
   }
 
-  const dbPath = dbDirOrPath === ':memory:' ? ':memory:' : dbDirOrPath.endsWith('.sqlite') || dbDirOrPath.endsWith('.db') ? dbDirOrPath : join(dbDirOrPath, 'xrncal.sqlite')
+  const dbPath = databaseFilePath(dbDirOrPath)
   const db = createSqliteDriver(dbPath)
 
   runMigrations(db)
