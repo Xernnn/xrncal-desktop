@@ -173,8 +173,9 @@ function mapRowToException(row: ExceptionRow): EventException {
     originalStartUtc: row.original_start_utc,
     isCancelled: row.is_cancelled === 1,
     title: row.title || undefined,
-    notes: row.notes || undefined,
-    location: row.location || undefined,
+    // NULL is the series' text; '' is none, removed from this occurrence alone.
+    notes: row.notes ?? undefined,
+    location: row.location ?? undefined,
     dtStartUtc: row.dtstart_utc || undefined,
     dtEndUtc: row.dtend_utc || undefined,
     tzid: row.tzid || undefined,
@@ -804,8 +805,8 @@ export class EventsRepo {
         .run(
           isCancelled,
           exception.title || null,
-          exception.notes || null,
-          exception.location || null,
+          exception.notes ?? null,
+          exception.location ?? null,
           exception.dtStartUtc || null,
           exception.dtEndUtc || null,
           exception.tzid || null,
@@ -829,8 +830,8 @@ export class EventsRepo {
           exception.originalStartUtc,
           isCancelled,
           exception.title || null,
-          exception.notes || null,
-          exception.location || null,
+          exception.notes ?? null,
+          exception.location ?? null,
           exception.dtStartUtc || null,
           exception.dtEndUtc || null,
           exception.tzid || null,
@@ -1603,13 +1604,16 @@ export class EventsRepo {
       ) {
         this.updateEvent(input.masterEventId, { attendees: input.updateInput.attendees })
       }
+      // The editor leaves out a text field that was empty when it opened and
+      // still is; on an occurrence that had it removed, that is still removed.
+      const own = master.exceptions.find((ex) => ex.originalStartUtc === input.originalStartUtc)
       this.upsertException({
         masterEventId: input.masterEventId,
         originalStartUtc: input.originalStartUtc,
         isCancelled: false,
         title: input.updateInput.title,
-        notes: input.updateInput.notes,
-        location: input.updateInput.location,
+        notes: input.updateInput.notes ?? own?.notes,
+        location: input.updateInput.location ?? own?.location,
         dtStartUtc: input.updateInput.dtStartUtc,
         dtEndUtc: input.updateInput.dtEndUtc,
         tzid: input.updateInput.tzid,

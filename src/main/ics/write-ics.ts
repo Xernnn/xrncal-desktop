@@ -279,11 +279,15 @@ export function generateIcs(
       }
 
       lines.push(`SUMMARY:${escapeIcsText(ex.title || event.title)}`)
-      if (ex.notes || event.notes) {
-        lines.push(`DESCRIPTION:${escapeIcsText(ex.notes || event.notes || '')}`)
+      // An override is a whole event, so it carries the series' text unless it
+      // has its own - '' being none, removed from this occurrence alone.
+      const notes = ex.notes ?? event.notes
+      const location = ex.location ?? event.location
+      if (notes) {
+        lines.push(`DESCRIPTION:${escapeIcsText(notes)}`)
       }
-      if (ex.location || event.location) {
-        lines.push(`LOCATION:${escapeIcsText(ex.location || event.location || '')}`)
+      if (location) {
+        lines.push(`LOCATION:${escapeIcsText(location)}`)
       }
       pushAttendeeLines(lines, event.attendees)
       pushAlarmLines(lines, event.reminders, ex.title || event.title)

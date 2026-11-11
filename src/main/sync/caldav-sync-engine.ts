@@ -461,6 +461,14 @@ export class CalDavSyncEngine {
       if (!masterId) continue
       if (!listed.has(masterId)) listed.set(masterId, new Set())
       listed.get(masterId)!.add(exc.originalStartUtc)
+      // An override is a whole event: one without the DESCRIPTION or LOCATION
+      // its series has has none ('', removed from that occurrence alone).
+      // Stored as NULL, it took the series' text back on every pull.
+      const series = this.db
+        .prepare('SELECT notes, location FROM events WHERE id = ?')
+        .get<{ notes: string | null; location: string | null }>(masterId)
+      const own = (text: string | undefined, seriesText: string | null | undefined): string | null =>
+        text || (seriesText ? '' : null)
 
       this.db
         .prepare(
@@ -488,8 +496,8 @@ export class CalDavSyncEngine {
           exc.originalStartUtc,
           exc.isCancelled ? 1 : 0,
           exc.title || null,
-          exc.notes || null,
-          exc.location || null,
+          exc.isCancelled ? null : own(exc.notes, series?.notes),
+          exc.isCancelled ? null : own(exc.location, series?.location),
           exc.dtStartUtc || null,
           exc.dtEndUtc || null,
           exc.tzid || null,
