@@ -22,6 +22,7 @@ import type {
   SyncConflict
 } from './event-model'
 import type { SuggestTitlesOptions, TitleSuggestion } from './title-suggestions'
+import type { LocationSuggestion } from './location-suggestions'
 import type { AppSettings } from './settings-contract'
 import type { OAuthClientForm, OAuthClientInfo, OAuthProvider } from './oauth-client'
 
@@ -93,6 +94,7 @@ export const IPC_CHANNELS = {
     DETACH_LUNAR: 'xrncal:event:detach-lunar',
     SEARCH: 'xrncal:event:search',
     SUGGEST_TITLES: 'xrncal:event:suggest-titles',
+    SUGGEST_LOCATIONS: 'xrncal:event:suggest-locations',
     SHARE_ICS: 'xrncal:event:share-ics',
     LIST_CONFLICTS: 'xrncal:event:list-conflicts',
     RESOLVE_CONFLICT: 'xrncal:event:resolve-conflict',
@@ -290,6 +292,10 @@ export interface XrncalAPI {
     /** Ranked title autocomplete for the event editor, with the calendar each
      *  title normally lives on. */
     suggestTitles: (options: SuggestTitlesOptions) => Promise<TitleSuggestion[]>
+    /** The places used before that match what is typed in the editor's
+     *  Location field, the ones used lately and often first. None for an
+     *  empty `query`. */
+    suggestLocations: (options: { query: string; limit?: number }) => Promise<LocationSuggestion[]>
     shareIcs: (eventId: string) => Promise<{ success: boolean; filePath?: string; icsContent?: string; message?: string }>
     listConflicts: () => Promise<SyncConflict[]>
     resolveConflict: (eventId: string, resolution: 'keepMine' | 'keepTheirs') => Promise<boolean>

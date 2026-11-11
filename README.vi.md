@@ -246,6 +246,7 @@ Khi có sự cố, **Cài đặt → Mở tệp nhật ký** mở thư mục ch�
 - Nhắc nhở cho từng sự kiện (kể cả cả ngày), có báo lại và nút Tham gia
 - Theme sáng / tối / theo hệ thống, ảnh nền tuỳ chỉnh
 - Tìm kiếm không cần gõ dấu ("hop" ra "họp"), gợi ý tiêu đề từ lịch sử của bạn
+- Ô Địa điểm gợi ý những nơi bạn đã dùng khi đang gõ, không cần gõ dấu ("ca phe" ra "Cà phê")
 - Mỗi sự kiện có thể có múi giờ và màu riêng, giữ nguyên khi đồng bộ CalDAV hay xuất .ics; sự kiện lưu không kèm múi giờ (như bản xuất của Google) mở theo múi giờ nơi bạn ở vào ngày đó
 - Nhập `.ics` (trong Cài đặt, kéo tệp vào cửa sổ, hoặc *Mở bằng xrncal*) và xuất từng lịch; sao lưu và khôi phục dữ liệu
 - Gỡ tài khoản mà vẫn giữ lại sự kiện

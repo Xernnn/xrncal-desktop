@@ -19,6 +19,7 @@ import type {
 } from '@shared/event-model'
 import { calendarMoveBlock, invitationSelf } from '@shared/event-model'
 import type { TitleSample } from '@shared/title-suggestions'
+import type { LocationSample } from '@shared/location-suggestions'
 import { parseRemindersJson, serializeReminders, type EventReminder } from '@shared/reminders'
 import { resolveLunarOccurrence } from '@shared/lunar-vietnam'
 import { expandOccurrences } from '@shared/expand-occurrences'
@@ -1987,6 +1988,31 @@ export class EventsRepo {
       location: r.location,
       rrule: r.rrule
     }))
+  }
+
+  /**
+   * The places of recent events, for the Location field's autocomplete: every
+   * event with one, newest first, the same way as the title samples above -
+   * series whatever their start, and nothing from a read-only calendar, whose
+   * places (a holiday feed's, a subscribed fixture list's) the user never
+   * typed.
+   */
+  listLocationSamples(windowStartUtc: string, windowEndUtc: string, limit = 1500): LocationSample[] {
+    const rows = this.db
+      .prepare(
+        `SELECT e.location, e.dtstart_utc, e.rrule
+         FROM events e
+         JOIN calendars c ON c.id = e.calendar_id
+         WHERE e.is_deleted = 0
+           AND c.is_read_only = 0
+           AND TRIM(COALESCE(e.location, '')) <> ''
+           AND (e.rrule IS NOT NULL OR (e.dtstart_utc >= ? AND e.dtstart_utc <= ?))
+         ORDER BY e.dtstart_utc DESC
+         LIMIT ?`
+      )
+      .all<{ location: string; dtstart_utc: string; rrule: string | null }>(windowStartUtc, windowEndUtc, limit)
+
+    return rows.map((r) => ({ location: r.location, startUtc: r.dtstart_utc, rrule: r.rrule }))
   }
 
   /** Whether this profile holds any event at all (deleted ones aside). */

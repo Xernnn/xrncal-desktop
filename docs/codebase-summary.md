@@ -98,7 +98,7 @@ xrncal/
 │   │       │   ├── KeyboardShortcutsModal.tsx
 │   │       │   ├── SearchPaletteModal.tsx
 │   │       │   └── ErrorBoundary.tsx
-│   │       ├── editor/          # EventEditorDialog, RecurringScopeDialog, TitleSuggestInput, ReminderListField
+│   │       ├── editor/          # EventEditorDialog, RecurringScopeDialog, TitleSuggestInput, LocationSuggestInput, ReminderListField
 │   │       ├── print/           # PrintDialog (Ctrl+P: week or month, preview, print / save as PDF), PrintSheet (the page)
 │   │       ├── dnd/             # Drag and drop: use-event-dnd.ts, drop-target.ts, DropActionPopover.tsx
 │   │       ├── mini/            # MiniApp.tsx (companion window renderer)
@@ -120,6 +120,8 @@ xrncal/
 │       ├── all-day.ts           # Floating-date vs instant: inclusive/exclusive ends, day keys
 │       ├── occurrence-order.ts  # Within-day ordering (all-day first, then by time)
 │       ├── title-suggestions.ts # Ranking for the event-title autocomplete
+│       ├── location-suggestions.ts # Ranking for the Location field's autocomplete (places used before)
+│       ├── text-fold.ts         # Accent- and case-insensitive text for matching ("ca phe" finds "Cà phê")
 │       ├── event-length.ts      # How long a new event is when it was started without a range (defaultEventMinutes)
 │       ├── expand-occurrences.ts # RRULE + exception expansion
 │       ├── bounded-rrule.ts     # Limits on what expanding one rule may cost
@@ -188,7 +190,7 @@ xrncal/
 | `sync` | `triggerNow`, `getStatus`, `onChanged` |
 | `reminders` | `listActive`, `dismiss`, `snooze`, `onChanged` |
 | `calendars` | `list`, `create`, `update`, `delete` |
-| `events` | `queryRange`, `getById`, `create`, `update`, `delete`, `move`, `copy`, `updateScope`, `deleteScope`, `upsertException`, `materializeLunar`, `detachLunar`, `search`, `suggestTitles`, `shareIcs`, `listConflicts`, `resolveConflict`, `respond`, `restore` |
+| `events` | `queryRange`, `getById`, `create`, `update`, `delete`, `move`, `copy`, `updateScope`, `deleteScope`, `upsertException`, `materializeLunar`, `detachLunar`, `search`, `suggestTitles`, `suggestLocations`, `shareIcs`, `listConflicts`, `resolveConflict`, `respond`, `restore` |
 | `ics` | `importIcs`, `exportIcs` (save dialog), `takeOpenedFiles`, `onFileOpened` |
 | `mini` | `openMain`, `toggle`, `getUpcoming`, `setAlwaysOnTop` |
 | `holidays` | `subscribe`, `unsubscribe` |

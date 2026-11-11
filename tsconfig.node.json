@@ -62,6 +62,7 @@
     "tests/context-menu-slot.test.ts",
     "tests/long-event-views.test.ts",
     "tests/slot-drag-select.test.ts",
-    "tests/settings-event-length.test.ts"
+    "tests/settings-event-length.test.ts",
+    "tests/location-suggest-input.test.ts"
   ]
 }

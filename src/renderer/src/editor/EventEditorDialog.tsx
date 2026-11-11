@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useEffectEvent, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DateTime, IANAZone } from 'luxon'
-import { Trash2, X, Share2, MapPin, Link as LinkIcon, Users, Check, Sparkles } from 'lucide-react'
+import { Trash2, X, Share2, Link as LinkIcon, Users, Check, Sparkles } from 'lucide-react'
 import type {
   Calendar,
   CalendarAccount,
@@ -37,6 +37,7 @@ import {
   showFriendlyError
 } from '../components/ui'
 import { TitleSuggestInput } from './TitleSuggestInput'
+import { LocationSuggestInput } from './LocationSuggestInput'
 import { ReminderListField } from './ReminderListField'
 import { useDisplayPreferences } from '../context/DisplayPreferencesContext'
 import { zoneForEditing, zonePickerOptions } from '../lib/time-zones'
@@ -1463,11 +1464,10 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
             </FormRow>
 
             <FormRow label={t('editor.location')} divider>
-              <TextInput
+              <LocationSuggestInput
                 value={location}
                 onChange={(val) => handleFieldChange(setLocation, val)}
                 placeholder={t('editor.locationPlaceholder')}
-                prefixIcon={<MapPin className="h-3.5 w-3.5" />}
               />
             </FormRow>
 

@@ -246,6 +246,7 @@ If something goes wrong, **Settings → Show log file** opens the folder with `x
 - Reminders per event (all-day ones too), with snooze and a Join button
 - Light / dark / system theme, custom wallpaper
 - Search that ignores accents ("hop" finds "họp"), title suggestions from your own history
+- The Location field offers the places you have used before as you type, accents optional ("ca phe" finds "Cà phê")
 - Each event can keep its own time zone and colour, kept when it syncs over CalDAV or is exported; events saved without one (as Google's export writes them) open in the zone you were in on their date
 - `.ics` import (Settings, drag a file onto the window, or *Open with xrncal*) and export per calendar; database backup and restore
 - Detach a provider and keep every event it brought

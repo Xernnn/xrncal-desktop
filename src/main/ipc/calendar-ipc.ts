@@ -17,6 +17,12 @@ import type {
 } from '@shared/event-model'
 import type { SuggestTitlesOptions, TitleSuggestion } from '@shared/title-suggestions'
 import { rankTitleSuggestions } from '@shared/title-suggestions'
+import {
+  LOCATION_LOOKBACK_DAYS,
+  checkedLocationRequest,
+  rankLocationSuggestions,
+  type LocationSuggestion
+} from '@shared/location-suggestions'
 import { DateTime } from 'luxon'
 import { CalendarsRepo } from '../db/repos/calendars-repo'
 import { EventsRepo, ReadOnlyCalendarError } from '../db/repos/events-repo'
@@ -58,6 +64,7 @@ export function registerCalendarIpcHandlers(): void {
   ipcMain.removeHandler(IPC_CHANNELS.EVENT.DETACH_LUNAR)
   ipcMain.removeHandler(IPC_CHANNELS.EVENT.SEARCH)
   ipcMain.removeHandler(IPC_CHANNELS.EVENT.SUGGEST_TITLES)
+  ipcMain.removeHandler(IPC_CHANNELS.EVENT.SUGGEST_LOCATIONS)
   ipcMain.removeHandler(IPC_CHANNELS.EVENT.SHARE_ICS)
   ipcMain.removeHandler(IPC_CHANNELS.EVENT.LIST_CONFLICTS)
   ipcMain.removeHandler(IPC_CHANNELS.EVENT.RESOLVE_CONFLICT)
@@ -251,6 +258,23 @@ export function registerCalendarIpcHandlers(): void {
         now.plus({ days: 90 }).toISO()!
       )
       return rankTitleSuggestions(samples, { ...options, now })
+    }
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.EVENT.SUGGEST_LOCATIONS,
+    (_event, options: unknown): LocationSuggestion[] => {
+      const { query, limit } = checkedLocationRequest(options)
+      // Nothing is offered for an empty field, so nothing is read for one.
+      if (!query.trim()) return []
+      // Further back than the titles' year, since a place visited once a year
+      // is still the place; the same short way ahead.
+      const now = DateTime.utc()
+      const samples = eventsRepo.listLocationSamples(
+        now.minus({ days: LOCATION_LOOKBACK_DAYS }).toISO()!,
+        now.plus({ days: 90 }).toISO()!
+      )
+      return rankLocationSuggestions(samples, { query, limit, now })
     }
   )
 
