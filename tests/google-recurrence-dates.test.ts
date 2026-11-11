@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createSqliteDriver, type ISqliteDatabase } from '../src/main/db/sqlite-driver'
-import { runMigrations, seedDefaultData } from '../src/main/db/database'
+import { MIGRATION_027_SQL, runMigrations, seedDefaultData } from '../src/main/db/database'
+import { SyncStateRepo } from '../src/main/db/repos/sync-state-repo'
 import { EventsRepo } from '../src/main/db/repos/events-repo'
 import { GoogleSyncEngine } from '../src/main/sync/google-sync-engine'
 import {
@@ -133,5 +134,37 @@ describe('a Google series with excluded dates, synced', () => {
       'RRULE:FREQ=WEEKLY;BYDAY=TU;COUNT=4',
       'EXDATE;TZID=Europe/Zurich:20260825T120000'
     ])
+  })
+
+  it('is read again in full once, so a series stored before gets its excluded dates (migration 027)', async () => {
+    const now = new Date().toISOString()
+    db.prepare(
+      `INSERT INTO accounts (id, type, name, created_at, updated_at) VALUES ('acc_g', 'google', 'G', ?, ?), ('acc_d', 'caldav', 'D', ?, ?)`
+    ).run(now, now, now, now)
+    db.prepare("UPDATE calendars SET account_id = 'acc_g' WHERE id = ?").run(CAL)
+    db.prepare(
+      `INSERT INTO calendars (id, account_id, name, color, is_visible, is_read_only, is_default, created_at, updated_at)
+       VALUES ('https://dav.example/me/cal/', 'acc_d', 'D', '#000', 1, 0, 0, ?, ?)`
+    ).run(now, now)
+    const tokens = new SyncStateRepo(db)
+    tokens.saveSyncToken(CAL, 'google-token')
+    tokens.saveSyncToken('https://dav.example/me/cal/', 'dav-token')
+
+    db.exec(MIGRATION_027_SQL)
+
+    expect(tokens.getSyncToken(CAL)).toBeNull()
+    expect(tokens.getSyncToken('https://dav.example/me/cal/')).toBe('dav-token')
+    const urls: string[] = []
+    const series = zurichSeries(['RRULE:FREQ=WEEKLY;BYDAY=TU', 'EXDATE;TZID=Europe/Zurich:20260825T120000'])
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        urls.push(url)
+        return json({ items: [series], nextSyncToken: 't2' })
+      })
+    )
+    await new GoogleSyncEngine(db).pullCalendarEvents(CAL, 'token')
+    expect(urls[0]).not.toContain('syncToken=')
+    expect(repo.queryEventsByCalendar(CAL)[0].exdate).toBe('2026-08-25T10:00:00.000Z')
   })
 })

@@ -632,6 +632,20 @@ WHERE id IN (SELECT id FROM repaired_links)
 DROP TABLE repaired_links;
 `
 
+/**
+ * Google series' excluded and added dates, which the pull now reads into
+ * exdate and rdate. A series stored before has neither, and an incremental
+ * pull brings only what changed on Google, so its next edit here would still
+ * send the rule alone and take the exclusions off on Google. Clearing the
+ * Google calendars' sync tokens makes the next sync list every event once.
+ */
+export const MIGRATION_027_SQL = `
+UPDATE sync_state SET sync_token = NULL
+WHERE calendar_id IN (
+  SELECT c.id FROM calendars c JOIN accounts a ON a.id = c.account_id WHERE a.type = 'google'
+);
+`
+
 /** Every migration in order: the one at index i is version i + 1. */
 const MIGRATIONS: readonly string[] = [
   MIGRATION_001_SQL,
@@ -659,7 +673,8 @@ const MIGRATIONS: readonly string[] = [
   MIGRATION_023_SQL,
   MIGRATION_024_SQL,
   MIGRATION_025_SQL,
-  MIGRATION_026_SQL
+  MIGRATION_026_SQL,
+  MIGRATION_027_SQL
 ]
 
 /** The newest migration this build knows: a restore refuses a backup made by
