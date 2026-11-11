@@ -69,6 +69,9 @@ export interface AppSettings {
   /** Start xrncal, in the tray, when the user signs in to the computer - the
    *  only way reminders ring after a restart. Installed builds only. */
   launchAtLogin: boolean
+  /** The emojis picked in the event editor and how often ("🍴:5 🎂:2", see
+   *  title-emoji.ts): its "frequently used" row. Not a control. */
+  favoriteEmojis: string
   /** The first-run welcome has been shown (or was not needed: a profile that
    *  already had events when this setting arrived). Not a control. */
   welcomeDone: boolean
@@ -114,6 +117,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   autoBackup: true,
   closeToTray: true,
   launchAtLogin: false,
+  favoriteEmojis: '',
   welcomeDone: false,
   lastSeenZone: ''
 }

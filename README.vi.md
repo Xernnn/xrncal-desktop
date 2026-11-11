@@ -204,6 +204,7 @@ Khi có sự cố, **Cài đặt → Mở tệp nhật ký** mở thư mục ch�
 - Kéo-thả, resize mép, quét chọn khoảng giờ
 - Bước snap 15 / 30 / 60 phút, và bước riêng cho danh sách giờ trong cửa sổ sự kiện
 - Sự kiện mới dài bao lâu là do bạn đặt (15 phút đến 2 giờ) khi bấm vào ô trống, bấm chuột phải hoặc nút Tạo; khoảng giờ quét chọn thì giữ nguyên độ dài
+- Thêm biểu tượng cảm xúc trước tiêu đề bằng một nút trong cửa sổ sự kiện ("🍴 Ăn trưa"), những biểu tượng hay dùng nằm trên cùng
 - Gõ thời gian ngay vào tiêu đề: "Họp 3h chiều thứ 6", "Ăn trưa mai 12h30", "Chạy bộ 6h sáng hàng ngày" tự điền ngày, giờ và lặp lại, tiêu đề lưu không kèm những chữ đó
 - Lặp lại: lần này / từ đây trở đi / cả chuỗi
 - `Ctrl+Z` hoàn tác lần di chuyển, đổi độ dài, sao chép hoặc xoá

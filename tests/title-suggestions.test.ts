@@ -335,6 +335,49 @@ describe('rankTitleSuggestions', () => {
     expect(rank([sample({ title: '   ' })])).toEqual([])
   })
 
+  // An emoji picked in the editor leads the title. It is not something to
+  // match on: "lunch" is how "🍴 Lunch at Pablo's" starts, and a title typed
+  // after picking an emoji still finds the titles stored without one.
+  describe('with an emoji leading the title', () => {
+    const history = [
+      sample({ title: "🍴 Lunch at Pablo's", startUtc: '2026-09-14T05:00:00.000Z' }),
+      sample({ title: 'Launch review', startUtc: '2026-09-13T05:00:00.000Z' }),
+      sample({ title: 'Team lunch', startUtc: '2026-09-12T05:00:00.000Z' })
+    ]
+
+    it('finds the title by its words, as the start of it', () => {
+      const out = rank(history, { query: 'lunch' })
+      expect(out.map((s) => s.title)).toEqual(["🍴 Lunch at Pablo's", 'Team lunch'])
+      // The emoji stays on the suggestion.
+      expect(out[0].title.startsWith('🍴')).toBe(true)
+      // A whole-title prefix, not merely a word in it.
+      expect(matchWeight(normalizeTitle('lunch at pablo'), 'lunch')).toBe(1)
+      expect(rank(history, { query: 'lunch at p' }).map((s) => s.title)).toEqual(["🍴 Lunch at Pablo's"])
+    })
+
+    it('ignores an emoji leading what was typed', () => {
+      expect(rank(history, { query: '🍴 lun' }).map((s) => s.title)).toEqual(["🍴 Lunch at Pablo's", 'Team lunch'])
+      // Another emoji than the stored one, or one on a title stored without any.
+      expect(rank(history, { query: '🥗 lunch at' }).map((s) => s.title)).toEqual(["🍴 Lunch at Pablo's"])
+      expect(rank(history, { query: '🚀 laun' }).map((s) => s.title)).toEqual(['Launch review'])
+    })
+
+    it('ranks the title with the emoji level with the same title without it', () => {
+      const pair = [
+        sample({ title: '🍴 Lunch', startUtc: '2026-09-14T05:00:00.000Z' }),
+        sample({ title: 'Lunch', startUtc: '2026-09-14T05:00:00.000Z' })
+      ]
+      const out = rank(pair, { query: 'lun' })
+      expect(out).toHaveLength(2)
+      expect(out[0].score).toBe(out[1].score)
+    })
+
+    it('still matches an emoji further into the title as typed', () => {
+      const out = rank([sample({ title: 'Lunch 🍴 with Sam' })], { query: 'lunch 🍴' })
+      expect(out.map((s) => s.title)).toEqual(['Lunch 🍴 with Sam'])
+    })
+  })
+
   it('puts a prefix match ahead of an interior one even when the interior is more frequent', () => {
     const out = rank(
       [

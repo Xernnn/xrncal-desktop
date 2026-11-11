@@ -13,6 +13,7 @@ import {
 } from '@shared/keyboard-nav'
 import { stepAnchor, weekTitle, type CalendarViewType } from '@shared/visible-range'
 import { startOfWeek } from '@shared/week-start'
+import { recordEmojiUse } from '@shared/title-emoji'
 import { useVisibleRange } from './hooks/use-visible-range'
 import { useTheme } from './hooks/use-theme'
 import { useQueryRange } from './hooks/use-query-range'
@@ -695,6 +696,9 @@ const CalendarApp: React.FC = () => {
           onDataChanged={reload}
           onClose={closeEditor}
           onDraftChange={setDraftPreview}
+          onEmojiPicked={(emoji) =>
+            void setSetting('favoriteEmojis', recordEmojiUse(settings.favoriteEmojis, emoji), { quiet: true })
+          }
         />
       )}
 

@@ -98,7 +98,7 @@ xrncal/
 │   │       │   ├── KeyboardShortcutsModal.tsx
 │   │       │   ├── SearchPaletteModal.tsx
 │   │       │   └── ErrorBoundary.tsx
-│   │       ├── editor/          # EventEditorDialog, RecurringScopeDialog, TitleSuggestInput, LocationSuggestInput, ReminderListField
+│   │       ├── editor/          # EventEditorDialog, RecurringScopeDialog, TitleSuggestInput, LocationSuggestInput, EmojiPicker, ReminderListField
 │   │       ├── print/           # PrintDialog (Ctrl+P: week or month, preview, print / save as PDF), PrintSheet (the page)
 │   │       ├── dnd/             # Drag and drop: use-event-dnd.ts, drop-target.ts, DropActionPopover.tsx
 │   │       ├── mini/            # MiniApp.tsx (companion window renderer)
@@ -120,6 +120,7 @@ xrncal/
 │       ├── all-day.ts           # Floating-date vs instant: inclusive/exclusive ends, day keys
 │       ├── occurrence-order.ts  # Within-day ordering (all-day first, then by time)
 │       ├── title-suggestions.ts # Ranking for the event-title autocomplete
+│       ├── title-emoji.ts       # An emoji leading a title: finding, setting, removing it; the picker's set; the ones picked most
 │       ├── location-suggestions.ts # Ranking for the Location field's autocomplete (places used before)
 │       ├── text-fold.ts         # Accent- and case-insensitive text for matching ("ca phe" finds "Cà phê")
 │       ├── event-length.ts      # How long a new event is when it was started without a range (defaultEventMinutes)

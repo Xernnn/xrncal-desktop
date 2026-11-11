@@ -204,6 +204,21 @@ export const resources = {
           savesAs: 'Saved as “{{title}}”',
           keepTyped: 'Keep the title as typed'
         },
+        emoji: {
+          button: 'Put an emoji in front of the title',
+          title: 'Emoji',
+          remove: 'Remove the emoji',
+          frequent: 'Frequently used',
+          groups: {
+            people: 'People',
+            activities: 'Activities and sport',
+            food: 'Food and drink',
+            travel: 'Travel and places',
+            objects: 'Objects',
+            symbols: 'Symbols',
+            nature: 'Nature'
+          }
+        },
         calendar: 'Calendar',
         chooseCalendar: 'Choose a calendar…',
         allDay: 'All day',
@@ -903,6 +918,21 @@ export const resources = {
         titleEntry: {
           savesAs: 'Lưu thành “{{title}}”',
           keepTyped: 'Giữ nguyên tiêu đề đã gõ'
+        },
+        emoji: {
+          button: 'Thêm biểu tượng cảm xúc trước tiêu đề',
+          title: 'Biểu tượng cảm xúc',
+          remove: 'Bỏ biểu tượng cảm xúc',
+          frequent: 'Hay dùng',
+          groups: {
+            people: 'Con người',
+            activities: 'Hoạt động và thể thao',
+            food: 'Đồ ăn và thức uống',
+            travel: 'Du lịch và địa điểm',
+            objects: 'Đồ vật',
+            symbols: 'Ký hiệu',
+            nature: 'Thiên nhiên'
+          }
         },
         calendar: 'Lịch',
         chooseCalendar: 'Chọn lịch…',

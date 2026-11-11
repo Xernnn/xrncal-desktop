@@ -67,6 +67,7 @@ describe('IPC Channels and Contracts', () => {
           autoBackup: true,
           closeToTray: true,
           launchAtLogin: false,
+          favoriteEmojis: '',
           welcomeDone: true,
           lastSeenZone: 'Australia/Sydney'
         }),

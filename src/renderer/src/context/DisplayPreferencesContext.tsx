@@ -2,6 +2,7 @@ import { createContext, useContext } from 'react'
 import type { AppSettings } from '@shared/settings-contract'
 import { parseZoneHistory, type ZonePeriod } from '@shared/zone-history'
 import { newEventMinutes } from '@shared/event-length'
+import { favoriteEmojis } from '@shared/title-emoji'
 import { parseZoneList } from '../lib/time-zones'
 
 export interface DisplayPreferences {
@@ -27,6 +28,9 @@ export interface DisplayPreferences {
   zoneHistory: ZonePeriod[]
   /** The day weeks start on: 0 = Sunday, 1 = Monday, 6 = Saturday. */
   firstDayOfWeek: number
+  /** The emojis picked most in the editor, most used first (the parsed
+   *  `favoriteEmojis` setting). */
+  favoriteEmojis: string[]
 }
 
 const DEFAULT_DISPLAY_PREFERENCES: DisplayPreferences = {
@@ -42,7 +46,8 @@ const DEFAULT_DISPLAY_PREFERENCES: DisplayPreferences = {
   defaultAllDayReminderMinutes: null,
   preferredTimeZones: [],
   zoneHistory: [],
-  firstDayOfWeek: 1
+  firstDayOfWeek: 1,
+  favoriteEmojis: []
 }
 
 /** What the views are drawn with, read off the settings. */
@@ -60,7 +65,8 @@ export function displayPreferencesOf(settings: AppSettings): DisplayPreferences 
     defaultAllDayReminderMinutes: settings.defaultAllDayReminderMinutes,
     preferredTimeZones: parseZoneList(settings.preferredTimeZones),
     zoneHistory: parseZoneHistory(settings.zoneHistory),
-    firstDayOfWeek: settings.firstDayOfWeek
+    firstDayOfWeek: settings.firstDayOfWeek,
+    favoriteEmojis: favoriteEmojis(settings.favoriteEmojis)
   }
 }
 
