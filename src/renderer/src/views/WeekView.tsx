@@ -147,7 +147,8 @@ export const WeekView: React.FC<WeekViewProps> = ({
   const allDayOccurrences = useMemo(() => displayOccurrences.filter((o) => o.allDay), [displayOccurrences])
   const timedOccurrences = displayOccurrences.filter((o) => !o.allDay)
   const hours = Array.from({ length: 24 }, (_, i) => i)
-  const timedSegments = timedOccurrences.flatMap(segmentTimedOccurrence)
+  const shownDays = { first: weekDays[0], last: weekDays[weekDays.length - 1] }
+  const timedSegments = timedOccurrences.flatMap((occ) => segmentTimedOccurrence(occ, shownDays))
 
   const allDayLayouts = useMemo(
     () => layoutAllDayEvents(allDayOccurrences, weekDays),
