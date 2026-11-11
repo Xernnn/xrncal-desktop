@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { DateTime } from 'luxon'
 import { CalendarPlus, Copy, CalendarDays, Pencil, Trash2 } from 'lucide-react'
 import type { Calendar, ExpandedOccurrence } from '@shared/event-model'
+import { atClockMinutes } from '@shared/clock-minutes'
 import type { ContextMenuEntry } from '../components/ui'
 
 export interface OpenContextMenu {
@@ -21,6 +22,17 @@ interface ContextMenuActions {
   remove: (occ: ExpandedOccurrence) => void
   newEventAt: (start: DateTime, end: DateTime, allDay: boolean, clientX: number) => void
   openDay: (day: DateTime) => void
+}
+
+/**
+ * An hour from the half hour `minutesFromTop` down `day`'s hour grid. The
+ * grid is a clock face (clock-minutes.ts): counted as minutes elapsed since
+ * midnight, the new event started an hour off on the days the zone changes
+ * offset.
+ */
+export function halfHourAt(day: DateTime, minutesFromTop: number): { start: DateTime; end: DateTime } {
+  const start = atClockMinutes(day, Math.max(0, Math.min(23 * 60 + 30, Math.floor(minutesFromTop / 30) * 30)))
+  return { start, end: start.plus({ hours: 1 }) }
 }
 
 /**
@@ -86,11 +98,10 @@ export function useCalendarContextMenu(actions: ContextMenuActions): {
     const hourHeight = Number(dayEl.dataset.hourHeight)
     // On the hour grid, the half hour under the pointer; on a day cell or the
     // all-day lane, the whole day.
-    let slot = { start: day, end: day, allDay: true }
+    let slot: { start: DateTime; end: DateTime; allDay: boolean } = { start: day, end: day, allDay: true }
     if (hourHeight > 0) {
       const minutes = ((e.clientY - dayEl.getBoundingClientRect().top) / hourHeight) * 60
-      const start = day.plus({ minutes: Math.max(0, Math.min(23 * 60 + 30, Math.floor(minutes / 30) * 30)) })
-      slot = { start, end: start.plus({ hours: 1 }), allDay: false }
+      slot = { ...halfHourAt(day, minutes), allDay: false }
     }
     setMenu({
       at,
