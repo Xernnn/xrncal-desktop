@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { fetchWithTimeout, readTextWithin } from './http'
 import { generateIcs } from '../ics/write-ics'
 import { mergeServerCopy } from '../ics/merge-ics'
@@ -335,11 +336,41 @@ ${refs.join('\n')}
  * Where xrncal puts an event it creates. Other clients name their resources as
  * they like - not necessarily after the UID - so an event that came from the
  * server is addressed by the href the server listed it under instead.
+ *
+ * The name is the UID where a server will take that as a name. An event made
+ * by another program keeps its UID when it is moved to another calendar, and
+ * that can be anything: "urn:uuid:..." has colons, which Radicale refuses in a
+ * path (400 on every sync, so the event never moved), and a "/" would name a
+ * resource in another collection. Such a UID gets a name made from its hash:
+ * the same one every time, so a retry writes the same resource again.
  */
 function eventUrlFor(calendarUrl: string, uid: string): string {
-  return `${calendarUrl.replace(/\/+$/, '')}/${encodeURIComponent(uid)}.ics`
+  return `${calendarUrl.replace(/\/+$/, '')}/${resourceNameFor(uid)}.ics`
 }
 
+/** Refused in a path by Radicale, or meaning something else to a server once the path is decoded. */
+const UNSAFE_IN_RESOURCE_NAME = /[:'"*?,/\\<>|#%]/
+const RESOURCE_NAME_MAX_BYTES = 180
+
+/** A control character (C0, DEL or C1) anywhere in the text. */
+function hasControlCharacter(text: string): boolean {
+  for (let i = 0; i < text.length; i++) {
+    const code = text.charCodeAt(i)
+    if (code < 0x20 || (code >= 0x7f && code <= 0x9f)) return true
+  }
+  return false
+}
+
+function resourceNameFor(uid: string): string {
+  const usable =
+    uid.length > 0 &&
+    !UNSAFE_IN_RESOURCE_NAME.test(uid) &&
+    !hasControlCharacter(uid) &&
+    !uid.startsWith('.') &&
+    !/[ .]$/.test(uid) &&
+    Buffer.byteLength(uid, 'utf8') <= RESOURCE_NAME_MAX_BYTES
+  return usable ? encodeURIComponent(uid) : createHash('sha256').update(uid, 'utf8').digest('hex').slice(0, 40)
+}
 
 /** The `response` elements of a REPORT multistatus, with absolute hrefs so they can be stored and PUT or DELETEd as-is. */
 function parseCalendarItems(xml: string, baseUrl: string): CalDavItem[] {

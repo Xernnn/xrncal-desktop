@@ -601,7 +601,8 @@ export class GoogleSyncEngine {
             const unchanged = this.eventsRepo.markEventPushed(row.id, {
               providerEventId: resJson.id || googleEventId,
               etag: resJson.etag || etag,
-              sentUpdatedAt: row.updated_at
+              sentUpdatedAt: row.updated_at,
+              calendarId
             })
             // The response is the event as Google now holds it, guests and all -
             // but a guest list edited while the request was out is newer than that.
