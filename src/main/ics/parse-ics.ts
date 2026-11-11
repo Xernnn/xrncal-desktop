@@ -183,7 +183,26 @@ function parseAttendees(vEvent: ICAL.Component): Attendee[] {
  *  Reading them back is what stops a CalDAV pull from wiping both. */
 function urlOf(vEvent: ICAL.Component): string | undefined {
   const url = vEvent.getFirstPropertyValue('url')
-  return typeof url === 'string' && url.trim() ? url.trim() : undefined
+  return typeof url === 'string' && url.trim() ? unescapeTextEscapes(url.trim()) : undefined
+}
+
+/** A text escape in a URI: a backslash before a backslash, comma or semicolon. */
+const TEXT_ESCAPE_IN_URI = /\\([\\,;])/g
+
+/**
+ * A meeting link as it was before xrncal wrote it escaped as text. Until
+ * 2a60e6f a push sent "a,b" as "a\,b", which no reader unescapes in a URI, so
+ * the next pull stored it so and the next push escaped it again ("a\\\,b").
+ * A backslash is not a URI character at all, so none of these is ever meant:
+ * each layer is taken off until none is left. (Migration 026 does the same to
+ * the links already stored.)
+ */
+export function unescapeTextEscapes(url: string): string {
+  for (let out = url; ; ) {
+    const next = out.replace(TEXT_ESCAPE_IN_URI, '$1')
+    if (next === out) return out
+    out = next
+  }
 }
 
 /** COLOR (RFC 7986) may be a CSS colour name from another client; only the hex

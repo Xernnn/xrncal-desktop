@@ -595,6 +595,43 @@ CREATE UNIQUE INDEX idx_events_provider_id
   WHERE provider_event_id IS NOT NULL;
 `
 
+/**
+ * Meeting links pushed to CalDAV before 2a60e6f, which escaped a URL as text:
+ * "@10.7769,106.7009" went to the server as "@10.7769\,106.7009", no reader
+ * unescapes a URI, so the pull stored that here, and each later push added a
+ * layer ("\\\,"). The .ics reader now takes the escapes off
+ * (unescapeTextEscapes); this does the same to the links stored before it, to
+ * the same end: a backslash before a backslash, comma or semicolon goes, until
+ * none is left - a backslash is never part of a URI. A writable CalDAV event so
+ * repaired is pushed again, which corrects the server's copy for every other
+ * client.
+ */
+export const MIGRATION_026_SQL = String.raw`
+CREATE TEMP TABLE repaired_links AS
+WITH RECURSIVE pass(id, url) AS (
+  SELECT id, meeting_url FROM events WHERE meeting_url GLOB '*\[\,;]*'
+  UNION ALL
+  SELECT id, REPLACE(REPLACE(REPLACE(url, '\\', '\'), '\,', ','), '\;', ';')
+  FROM pass WHERE url GLOB '*\[\,;]*'
+)
+SELECT id, url FROM pass WHERE NOT url GLOB '*\[\,;]*';
+
+UPDATE events
+SET meeting_url = (SELECT url FROM repaired_links r WHERE r.id = events.id)
+WHERE id IN (SELECT id FROM repaired_links);
+
+UPDATE events SET dirty = 1
+WHERE id IN (SELECT id FROM repaired_links)
+  AND is_deleted = 0
+  AND has_conflict = 0
+  AND calendar_id IN (
+    SELECT c.id FROM calendars c JOIN accounts a ON a.id = c.account_id
+    WHERE a.type = 'caldav' AND c.is_read_only = 0
+  );
+
+DROP TABLE repaired_links;
+`
+
 /** Every migration in order: the one at index i is version i + 1. */
 const MIGRATIONS: readonly string[] = [
   MIGRATION_001_SQL,
@@ -621,7 +658,8 @@ const MIGRATIONS: readonly string[] = [
   MIGRATION_022_SQL,
   MIGRATION_023_SQL,
   MIGRATION_024_SQL,
-  MIGRATION_025_SQL
+  MIGRATION_025_SQL,
+  MIGRATION_026_SQL
 ]
 
 /** The newest migration this build knows: a restore refuses a backup made by

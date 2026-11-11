@@ -26,7 +26,7 @@ xrncal/
 │   │   │   ├── database.ts      # initDatabase, runMigrations (inline 001-025), seedDefaultData
 │   │   │   ├── sqlite-driver.ts # ISqliteDatabase abstraction (node:sqlite / better-sqlite3)
 │   │   │   ├── backup.ts        # VACUUM INTO snapshot for Settings → Back up database
-│   │   │   ├── migrations/      # Reference copies of the inline migrations (001-025)
+│   │   │   ├── migrations/      # Reference copies of the inline migrations (001-026)
 │   │   │   └── repos/           # accounts, calendars, events, settings, sync-state, detach-account
 │   │   ├── holidays/            # Generated holiday calendars, extended at startup
 │   │   ├── subscriptions/       # ics-subscription.ts: fetch, store and refresh feeds
