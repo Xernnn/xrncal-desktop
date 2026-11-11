@@ -926,25 +926,120 @@ export class EventsRepo {
    * overwrite it. Returns whether the row was marked clean; false means a
    * newer local edit is still waiting to go. A "keep mine" is done either way:
    * the provider now has this version, so later edits check against it.
+   *
+   * `calendarId` is the calendar the push went to, which is where the provider
+   * holds the event from now on. The row's calendar can be another by the time
+   * the request is back: the calendar picked for a new event, corrected a
+   * moment after saving it, while its first upload was still out. The row then
+   * had nothing of the provider's, so the change was not recorded as a move
+   * (recordCalendarMove), and once the upload landed the event was sent as an
+   * edit to the copy in the calendar it had just left, for ever. It showed in
+   * the old calendar, in both, or in the new one until the next sync took it
+   * away again. Now the calendar the provider has it in is recorded here, as
+   * the one to move it from.
    */
   markEventPushed(
     id: string,
-    push: { providerEventId: string | null; etag: string | null; sentUpdatedAt: string; clearRsvp?: boolean }
+    push: {
+      providerEventId: string | null
+      etag: string | null
+      sentUpdatedAt: string
+      /** The calendar the event was pushed to. */
+      calendarId: string
+      clearRsvp?: boolean
+    }
   ): boolean {
     const now = new Date().toISOString()
     return this.db.transaction(() => {
+      // An address a moved event left behind, being used again: nothing is left there to delete.
+      if (push.providerEventId) {
+        this.db
+          .prepare(
+            `DELETE FROM events
+             WHERE calendar_id = ? AND provider_event_id = ? AND is_deleted = 1 AND recurrence_id IS NULL AND id <> ?`
+          )
+          .run(push.calendarId, push.providerEventId, id)
+      }
       this.db
         .prepare('UPDATE events SET provider_event_id = ?, etag = ?, has_conflict = 0, keep_mine = 0 WHERE id = ?')
         .run(push.providerEventId, push.etag, id)
-      return (
+      const clean =
         this.db
           .prepare(
             `UPDATE events SET dirty = 0, updated_at = ?${push.clearRsvp ? ', rsvp_pending = NULL' : ''}
              WHERE id = ? AND updated_at = ?`
           )
           .run(now, id, push.sentUpdatedAt).changes > 0
-      )
+      return this.recordWhereProviderHasIt(id, push.calendarId) && clean
     })()
+  }
+
+  /**
+   * After a push into `pushedCalendarId`: say where the provider has the event,
+   * if the row is no longer in that calendar (see markEventPushed). In another
+   * calendar of the same account it is a move still to make. In another
+   * account's, or a calendar kept on this computer only, the row is a new event
+   * there - that account cannot reach this copy - and the copy just uploaded is
+   * left behind to be deleted. Returns whether the row is where the provider
+   * has it; if not, it is still to be pushed.
+   */
+  private recordWhereProviderHasIt(id: string, pushedCalendarId: string): boolean {
+    const row = this.db.prepare('SELECT calendar_id FROM events WHERE id = ?').get<{ calendar_id: string }>(id)
+    if (!row) return false
+    if (row.calendar_id === pushedCalendarId) {
+      this.db.prepare('UPDATE events SET moved_from_calendar_id = NULL WHERE id = ?').run(id)
+      return true
+    }
+    const accountOf = (calendarId: string): string | undefined =>
+      this.db.prepare('SELECT account_id FROM calendars WHERE id = ?').get<{ account_id: string }>(calendarId)?.account_id
+    if (accountOf(row.calendar_id) === accountOf(pushedCalendarId)) {
+      this.db.prepare('UPDATE events SET moved_from_calendar_id = ?, dirty = 1 WHERE id = ?').run(pushedCalendarId, id)
+      return false
+    }
+    const copy = this.db
+      .prepare('SELECT provider_event_id, etag FROM events WHERE id = ?')
+      .get<{ provider_event_id: string | null; etag: string | null }>(id)
+    if (copy?.provider_event_id) {
+      this.leaveBehind(id, pushedCalendarId, { providerEventId: copy.provider_event_id, etag: copy.etag })
+    }
+    this.db
+      .prepare(
+        'UPDATE events SET provider_event_id = NULL, etag = NULL, moved_from_calendar_id = NULL, keep_mine = 0, dirty = 1 WHERE id = ?'
+      )
+      .run(id)
+    this.db
+      .prepare('UPDATE event_exceptions SET provider_instance_id = NULL, etag = NULL, dirty = 1 WHERE master_event_id = ?')
+      .run(id)
+    return false
+  }
+
+  /**
+   * Keep `copy`, a copy of event `id` that the provider holds in `calendarId`,
+   * as a deleted event of that calendar, still to be pushed: the copy an event
+   * has moved away from. The row is what tells the pull not to read the copy
+   * back in as a new event while it is still listed, and what the push
+   * deletes, on this pass or a later one. The event's own row must name
+   * another copy, or none, by now. Returns the new row's id, or undefined if
+   * one is already kept for that address.
+   */
+  leaveBehind(id: string, calendarId: string, copy: { providerEventId: string; etag: string | null }): string | undefined {
+    const kept = this.db
+      .prepare('SELECT id FROM events WHERE calendar_id = ? AND provider_event_id = ? AND recurrence_id IS NULL')
+      .get<{ id: string }>(calendarId, copy.providerEventId)
+    if (kept) return undefined
+    const leftId = `evt_left_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    const now = new Date().toISOString()
+    const added = this.db
+      .prepare(
+        `INSERT INTO events (
+           id, provider_event_id, calendar_id, uid, title, dtstart_utc, dtend_utc, tzid, all_day,
+           etag, dirty, is_deleted, created_at, updated_at
+         )
+         SELECT ?, ?, ?, uid, title, dtstart_utc, dtend_utc, tzid, all_day, ?, 1, 1, ?, ?
+         FROM events WHERE id = ?`
+      )
+      .run(leftId, copy.providerEventId, calendarId, copy.etag, now, now, id)
+    return added.changes > 0 ? leftId : undefined
   }
 
   /**

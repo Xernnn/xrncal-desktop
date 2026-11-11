@@ -564,6 +564,11 @@ export class CalDavSyncEngine {
       if (row) dirtyRows.push(row)
     }
 
+    // Deletes go first. One of them can be the copy a moved event left behind
+    // (EventsRepo.leaveBehind), at the very address an event moved back in this
+    // pass is about to be written to.
+    dirtyRows.sort((a, b) => b.is_deleted - a.is_deleted)
+
     let pushedCount = 0
     let errorCount = 0
     /** Why the last push failed; conflicts are left out, as they have their own way out. */
@@ -589,6 +594,12 @@ export class CalDavSyncEngine {
         const isDeleted = row.is_deleted === 1
 
         if (isDeleted) {
+          // The resource is an event's again: one moved away and back was
+          // written to it after this row was read. There is nothing to delete.
+          if (row.provider_event_id && this.isLiveCopy(row.provider_event_id, row.id)) {
+            this.db.prepare('DELETE FROM events WHERE id = ? AND is_deleted = 1').run(row.id)
+            continue
+          }
           // From where the server has it, which a move not yet pushed has not changed.
           const holder = row.moved_from_calendar_id || calendarId
           const ok = await adapter.deleteEvent(holder, row.uid || row.id, row.provider_event_id || undefined)
@@ -610,8 +621,7 @@ export class CalDavSyncEngine {
           // The PUT used to go to the old href - back into the old calendar - and
           // the next pulls undid the move. Now the resource is PUT into this
           // calendar as a new one and only then deleted from the old, so the
-          // server never goes without it. Until the delete lands the row keeps
-          // the old href, and a retry PUTs to the same new address again.
+          // server never goes without it.
           const movedFrom =
             row.moved_from_calendar_id && row.moved_from_calendar_id !== calendarId ? row.moved_from_calendar_id : null
           const pushRes = await adapter.pushEvent(
@@ -651,27 +661,43 @@ export class CalDavSyncEngine {
           )
 
           if (pushRes.success) {
-            if (movedFrom && !(await adapter.deleteEvent(movedFrom, row.uid || row.id, row.provider_event_id || undefined))) {
-              lastError = 'The server refused to delete a moved event from the calendar it was moved out of'
-              errorCount++
-              continue
-            }
-            // The new href and the end of the move together: one without the
-            // other would leave a retry deleting the copy it had just made.
+            // The row is the new resource from here, and the old one a deleted
+            // event of the calendar it is in, in one step. The old href used to
+            // stay on the row until its delete had landed, so nothing recorded
+            // the new copy: a calendar picked again before then - the delete
+            // refused, or the request still out - moved the event from the old
+            // address once more and left this copy on the server, to be read
+            // back in as a second event.
+            const newHref = pushRes.href || row.provider_event_id
+            const oldHref = movedFrom && row.provider_event_id !== newHref ? row.provider_event_id : null
+            let leftBehind: string | undefined
             this.db.transaction(() => {
               this.eventsRepo.markEventPushed(row.id, {
-                providerEventId: pushRes.href || row.provider_event_id,
+                providerEventId: newHref,
                 etag: movedFrom ? pushRes.etag || null : pushRes.etag || row.etag,
                 sentUpdatedAt: row.updated_at,
+                calendarId,
                 clearRsvp: true
               })
-              if (movedFrom) this.db.prepare('UPDATE events SET moved_from_calendar_id = NULL WHERE id = ?').run(row.id)
+              if (movedFrom && oldHref) {
+                leftBehind = this.eventsRepo.leaveBehind(row.id, movedFrom, { providerEventId: oldHref, etag: row.etag })
+              }
               // The server now holds the list this PUT carried. For a new event
               // nothing else would say so: the next pull skips the resource as
               // unchanged, and without the flag every later push went without
               // guests, replacing the meeting with one that had none.
               if (sendsGuests) this.db.prepare('UPDATE events SET attendees_synced = 1 WHERE id = ?').run(row.id)
             })()
+            // Now, not when the old calendar is next pushed: until it is gone,
+            // every other device shows the event in both calendars.
+            if (leftBehind && movedFrom && oldHref) {
+              if (await adapter.deleteEvent(movedFrom, row.uid || row.id, oldHref)) {
+                this.db.prepare('DELETE FROM events WHERE id = ? AND is_deleted = 1').run(leftBehind)
+              } else {
+                lastError = 'The server refused to delete a moved event from the calendar it was moved out of'
+                errorCount++
+              }
+            }
             if (serverCopy && pushRes.body) this.saveServerCopy(row.id, pushRes.body)
             this.eventsRepo.markExceptionsSyncedForMaster(row.id, sentExceptions)
             pushedCount++
@@ -689,6 +715,17 @@ export class CalDavSyncEngine {
     }
 
     return { pushedCount, errorCount, lastError }
+  }
+
+  /** Whether an event that is not deleted is kept at `href` - by a row other than `exceptId`. */
+  private isLiveCopy(href: string, exceptId: string): boolean {
+    return Boolean(
+      this.db
+        .prepare(
+          'SELECT 1 AS found FROM events WHERE provider_event_id = ? AND is_deleted = 0 AND recurrence_id IS NULL AND id <> ? LIMIT 1'
+        )
+        .get<{ found: number }>(href, exceptId)
+    )
   }
 
   /**

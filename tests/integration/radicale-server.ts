@@ -6,7 +6,7 @@ import { join } from 'node:path'
 
 /**
  * Vitest global setup for `npm run test:caldav`: a real Radicale on a free
- * local port, with one user (`alice` / `wonderland`) and an empty store that
+ * local port, with two users (`alice` / `wonderland`, `bob` / `builder`) and an empty store that
  * is thrown away afterwards. The tests get its address from `inject('radicaleUrl')`.
  *
  * Radicale is a Python program: `pip install radicale`, or point
@@ -23,6 +23,9 @@ declare module 'vitest' {
 
 export const RADICALE_USER = 'alice'
 export const RADICALE_PASSWORD = 'wonderland'
+/** A second account, so a test file can have a calendar home to itself. */
+export const RADICALE_USER_2 = 'bob'
+export const RADICALE_PASSWORD_2 = 'builder'
 
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -55,7 +58,7 @@ async function waitUntilUp(url: string, child: ChildProcess, log: () => string):
 export default async function setup({ provide }: { provide: (key: 'radicaleUrl', value: string) => void }) {
   const dir = mkdtempSync(join(tmpdir(), 'xrncal-radicale-'))
   const port = await freePort()
-  writeFileSync(join(dir, 'users'), `${RADICALE_USER}:${RADICALE_PASSWORD}\n`)
+  writeFileSync(join(dir, 'users'), `${RADICALE_USER}:${RADICALE_PASSWORD}\n${RADICALE_USER_2}:${RADICALE_PASSWORD_2}\n`)
   writeFileSync(
     join(dir, 'config'),
     [

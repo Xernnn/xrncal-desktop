@@ -669,7 +669,8 @@ export class MicrosoftSyncEngine {
             const unchanged = this.eventsRepo.markEventPushed(row.id, {
               providerEventId: resJson.id || eventId,
               etag: resJson['@odata.etag'] || etag,
-              sentUpdatedAt: row.updated_at
+              sentUpdatedAt: row.updated_at,
+              calendarId
             })
             // The response is the event as Graph now holds it, guests and all -
             // but a guest list edited while the request was out is newer than that.
