@@ -666,6 +666,17 @@ const MIGRATIONS: readonly string[] = [
  *  a build with a newer schema. */
 export const SCHEMA_VERSION = MIGRATIONS.length
 
+/** A database a newer build has migrated: this one does not know its schema. */
+export class NewerDatabaseError extends Error {
+  constructor(
+    readonly version: number,
+    readonly knownVersion: number
+  ) {
+    super(`The database is at schema version ${version}; this build knows up to ${knownVersion}`)
+    this.name = 'NewerDatabaseError'
+  }
+}
+
 /**
  * Execute all schema migrations in order
  */
@@ -680,6 +691,11 @@ export function runMigrations(db: ISqliteDatabase): void {
 
   const row = db.prepare('SELECT MAX(version) as max_version FROM schema_migrations').get<{ max_version: number | null }>()
   const currentVersion = row?.max_version ?? 0
+  // An older build opened after a newer one (a downgrade, a second copy left
+  // installed) carried on as if the schema were its own: its queries and
+  // writes ran on tables and meanings it does not know, and the newer build's
+  // migrations, recorded as done, never ran again over what it wrote.
+  if (currentVersion > SCHEMA_VERSION) throw new NewerDatabaseError(currentVersion, SCHEMA_VERSION)
   const record = db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)')
 
   // Each migration commits together with the row that records it. Run
@@ -737,8 +753,14 @@ export function initDatabase(dbDirOrPath: string): ISqliteDatabase {
   const dbPath = databaseFilePath(dbDirOrPath)
   const db = createSqliteDriver(dbPath)
 
-  runMigrations(db)
-  seedDefaultData(db)
+  try {
+    runMigrations(db)
+    seedDefaultData(db)
+  } catch (err) {
+    // Not left open: the file stays as it was for whatever opens it next.
+    db.close()
+    throw err
+  }
 
   dbInstance = db
   return db

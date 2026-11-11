@@ -1,4 +1,4 @@
-import { databaseFilePath, initDatabase } from './db/database'
+import { databaseFilePath, initDatabase, NewerDatabaseError } from './db/database'
 import type { ISqliteDatabase } from './db/sqlite-driver'
 import { mt } from './i18n-main'
 import { log, logFilePath } from './log'
@@ -12,7 +12,10 @@ export interface StartupFailureUi {
 
 /** The box shown when the database cannot be opened: what failed, and where the log is. */
 export function databaseFailureNotice(err: unknown, dbPath: string, logPath: string | undefined): { title: string; content: string } {
-  const lines = [mt('startup.dbFailedBody', { path: dbPath }), describeError(err)]
+  const lines =
+    err instanceof NewerDatabaseError
+      ? [mt('startup.dbNewerBody', { path: dbPath, version: err.version, known: err.knownVersion })]
+      : [mt('startup.dbFailedBody', { path: dbPath }), describeError(err)]
   if (logPath) lines.push(mt('startup.dbFailedLog', { path: logPath }))
   return { title: mt('startup.dbFailedTitle'), content: lines.join('\n\n') }
 }

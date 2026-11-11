@@ -41,7 +41,9 @@ const STRINGS: Record<MainLocale, Record<string, string>> = {
     'oauth.timeout.microsoft': 'Microsoft authentication timed out (5 minutes). Please try again.',
     'startup.dbFailedTitle': 'xrncal could not open your calendar',
     'startup.dbFailedBody': 'The database {path} could not be opened, so xrncal will close.',
-    'startup.dbFailedLog': 'The log has the details: {path}'
+    'startup.dbFailedLog': 'The log has the details: {path}',
+    'startup.dbNewerBody':
+      'The database {path} was last used by a newer version of xrncal (data version {version}; this version reads up to {known}). This version will not open it, so that nothing in it is changed. Install the newer xrncal again to use it.'
   },
   vi: {
     'tray.openMain': 'Mở xrncal',
@@ -73,7 +75,9 @@ const STRINGS: Record<MainLocale, Record<string, string>> = {
     'oauth.timeout.microsoft': 'Quá thời gian xác thực Microsoft (5 phút). Vui lòng thử lại.',
     'startup.dbFailedTitle': 'xrncal không mở được lịch của bạn',
     'startup.dbFailedBody': 'Không mở được cơ sở dữ liệu {path}, nên xrncal sẽ đóng lại.',
-    'startup.dbFailedLog': 'Chi tiết có trong nhật ký: {path}'
+    'startup.dbFailedLog': 'Chi tiết có trong nhật ký: {path}',
+    'startup.dbNewerBody':
+      'Cơ sở dữ liệu {path} được dùng lần cuối bởi một phiên bản xrncal mới hơn (phiên bản dữ liệu {version}; phiên bản này chỉ đọc được đến {known}). Phiên bản này sẽ không mở nó, để không thay đổi gì bên trong. Hãy cài lại bản xrncal mới hơn để dùng tiếp.'
   }
 }
 
