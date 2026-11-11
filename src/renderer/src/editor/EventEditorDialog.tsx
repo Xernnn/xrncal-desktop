@@ -304,6 +304,20 @@ export function textFieldUpdate(value: string, opened: string): string | undefin
   return value.trim() || (opened.trim() ? '' : undefined)
 }
 
+/**
+ * The repeat rule a save sends: `rule` is what the form's repeat controls
+ * build, undefined when they build none. To an update undefined means "as it
+ * was" - what an occurrence opened from the grid relies on to leave its
+ * series' rule alone - so "Does not repeat" picked on an event that repeated
+ * when the editor opened kept it repeating. That case sends '', which removes
+ * the rule, as a lunar anniversary (which has no rule) always has.
+ */
+export function repeatUpdate(rule: string | undefined, preset: string, openedPreset: string): string | undefined {
+  if (preset === 'lunar-yearly') return ''
+  if (preset === 'none' && openedPreset !== 'none') return ''
+  return rule
+}
+
 /** The part of the form a typed title can set, and what to put back when the words are deleted. */
 interface ScheduleFields extends EntrySlot {
   recurrencePreset: string
@@ -893,7 +907,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
       tzid,
       dtStartUtc: startIso,
       dtEndUtc: endIso,
-      rrule: isLunarYearly ? '' : buildRrule(),
+      rrule: repeatUpdate(buildRrule(), recurrencePreset, initial.recurrencePreset),
       lunarRule: isLunarYearly ? lunarSpec! : null,
       // An edit sends guests only when they were changed here, and only once
       // the list has loaded. Sending the list untouched would overwrite
