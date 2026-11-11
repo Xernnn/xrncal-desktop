@@ -23,6 +23,7 @@ import { parseRemindersJson, serializeReminders, type EventReminder } from '@sha
 import { resolveLunarOccurrence } from '@shared/lunar-vietnam'
 import { expandOccurrences } from '@shared/expand-occurrences'
 import { calendarExpansionBudget, type ExpansionBudget } from '@shared/bounded-rrule'
+import { ruleForMovedStart, seriesZone, wallTime } from '@shared/series-update'
 import { DateTime } from 'luxon'
 
 export class ReadOnlyCalendarError extends Error {
@@ -202,6 +203,29 @@ function remainingRule(series: CalendarEvent, splitUtc: number): string | undefi
     new Date(splitUtc - 1).toISOString()
   ).filter((o) => Date.parse(o.originalStartUtc) < splitUtc).length
   return rule.replace(/(^|;)COUNT=\d+/i, `$1COUNT=${Math.max(1, Number(count[2]) - before)}`)
+}
+
+/** The days a rule names, as one string to compare. */
+function namedDays(rrule: string): string {
+  const parts = new Map(rrule.toUpperCase().split(';').map((part) => part.split('=') as [string, string]))
+  return ['BYDAY', 'BYMONTHDAY', 'BYMONTH'].map((key) => (parts.get(key) ?? '').split(',').sort().join(',')).join(';')
+}
+
+/**
+ * The rule of a series whose first date moved from `from` to `to` (clock
+ * readings, see wallTime). One that still names the days the series' rule
+ * `stored` named - left alone by the edit, or rebuilt by the editor from them -
+ * moves to the new start's days (ruleForMovedStart). Days the user picked
+ * differently in the editor are theirs.
+ */
+function ruleFollowingStart<T extends string | null | undefined>(
+  rule: T,
+  stored: string | undefined,
+  from: DateTime,
+  to: DateTime
+): T | string {
+  if (!rule || !stored || namedDays(rule) !== namedDays(stored)) return rule
+  return ruleForMovedStart(rule, from, to)
 }
 
 /** A guest list compared for change: who, in what role, with what answer. */
@@ -440,7 +464,12 @@ export class EventsRepo {
     const tzid = input.tzid ?? existing.tzid
     const allDay = (input.allDay !== undefined ? input.allDay : existing.allDay) ? 1 : 0
     // '' removes the rule and is stored as NULL, which is how a one-off event is told from a series.
-    const rrule = input.rrule !== undefined ? input.rrule || null : (existing.rrule || null)
+    const rrule = ruleFollowingStart(
+      input.rrule !== undefined ? input.rrule || null : (existing.rrule || null),
+      existing.rrule,
+      wallTime(existing.dtStartUtc, seriesZone(existing.allDay, existing.tzid)),
+      wallTime(dtStartUtc, seriesZone(allDay === 1, tzid))
+    )
     const exdate = input.exdate !== undefined ? input.exdate || null : (existing.exdate || null)
     const lunarRule =
       input.lunarRule !== undefined
@@ -1528,20 +1557,29 @@ export class EventsRepo {
         })
 
         // 2. Create new recurring event starting from this occurrence
+        const dtStartUtc = input.updateInput.dtStartUtc ?? input.originalStartUtc
+        const tzid = input.updateInput.tzid ?? master.event.tzid
+        const allDay = input.updateInput.allDay ?? master.event.allDay
         const tail = this.createEvent({
           calendarId: master.event.calendarId,
           title: input.updateInput.title ?? master.event.title,
           notes: input.updateInput.notes ?? master.event.notes,
           location: input.updateInput.location ?? master.event.location,
-          dtStartUtc: input.updateInput.dtStartUtc ?? input.originalStartUtc,
+          dtStartUtc,
           dtEndUtc: input.updateInput.dtEndUtc ?? master.event.dtEndUtc,
-          tzid: input.updateInput.tzid ?? master.event.tzid,
-          allDay: input.updateInput.allDay ?? master.event.allDay,
+          tzid,
+          allDay,
           // A rule picked in the editor is the new series' own. Otherwise it
           // repeats as the series did: to the same end date, or for as many
           // dates as the series had left - not for ever, which is what
           // dropping the COUNT and UNTIL with the cap above used to give it.
-          rrule: input.updateInput.rrule ?? remainingRule(master.event, split),
+          // Either way, days named after the occurrence's move with it.
+          rrule: ruleFollowingStart(
+            input.updateInput.rrule ?? remainingRule(master.event, split),
+            master.event.rrule,
+            wallTime(input.originalStartUtc, seriesZone(master.event.allDay, master.event.tzid)),
+            wallTime(dtStartUtc, seriesZone(allDay, tzid))
+          ),
           exdate: laterExdates.join(',') || undefined,
           color: input.updateInput.color ?? master.event.color,
           meetingUrl: input.updateInput.meetingUrl ?? master.event.meetingUrl,

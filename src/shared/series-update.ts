@@ -3,13 +3,75 @@ import type { CalendarEvent, EventException, UpdateEventInput } from './event-mo
 import { ianaZoneFor } from './windows-time-zones'
 
 /** The zone a series repeats in - the one its occurrences are expanded in (see expandOccurrences). */
-function seriesZone(allDay: boolean, tzid: string | undefined): string {
+export function seriesZone(allDay: boolean, tzid: string | undefined): string {
   return allDay || !tzid ? 'utc' : (ianaZoneFor(tzid) ?? 'local')
 }
 
 /** An instant's clock reading in `zone`, as a number that can be added to and subtracted. */
 function wallClock(isoUtc: string, zone: string): number {
   return DateTime.fromISO(isoUtc, { zone: 'utc' }).setZone(zone).setZone('utc', { keepLocalTime: true }).toMillis()
+}
+
+/** An instant's clock reading in `zone`, as a UTC DateTime whose fields are that reading. */
+export function wallTime(isoUtc: string, zone: string): DateTime {
+  return DateTime.fromMillis(wallClock(isoUtc, zone), { zone: 'utc' })
+}
+
+const WEEKDAY_CODES = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU']
+
+/**
+ * A series' rule once its first date moves from `from` to `to` (both clock
+ * readings in the series' zone, as `wallTime` gives them).
+ *
+ * rrule takes what a rule leaves out from the first date, so `FREQ=WEEKLY`
+ * moves with it. A rule that names its days stays on them - Google and
+ * Outlook always name them, and so do the editor's weekday buttons - and rrule
+ * makes no date the rule does not name: `FREQ=WEEKLY;BYDAY=MO` moved to a
+ * Tuesday went on with Mondays, and the Tuesday it now starts on never showed.
+ *
+ * So the days that named the old start move with it: a weekly rule's weekdays
+ * turn round by as many days as the start moved, a monthly rule's numbered
+ * days shift by as many, and a yearly date becomes the new one. A rule that
+ * does not name the old start's day is left as it is, and so is one whose days
+ * are not the start's (a daily rule's weekdays, an nth weekday of the month).
+ */
+export function ruleForMovedStart(rrule: string, from: DateTime, to: DateTime): string {
+  const days = Math.round(to.startOf('day').diff(from.startOf('day'), 'days').days)
+  if (days === 0 || !/^[A-Z0-9=;,+-]+$/i.test(rrule)) return rrule
+
+  const parts = rrule.split(';').map((part) => {
+    const at = part.indexOf('=')
+    return { key: part.slice(0, at).toUpperCase(), value: part.slice(at + 1) }
+  })
+  const value = (key: string): string | undefined => parts.find((p) => p.key === key)?.value
+  const list = (key: string): string[] => (value(key) ?? '').split(',').filter(Boolean)
+  let changed = false
+  const set = (key: string, next: string): void => {
+    const part = parts.find((p) => p.key === key)!
+    changed ||= part.value !== next
+    part.value = next
+  }
+  const freq = value('FREQ')?.toUpperCase()
+  const pickers = ['BYDAY', 'BYYEARDAY', 'BYWEEKNO', 'BYSETPOS'].filter((key) => value(key) !== undefined)
+
+  if (freq === 'WEEKLY' && value('BYDAY') !== undefined) {
+    const named = list('BYDAY').map((d) => WEEKDAY_CODES.indexOf(d.toUpperCase()))
+    if (!named.includes(-1) && named.includes(from.weekday - 1)) {
+      set('BYDAY', named.map((d) => WEEKDAY_CODES[(((d + days) % 7) + 7) % 7]).join(','))
+    }
+  } else if (freq === 'MONTHLY' && pickers.length === 0) {
+    const named = list('BYMONTHDAY').map(Number)
+    if (named.includes(from.day)) {
+      // A day counted from the end of the month (-1) is not a date that moves.
+      const shifted = named.map((d) => (d > 0 ? d + to.day - from.day : d))
+      const valid = shifted.every((d) => d < 0 || (d >= 1 && d <= 31))
+      set('BYMONTHDAY', (valid ? shifted : named.map((d) => (d === from.day ? to.day : d))).join(','))
+    }
+  } else if (freq === 'YEARLY' && pickers.length === 0) {
+    if (value('BYMONTH') === String(from.month)) set('BYMONTH', String(to.month))
+    if (value('BYMONTHDAY') === String(from.day)) set('BYMONTHDAY', String(to.day))
+  }
+  return changed ? parts.map((p) => `${p.key}=${p.value}`).join(';') : rrule
 }
 
 /**
