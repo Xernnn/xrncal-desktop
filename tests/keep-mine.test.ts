@@ -105,7 +105,7 @@ describe('keep mine', () => {
       const id = editedHere(CAL, { id: 'prov1', etag: 'e1', guestsRead: true })
       let conflicted = false
       const calls = recordFetch((call) => {
-        if (call.method === 'PUT' && !conflicted) {
+        if (call.method === 'PATCH' && !conflicted) {
           conflicted = true
           return jsonResponse({ error: 'changed' }, 412)
         }
@@ -120,7 +120,7 @@ describe('keep mine', () => {
       await new GoogleSyncEngine(db).pushDirtyEvents(CAL, 'token')
 
       expect(calls.map((c) => [c.method, c.url.replace(/^.*\/calendars\//, '')])).toEqual([
-        ['PUT', `${CAL}/events/prov1`]
+        ['PATCH', `${CAL}/events/prov1`]
       ])
       expect(ifMatchOf(calls[0])).toBeUndefined()
       expect(repo.getEventById(id)!.event).toMatchObject({ dirty: false, etag: 'e3', providerEventId: 'prov1' })
@@ -137,8 +137,7 @@ describe('keep mine', () => {
       const guests = [{ email: 'guest@example.com', responseStatus: 'accepted' }]
       let conflicted = false
       const calls = recordFetch((call) => {
-        if (call.method === 'GET') return jsonResponse({ id: 'prov1', attendees: guests })
-        if (call.method === 'PUT' && !conflicted) {
+        if (call.method === 'PATCH' && !conflicted) {
           conflicted = true
           return jsonResponse({ error: 'changed' }, 412)
         }
@@ -150,11 +149,10 @@ describe('keep mine', () => {
       calls.length = 0
       await new GoogleSyncEngine(db).pushDirtyEvents(CAL, 'token')
 
-      // Google's list is read first and goes back as it was.
-      expect(calls.map((c) => c.method)).toEqual(['GET', 'PUT'])
-      expect((calls[1].body as { attendees?: { email: string }[] }).attendees?.map((a) => a.email)).toEqual([
-        'guest@example.com'
-      ])
+      // Left out of the PATCH, Google's list stays as it is, and the answer has it.
+      expect(calls.map((c) => c.method)).toEqual(['PATCH'])
+      expect(calls[0].body).not.toHaveProperty('attendees')
+      expect(repo.getEventById(id)!.event.attendees?.map((a) => a.email)).toEqual(['guest@example.com'])
     })
   })
 

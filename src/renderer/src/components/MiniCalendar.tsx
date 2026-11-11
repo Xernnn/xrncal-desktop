@@ -35,17 +35,18 @@ export const MiniCalendar: React.FC<MiniCalendarProps> = ({
 
   const colorsByDay = React.useMemo(() => {
     const map = new Map<string, string[]>()
+    const shown = { first: days[0].toFormat('yyyy-MM-dd'), last: days[days.length - 1].toFormat('yyyy-MM-dd') }
     for (const occ of occurrences) {
       const color = occ.color || DEFAULT_EVENT_COLOR
       // A multi-day event gets a dot on every day it covers, not just its first.
-      for (const key of occurrenceDateKeys(occ.allDay, occ.startUtc, occ.endUtc)) {
+      for (const key of occurrenceDateKeys(occ.allDay, occ.startUtc, occ.endUtc, shown)) {
         const list = map.get(key)
         if (!list) map.set(key, [color])
         else if (list.length < 3 && !list.includes(color)) list.push(color)
       }
     }
     return map
-  }, [occurrences])
+  }, [occurrences, days])
 
   return (
     <div className="select-none">

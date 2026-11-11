@@ -449,6 +449,42 @@ describe('CalDAV sync', () => {
     expect(await engine.syncCalendarList('acc_caldav_twin', CREDS)).toEqual([{ id: CAL, ctag: 'ctag-1' }])
   })
 
+  it("does not let a server name another provider's calendar, or the app's own, as one of its calendars", async () => {
+    const now = new Date().toISOString()
+    db.prepare(
+      `INSERT INTO accounts (id, type, name, email, is_active, created_at, updated_at)
+       VALUES ('acc_google', 'google', 'Google', 'me@gmail.com', 1, ?, ?), ('acc_dav', 'caldav', 'Server', 'sonn', 1, ?, ?)`
+    ).run(now, now, now, now)
+    db.prepare(
+      `INSERT INTO calendars (id, account_id, name, color, is_visible, is_read_only, is_default, created_at, updated_at)
+       VALUES ('me@gmail.com', 'acc_google', 'Gmail', '#000', 1, 0, 1, ?, ?)`
+    ).run(now, now)
+    const calendar = (href: string, name: string) =>
+      `<D:response><D:href>${href}</D:href><D:propstat><D:prop>` +
+      `<D:resourcetype><D:collection/><C:calendar xmlns:C="urn:ietf:params:xml:ns:caldav"/></D:resourcetype>` +
+      `<D:displayname>${name}</D:displayname><CS:getctag>c</CS:getctag>` +
+      `<D:current-user-privilege-set><D:privilege><D:read/></D:privilege></D:current-user-privilege-set>` +
+      `</D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response>`
+    const listing =
+      `<?xml version="1.0"?><D:multistatus xmlns:D="DAV:" xmlns:CS="http://calendarserver.org/ns/">` +
+      calendar('me@gmail.com', 'Taken over') +
+      calendar('calendar-local-default', 'Taken over') +
+      calendar('https://elsewhere.example/cal/', 'Elsewhere') +
+      calendar('/sonn/work/', 'Work') +
+      `</D:multistatus>`
+    vi.stubGlobal('fetch', vi.fn(async () => response(207, listing)))
+
+    const synced = await engine.syncCalendarList('acc_dav', CREDS)
+
+    expect(synced.map((c) => c.id)).toEqual(['https://dav.example/sonn/work/'])
+    const cal = (id: string) =>
+      db.prepare('SELECT name, account_id, is_read_only FROM calendars WHERE id = ?').get<Record<string, unknown>>(id)
+    expect(cal('me@gmail.com')).toEqual({ name: 'Gmail', account_id: 'acc_google', is_read_only: 0 })
+    expect(cal('calendar-local-default')).toEqual({ name: 'Personal Calendar', account_id: 'account-local-primary', is_read_only: 0 })
+    expect(cal('https://elsewhere.example/cal/')).toBeUndefined()
+    expect(cal('https://dav.example/sonn/work/')).toMatchObject({ name: 'Work', account_id: 'acc_dav' })
+  })
+
   describe('when the account cannot sync', () => {
     beforeEach(() => {
       const now = new Date().toISOString()

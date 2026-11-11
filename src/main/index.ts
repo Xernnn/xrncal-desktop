@@ -1,10 +1,10 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, dialog } from 'electron'
 import { join } from 'node:path'
 import { passwordStoreSwitch } from './password-store'
 import { registerIpcHandlers } from './ipc'
 import { loadCredentialsFile } from './load-credentials'
 import { adoptLegacyUserDataForApp } from './adopt-legacy-userdata'
-import { initDatabase, closeDatabase, getDatabase } from './db/database'
+import { closeDatabase, getDatabase } from './db/database'
 import { SettingsRepo, setSystemDefaults } from './db/repos/settings-repo'
 import { hasTray, refreshTrayHost, setupTray } from './tray'
 import { initLog, log } from './log'
@@ -24,6 +24,8 @@ import { APP_ICON_PNG } from './app-icon'
 import { START_HIDDEN_ARG } from './launch-at-login'
 import { noticeRunningInTray, settleExistingProfile } from './first-run'
 import { icsPathsIn, queueOpenedFiles, setOpenedFileNotifier } from './opened-ics-files'
+import { openDatabaseOrQuit } from './startup-database'
+import { setMainLocale } from './i18n-main'
 
 // The UI tests (e2e/) run the app on a throwaway profile. The single-instance
 // lock and the database both live in it, so a test run neither touches the real
@@ -192,15 +194,22 @@ if (!gotTheLock) {
     loadCredentialsFile()
     // A setting nobody has chosen follows the computer: its language when the
     // app has it, its clock, the day its weeks start on.
-    setSystemDefaults(defaultsForSystem(app.getPreferredSystemLanguages()[0], app.getSystemLocale()))
+    const systemDefaults = defaultsForSystem(app.getPreferredSystemLanguages()[0], app.getSystemLocale())
+    setSystemDefaults(systemDefaults)
 
+    // Without a database there is no app to open (every IPC handler reads it):
+    // say so, in the computer's language, and quit rather than linger unseen.
+    setMainLocale(systemDefaults.locale ?? 'en')
+    const db = openDatabaseOrQuit(app.getPath('userData'), {
+      showErrorBox: (title, content) => dialog.showErrorBox(title, content),
+      exit: (code) => app.exit(code)
+    })
+    if (!db) return
     try {
-      const db = initDatabase(app.getPath('userData'))
       refreshHolidayCalendars(db)
       settleExistingProfile(db)
     } catch (err) {
-      // The window still opens; anything that needs the database fails visibly on its own.
-      log('error', `The database could not be opened: ${describeError(err)}`)
+      log('error', `Startup could not finish preparing the database: ${describeError(err)}`)
     }
     applySavedSettingEffects()
 

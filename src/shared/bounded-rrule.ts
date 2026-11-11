@@ -17,8 +17,9 @@ import { RRule, Weekday, rrulestr, type Options } from 'rrule'
  *
  * So: a series that repeats more often than daily is not expanded at all; a
  * yearly one held to one month walks month by month; one with no COUNT starts
- * its walk at the period the range falls in rather than at its first date; and
- * the walk is metered, per series and per calendar.
+ * its walk at the period the range falls in rather than at its first date; the
+ * walk is metered, per series and per calendar; and a calendar's series
+ * produce at most so many dates per query.
  */
 
 /** Longer than any real RRULE (the longest seen are ~100 characters); the
@@ -51,16 +52,33 @@ const MAX_WALK_DAYS = 40 * 366
 const CALENDAR_WORK_PER_DAY = 20_000
 const CALENDAR_WORK_FLOOR = 5_000_000
 
+/**
+ * The dates one calendar's series may produce in one query. The work meter
+ * lets a dense but cheap rule through: about 1.3 reads per date for
+ * FREQ=DAILY;BYHOUR=0,...,23, so a feed of 2,723 such events used a whole
+ * allowance to produce 2.75 million occurrences, 36 s for a six-week view.
+ * A year of a hundred daily series is 36,500.
+ */
+export const CALENDAR_MAX_OCCURRENCES = 50_000
+
 const DAY_MS = 86_400_000
 
 /** Work left for the series of one calendar in one range query. */
 export interface ExpansionBudget {
   remaining: number
+  /** Dates the calendar's series may still produce (no limit when absent). */
+  occurrencesLeft?: number
+  /** Set once a series had more dates than were left. */
+  capped?: boolean
 }
 
-export function calendarExpansionBudget(rangeStartUtc: string, rangeEndUtc: string): ExpansionBudget {
+export function calendarExpansionBudget(
+  rangeStartUtc: string,
+  rangeEndUtc: string,
+  maxOccurrences = CALENDAR_MAX_OCCURRENCES
+): ExpansionBudget {
   const days = Math.max(0, (Date.parse(rangeEndUtc) - Date.parse(rangeStartUtc)) / DAY_MS)
-  return { remaining: Math.max(CALENDAR_WORK_FLOOR, CALENDAR_WORK_PER_DAY * days) }
+  return { remaining: Math.max(CALENDAR_WORK_FLOOR, CALENDAR_WORK_PER_DAY * days), occurrencesLeft: maxOccurrences }
 }
 
 /** A rule this module will not expand; the caller shows the series' first
@@ -108,6 +126,14 @@ export function boundedBetween(
   const meter = metered(rule, allowance)
   try {
     rule.between(after, before, true, (date) => {
+      if (budget?.occurrencesLeft !== undefined) {
+        // The calendar has produced its share: this date and the rest stay out.
+        if (budget.occurrencesLeft <= 0) {
+          budget.capped = true
+          return false
+        }
+        budget.occurrencesLeft--
+      }
       dates.push(date)
       return true
     })

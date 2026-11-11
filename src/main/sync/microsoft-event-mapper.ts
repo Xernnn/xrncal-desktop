@@ -23,8 +23,9 @@ interface GraphDateTimeTimeZone {
   timeZone: string // e.g. "UTC", "SE Asia Standard Time", "Asia/Ho_Chi_Minh"
 }
 
-/** What we send to Graph - see GoogleEventWritePayload for why the id is absent. */
-type GraphEventWritePayload = Omit<MicrosoftGraphApiEvent, 'id'>
+/** What we send to Graph - see GoogleEventWritePayload for why the id is absent.
+ *  A null `recurrence` takes the rule off a series. */
+type GraphEventWritePayload = Omit<MicrosoftGraphApiEvent, 'id' | 'recurrence'> & { recurrence?: GraphRecurrence | null }
 
 export interface MicrosoftGraphApiEvent {
   id: string
@@ -388,8 +389,11 @@ export function mapDomainEventToGraph(
     // No `id`, for the same reason as the Google mapper: it is in the URL on a
     // PATCH, and on a POST it is a server-assigned, read-only property.
     subject: event.title,
-    body: event.notes ? { contentType: 'text', content: event.notes } : undefined,
-    location: event.location ? { displayName: event.location } : undefined,
+    // An update is a PATCH, which keeps what a field it leaves out holds: notes
+    // or a place removed here ('' - undefined is one never known) stayed on
+    // Outlook, and came back with the next pull. Removed, they go empty.
+    body: event.notes !== undefined ? { contentType: 'text', content: event.notes } : undefined,
+    location: event.location !== undefined ? { displayName: event.location } : undefined,
     isAllDay,
     start: {
       dateTime: isAllDay ? `${startDateStr}T00:00:00` : clock(event.dtStartUtc),
@@ -401,9 +405,8 @@ export function mapDomainEventToGraph(
     }
   }
 
-  if (event.rrule) {
-    gEvent.recurrence = rruleToGraphRecurrence(event.rrule, startDateStr, clockZone)
-  }
+  // "Does not repeat" is a null rule: left out, the PATCH kept the series.
+  gEvent.recurrence = event.rrule ? rruleToGraphRecurrence(event.rrule, startDateStr, clockZone) : null
 
   // Guests go out only on the organizer's own events, and only when the list
   // is known to be complete (`attendees` undefined otherwise): a PATCH that

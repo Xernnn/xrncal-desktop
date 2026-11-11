@@ -22,8 +22,10 @@ import type { TitleSample } from '@shared/title-suggestions'
 import { parseRemindersJson, serializeReminders, type EventReminder } from '@shared/reminders'
 import { resolveLunarOccurrence } from '@shared/lunar-vietnam'
 import { expandOccurrences } from '@shared/expand-occurrences'
-import { calendarExpansionBudget, type ExpansionBudget } from '@shared/bounded-rrule'
+import { CALENDAR_MAX_OCCURRENCES, calendarExpansionBudget, type ExpansionBudget } from '@shared/bounded-rrule'
+import { namedDays, occurrenceShift, ruleForMovedStart, seriesZone, wallTime } from '@shared/series-update'
 import { DateTime } from 'luxon'
+import { log } from '../../log'
 
 export class ReadOnlyCalendarError extends Error {
   constructor(calendarId: string) {
@@ -172,8 +174,9 @@ function mapRowToException(row: ExceptionRow): EventException {
     originalStartUtc: row.original_start_utc,
     isCancelled: row.is_cancelled === 1,
     title: row.title || undefined,
-    notes: row.notes || undefined,
-    location: row.location || undefined,
+    // NULL is the series' text; '' is none, removed from this occurrence alone.
+    notes: row.notes ?? undefined,
+    location: row.location ?? undefined,
     dtStartUtc: row.dtstart_utc || undefined,
     dtEndUtc: row.dtend_utc || undefined,
     tzid: row.tzid || undefined,
@@ -183,6 +186,87 @@ function mapRowToException(row: ExceptionRow): EventException {
     createdAt: row.created_at,
     updatedAt: row.updated_at
   }
+}
+
+/**
+ * The rule of a series' dates from `splitUtc` on, for "this and following".
+ * A COUNT counts the dates the rule makes from the series' first, deleted
+ * ones included (RFC 5545), so the rest gets what is left of it after the
+ * dates before the split. An UNTIL stays as it is.
+ */
+function remainingRule(series: CalendarEvent, splitUtc: number): string | undefined {
+  const rule = series.rrule
+  const count = rule ? /(^|;)COUNT=(\d+)/i.exec(rule) : null
+  if (!rule || !count) return rule
+  const before = expandOccurrences(
+    { ...series, exdate: undefined },
+    [],
+    series.dtStartUtc,
+    new Date(splitUtc - 1).toISOString()
+  ).filter((o) => Date.parse(o.originalStartUtc) < splitUtc).length
+  return rule.replace(/(^|;)COUNT=\d+/i, `$1COUNT=${Math.max(1, Number(count[2]) - before)}`)
+}
+
+/**
+ * The rule of a series whose first date moved from `from` to `to` (clock
+ * readings, see wallTime). One that still names the days the series' rule
+ * `stored` named - left alone by the edit, or rebuilt by the editor from them -
+ * moves to the new start's days (ruleForMovedStart). Days the user picked
+ * differently in the editor are theirs.
+ */
+function ruleFollowingStart<T extends string | null | undefined>(
+  rule: T,
+  stored: string | undefined,
+  from: DateTime,
+  to: DateTime
+): T | string {
+  if (!rule || !stored || namedDays(rule) !== namedDays(stored)) return rule
+  return ruleForMovedStart(rule, from, to)
+}
+
+/**
+ * Where a date of a series lands once the series' dates moved `shiftMs` on
+ * the clock (occurrenceShift), out of `fromZone` into the zone `series` now
+ * repeats in - or null when that is no date of `series`, which can happen where
+ * its days did not follow the move. Only the series' own rule is consulted.
+ */
+function occurrenceMover(series: CalendarEvent, fromZone: string, shiftMs: number): (isoUtc: string) => string | null {
+  const zone = seriesZone(series.allDay, series.tzid)
+  const plain = { ...series, exdate: undefined, isDeleted: false }
+  return (isoUtc) => {
+    const moved = DateTime.fromMillis(wallTime(isoUtc, fromZone).toMillis() + shiftMs, { zone: 'utc' })
+      .setZone(zone, { keepLocalTime: true })
+      .toUTC()
+    if (!moved.isValid) return null
+    const at = moved.toMillis()
+    const around = expandOccurrences(plain, [], new Date(at - 1000).toISOString(), new Date(at + 1000).toISOString())
+    return around.some((o) => Date.parse(o.originalStartUtc) === at) ? moved.toISO() : null
+  }
+}
+
+/** A comma-separated list of dates (EXDATE), moved; the ones that land on no date go. */
+function moveDates(list: string, move: (isoUtc: string) => string | null): string {
+  return list
+    .split(',')
+    .map((d) => d.trim())
+    .filter(Boolean)
+    .map(move)
+    .filter((d): d is string => d !== null)
+    .join(',')
+}
+
+/** Calendars whose series have filled a query's share of dates (see
+ *  CALENDAR_MAX_OCCURRENCES) since the app started: logged once each, as the
+ *  same views are queried again and again. */
+const cappedCalendars = new Set<string>()
+
+function reportCappedCalendar(calendarId: string): void {
+  if (cappedCalendars.has(calendarId)) return
+  cappedCalendars.add(calendarId)
+  log(
+    'warn',
+    `Calendar ${calendarId} has more than ${CALENDAR_MAX_OCCURRENCES} repeating dates in one view; the rest of its series are not shown`
+  )
 }
 
 /** A guest list compared for change: who, in what role, with what answer. */
@@ -420,9 +504,31 @@ export class EventsRepo {
     const dtEndUtc = input.dtEndUtc ?? existing.dtEndUtc
     const tzid = input.tzid ?? existing.tzid
     const allDay = (input.allDay !== undefined ? input.allDay : existing.allDay) ? 1 : 0
+    const fromZone = seriesZone(existing.allDay, existing.tzid)
+    const toZone = seriesZone(allDay === 1, tzid)
+    const from = wallTime(existing.dtStartUtc, fromZone)
+    const to = wallTime(dtStartUtc, toZone)
     // '' removes the rule and is stored as NULL, which is how a one-off event is told from a series.
-    const rrule = input.rrule !== undefined ? input.rrule || null : (existing.rrule || null)
-    const exdate = input.exdate !== undefined ? input.exdate : (existing.exdate || null)
+    const rrule = ruleFollowingStart(
+      input.rrule !== undefined ? input.rrule || null : (existing.rrule || null),
+      existing.rrule,
+      from,
+      to
+    )
+    // A series' deleted and changed dates are keyed by the dates it gave them,
+    // so they move with its dates (see occurrenceShift). Left where they were,
+    // nothing matched them any more: a deleted date came back at the new time.
+    const shiftMs = existing.rrule && rrule ? occurrenceShift(existing.rrule, rrule, from, to) : 0
+    const move =
+      existing.rrule && rrule && (shiftMs !== 0 || fromZone !== toZone)
+        ? occurrenceMover({ ...existing, dtStartUtc, dtEndUtc, tzid, allDay: allDay === 1, rrule }, fromZone, shiftMs)
+        : undefined
+    const exdate =
+      input.exdate !== undefined
+        ? input.exdate || null
+        : move && existing.exdate
+          ? moveDates(existing.exdate, move) || null
+          : (existing.exdate || null)
     const lunarRule =
       input.lunarRule !== undefined
         ? input.lunarRule
@@ -436,34 +542,42 @@ export class EventsRepo {
     const reminders = serializeReminders(input.reminders !== undefined ? input.reminders : existing.reminders)
     const isDeleted = (input.isDeleted !== undefined ? input.isDeleted : existing.isDeleted) ? 1 : 0
 
-    this.db
-      .prepare(
-        `UPDATE events SET
-          calendar_id = ?,
-          title = ?, notes = ?, location = ?, dtstart_utc = ?, dtend_utc = ?,
-          tzid = ?, all_day = ?, rrule = ?, exdate = ?, lunar_rule = ?, color = ?,
-          meeting_url = ?, reminders = ?, dirty = 1, is_deleted = ?, updated_at = ?
-         WHERE id = ?`
-      )
-      .run(
-        calendarId,
-        title,
-        notes,
-        location,
-        dtStartUtc,
-        dtEndUtc,
-        tzid,
-        allDay,
-        rrule,
-        exdate,
-        lunarRule,
-        color,
-        meetingUrl,
-        reminders,
-        isDeleted,
-        now,
-        id
-      )
+    this.db.transaction(() => {
+      this.db
+        .prepare(
+          `UPDATE events SET
+            calendar_id = ?,
+            title = ?, notes = ?, location = ?, dtstart_utc = ?, dtend_utc = ?,
+            tzid = ?, all_day = ?, rrule = ?, exdate = ?, lunar_rule = ?, color = ?,
+            meeting_url = ?, reminders = ?, dirty = 1, is_deleted = ?, updated_at = ?
+           WHERE id = ?`
+        )
+        .run(
+          calendarId,
+          title,
+          notes,
+          location,
+          dtStartUtc,
+          dtEndUtc,
+          tzid,
+          allDay,
+          rrule,
+          exdate,
+          lunarRule,
+          color,
+          meetingUrl,
+          reminders,
+          isDeleted,
+          now,
+          id
+        )
+      if (move) {
+        this.moveExceptions(id, existingResult.exceptions, move, {
+          from: Date.parse(existing.dtEndUtc) - Date.parse(existing.dtStartUtc),
+          to: Date.parse(dtEndUtc) - Date.parse(dtStartUtc)
+        })
+      }
+    })()
 
     this.recordCalendarMove(id, existing.calendarId, calendarId)
 
@@ -473,6 +587,50 @@ export class EventsRepo {
 
     const updated = this.getEventById(id)
     return updated!.event
+  }
+
+  /**
+   * Put a series' deleted and changed occurrences on the dates they moved to
+   * (`move`, see occurrenceMover), as rows of `seriesId`. They are written as
+   * new rows, so each goes to the provider again, against the occurrence it is
+   * on now. One that lands on no date of the series is dropped: nothing would
+   * show it, and a provider would be asked on every sync for an occurrence
+   * it does not have.
+   *
+   * A change made to an occurrence left at the series' time goes with the
+   * series - to its new time, and to its new length if it had the old one.
+   * One moved on its own stays where it was put.
+   */
+  private moveExceptions(
+    seriesId: string,
+    exceptions: EventException[],
+    move: (isoUtc: string) => string | null,
+    lengthMs: { from: number; to: number }
+  ): void {
+    for (const ex of exceptions) this.db.prepare('DELETE FROM event_exceptions WHERE id = ?').run(ex.id)
+    for (const ex of exceptions) {
+      const key = move(ex.originalStartUtc)
+      if (!key) continue
+      const atSeriesTime =
+        ex.dtStartUtc !== undefined && Math.abs(Date.parse(ex.dtStartUtc) - Date.parse(ex.originalStartUtc)) < 1000
+      const ownLength = ex.dtStartUtc && ex.dtEndUtc ? Date.parse(ex.dtEndUtc) - Date.parse(ex.dtStartUtc) : lengthMs.from
+      this.upsertException({
+        masterEventId: seriesId,
+        originalStartUtc: key,
+        isCancelled: ex.isCancelled,
+        title: ex.title,
+        notes: ex.notes,
+        location: ex.location,
+        dtStartUtc: atSeriesTime ? key : ex.dtStartUtc,
+        dtEndUtc:
+          atSeriesTime && ex.dtEndUtc
+            ? new Date(Date.parse(key) + (ownLength === lengthMs.from ? lengthMs.to : ownLength)).toISOString()
+            : ex.dtEndUtc,
+        tzid: ex.tzid,
+        allDay: ex.allDay,
+        color: ex.color
+      })
+    }
   }
 
   deleteEvent(id: string): boolean {
@@ -662,8 +820,8 @@ export class EventsRepo {
         .run(
           isCancelled,
           exception.title || null,
-          exception.notes || null,
-          exception.location || null,
+          exception.notes ?? null,
+          exception.location ?? null,
           exception.dtStartUtc || null,
           exception.dtEndUtc || null,
           exception.tzid || null,
@@ -687,8 +845,8 @@ export class EventsRepo {
           exception.originalStartUtc,
           isCancelled,
           exception.title || null,
-          exception.notes || null,
-          exception.location || null,
+          exception.notes ?? null,
+          exception.location ?? null,
           exception.dtStartUtc || null,
           exception.dtEndUtc || null,
           exception.tzid || null,
@@ -1090,6 +1248,9 @@ export class EventsRepo {
       }
       occurrences.push(...expandOccurrences(event, exceptions, startUtc, endUtc, undefined, budget))
     }
+    for (const [calendarId, budget] of budgets) {
+      if (budget.capped) reportCappedCalendar(calendarId)
+    }
 
     // Sort chronologically by startUtc
     return occurrences.sort((a, b) => a.startUtc.localeCompare(b.startUtc))
@@ -1461,13 +1622,16 @@ export class EventsRepo {
       ) {
         this.updateEvent(input.masterEventId, { attendees: input.updateInput.attendees })
       }
+      // The editor leaves out a text field that was empty when it opened and
+      // still is; on an occurrence that had it removed, that is still removed.
+      const own = master.exceptions.find((ex) => ex.originalStartUtc === input.originalStartUtc)
       this.upsertException({
         masterEventId: input.masterEventId,
         originalStartUtc: input.originalStartUtc,
         isCancelled: false,
         title: input.updateInput.title,
-        notes: input.updateInput.notes,
-        location: input.updateInput.location,
+        notes: input.updateInput.notes ?? own?.notes,
+        location: input.updateInput.location ?? own?.location,
         dtStartUtc: input.updateInput.dtStartUtc,
         dtEndUtc: input.updateInput.dtEndUtc,
         tzid: input.updateInput.tzid,
@@ -1480,39 +1644,84 @@ export class EventsRepo {
     }
 
     if (input.scope === 'future') {
-      // 1. Cap master event with UNTIL right before this occurrence
-      const occDt = DateTime.fromISO(input.originalStartUtc, { zone: 'utc' })
-      const untilUtc = occDt.minus({ seconds: 1 }).toFormat("yyyyMMdd'T'HHmmss'Z'")
+      this.db.transaction(() => {
+        const split = Date.parse(input.originalStartUtc)
+        const after = (iso: string): boolean => Date.parse(iso) > split
 
-      let cleanRrule = master.event.rrule || ''
-      cleanRrule = cleanRrule.replace(/;?UNTIL=[^;]+/gi, '').replace(/;?COUNT=\d+/gi, '')
-      const cappedRrule = `${cleanRrule};UNTIL=${untilUtc}`
+        // 1. Cap master event with UNTIL right before this occurrence
+        const occDt = DateTime.fromISO(input.originalStartUtc, { zone: 'utc' })
+        const untilUtc = occDt.minus({ seconds: 1 }).toFormat("yyyyMMdd'T'HHmmss'Z'")
 
-      this.updateEvent(input.masterEventId, { rrule: cappedRrule })
+        let cleanRrule = master.event.rrule || ''
+        cleanRrule = cleanRrule.replace(/;?UNTIL=[^;]+/gi, '').replace(/;?COUNT=\d+/gi, '')
+        const cappedRrule = `${cleanRrule};UNTIL=${untilUtc}`
 
-      // 2. Create new recurring event starting from this occurrence
-      this.createEvent({
-        calendarId: master.event.calendarId,
-        title: input.updateInput.title ?? master.event.title,
-        notes: input.updateInput.notes ?? master.event.notes,
-        location: input.updateInput.location ?? master.event.location,
-        dtStartUtc: input.updateInput.dtStartUtc ?? input.originalStartUtc,
-        dtEndUtc: input.updateInput.dtEndUtc ?? master.event.dtEndUtc,
-        tzid: input.updateInput.tzid ?? master.event.tzid,
-        allDay: input.updateInput.allDay ?? master.event.allDay,
-        rrule: input.updateInput.rrule ?? cleanRrule,
-        color: input.updateInput.color ?? master.event.color,
-        meetingUrl: input.updateInput.meetingUrl ?? master.event.meetingUrl,
-        reminders:
-          input.updateInput.reminders !== undefined ? input.updateInput.reminders : master.event.reminders,
-        // The rest of the series is a new event, so its guests go with it -
-        // otherwise they are uninvited from every remaining date. Not on
-        // someone else's invitation: that would make a copy with this account
-        // as organizer and, on Microsoft, invite everyone again.
-        attendees: invitationSelf(master.event.attendees)
-          ? undefined
-          : (input.updateInput.attendees ?? master.event.attendees)?.map((a) => ({ ...a }))
-      })
+        // The dates deleted from the rest of the series, and the ones changed on
+        // their own, go with it; the occurrence this was opened on is what the
+        // new series starts with.
+        const exdates = (master.event.exdate || '').split(',').map((d) => d.trim()).filter(Boolean)
+        const laterExdates = exdates.filter(after)
+        const laterExceptions = master.exceptions.filter((ex) => after(ex.originalStartUtc))
+        this.db
+          .prepare('DELETE FROM event_exceptions WHERE master_event_id = ? AND original_start_utc = ?')
+          .run(input.masterEventId, input.originalStartUtc)
+
+        this.updateEvent(input.masterEventId, {
+          rrule: cappedRrule,
+          ...(laterExdates.length > 0 ? { exdate: exdates.filter((d) => !after(d)).join(',') } : {})
+        })
+
+        // 2. Create new recurring event starting from this occurrence
+        const dtStartUtc = input.updateInput.dtStartUtc ?? input.originalStartUtc
+        const tzid = input.updateInput.tzid ?? master.event.tzid
+        const allDay = input.updateInput.allDay ?? master.event.allDay
+        const fromZone = seriesZone(master.event.allDay, master.event.tzid)
+        const from = wallTime(input.originalStartUtc, fromZone)
+        const to = wallTime(dtStartUtc, seriesZone(allDay, tzid))
+        // A rule picked in the editor is the new series' own. Otherwise it
+        // repeats as the series did: to the same end date, or for as many
+        // dates as the series had left - not for ever, which is what
+        // dropping the COUNT and UNTIL with the cap above used to give it.
+        // Either way, days named after the occurrence's move with it.
+        const rrule = ruleFollowingStart(
+          input.updateInput.rrule ?? remainingRule(master.event, split),
+          master.event.rrule,
+          from,
+          to
+        )
+        const tail = this.createEvent({
+          calendarId: master.event.calendarId,
+          title: input.updateInput.title ?? master.event.title,
+          notes: input.updateInput.notes ?? master.event.notes,
+          location: input.updateInput.location ?? master.event.location,
+          dtStartUtc,
+          dtEndUtc: input.updateInput.dtEndUtc ?? master.event.dtEndUtc,
+          tzid,
+          allDay,
+          rrule,
+          color: input.updateInput.color ?? master.event.color,
+          meetingUrl: input.updateInput.meetingUrl ?? master.event.meetingUrl,
+          reminders:
+            input.updateInput.reminders !== undefined ? input.updateInput.reminders : master.event.reminders,
+          // The rest of the series is a new event, so its guests go with it -
+          // otherwise they are uninvited from every remaining date. Not on
+          // someone else's invitation: that would make a copy with this account
+          // as organizer and, on Microsoft, invite everyone again.
+          attendees: invitationSelf(master.event.attendees)
+            ? undefined
+            : (input.updateInput.attendees ?? master.event.attendees)?.map((a) => ({ ...a }))
+        })
+        // On the new series' dates: moved as the occurrence was, if it was.
+        const move =
+          master.event.rrule && rrule
+            ? occurrenceMover(tail, fromZone, occurrenceShift(master.event.rrule, rrule, from, to))
+            : () => null
+        this.moveExceptions(tail.id, laterExceptions, move, {
+          from: Date.parse(master.event.dtEndUtc) - Date.parse(master.event.dtStartUtc),
+          to: Date.parse(tail.dtEndUtc) - Date.parse(tail.dtStartUtc)
+        })
+        if (laterExdates.length > 0) this.updateEvent(tail.id, { exdate: moveDates(laterExdates.join(','), move) })
+      })()
 
       return true
     }

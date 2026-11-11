@@ -56,6 +56,10 @@
     "tests/wheel-navigation.test.ts",
     "tests/account-display.test.ts",
     "tests/time-zones.test.ts",
-    "tests/new-event.test.ts"
+    "tests/new-event.test.ts",
+    "tests/editor-double-save.test.ts",
+    "tests/search-result-date.test.ts",
+    "tests/context-menu-slot.test.ts",
+    "tests/long-event-views.test.ts"
   ]
 }

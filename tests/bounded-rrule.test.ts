@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { rrulestr } from 'rrule'
 import {
   boundedBetween,
+  CALENDAR_MAX_OCCURRENCES,
   calendarExpansionBudget,
   UnexpandableRuleError,
   type ExpansionBudget
@@ -207,5 +208,34 @@ describe('a calendar shares one allowance across its series', () => {
     // Days 274-304 of the year are October's 31 days.
     expect(found).toBe(Array.from({ length: 5_000 }, (_, i) => i % 365).filter((d) => d >= 273 && d <= 303).length)
     expect(budget.remaining).toBeGreaterThan(0)
+  })
+})
+
+describe('a calendar produces at most its share of dates in one query', () => {
+  // Six weeks, as the month view asks.
+  const range = ['2026-09-28T00:00:00.000Z', '2026-11-08T23:59:59.999Z'] as const
+  const dtstart = new Date('2026-01-01T00:00:00.000Z')
+  const hourly = ruleString(`FREQ=DAILY;BYHOUR=${Array.from({ length: 24 }, (_, h) => h).join(',')}`, dtstart)
+
+  it('stops a feed of dense but valid rules there, which the work meter lets through', () => {
+    // Each costs about 1.3 reads per date, so the meter alone let 2,723 such
+    // events produce 2.75 million dates for this view, in 36 s.
+    const budget = calendarExpansionBudget(...range)
+    let found = 0
+    for (let i = 0; i < 200; i++) {
+      found += boundedBetween(hourly, dtstart, new Date(range[0]), new Date(range[1]), budget).length
+    }
+    expect(found).toBe(CALENDAR_MAX_OCCURRENCES)
+    expect(budget.capped).toBe(true)
+  })
+
+  it('leaves a calendar with fewer dates than that whole', () => {
+    const budget = calendarExpansionBudget(...range)
+    let found = 0
+    for (let i = 0; i < 1_000; i++) {
+      found += boundedBetween(ruleString('FREQ=DAILY', dtstart), dtstart, new Date(range[0]), new Date(range[1]), budget).length
+    }
+    expect(found).toBe(1_000 * 42)
+    expect(budget.capped).toBeFalsy()
   })
 })

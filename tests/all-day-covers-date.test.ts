@@ -85,4 +85,32 @@ describe('occurrenceDateKeys', () => {
     expect(keys.length).toBeLessThanOrEqual(366)
     expect(keys[0]).toBe('2026-01-01')
   })
+
+  // An event longer than a year was drawn on its first 366 days only: a
+  // three-year secondment vanished from Month and Year view in its second year.
+  it('gives the days on screen of an event longer than a year', () => {
+    const shown = { first: '2026-10-26', last: '2026-12-06' }
+    const keys = occurrenceDateKeys(true, '2024-01-01T00:00:00.000Z', '2027-12-31T23:59:59.999Z', shown)
+    expect(keys).toHaveLength(42)
+    expect([keys[0], keys.at(-1)]).toEqual(['2026-10-26', '2026-12-06'])
+  })
+
+  it('gives only the days on screen of a span that starts or ends on it', () => {
+    const shown = { first: '2026-10-26', last: '2026-12-06' }
+    expect(occurrenceDateKeys(true, '2025-01-01T00:00:00.000Z', '2026-10-28T23:59:59.999Z', shown)).toEqual([
+      '2026-10-26',
+      '2026-10-27',
+      '2026-10-28'
+    ])
+    expect(occurrenceDateKeys(true, '2026-12-05T00:00:00.000Z', '2031-01-01T23:59:59.999Z', shown)).toEqual([
+      '2026-12-05',
+      '2026-12-06'
+    ])
+  })
+
+  it('walks the screen, not the span, for a span of millennia', () => {
+    const shown = { first: '2026-01-01', last: '2026-12-31' }
+    const keys = occurrenceDateKeys(true, '0001-01-01T00:00:00.000Z', '9999-12-31T23:59:59.999Z', shown)
+    expect(keys).toHaveLength(365)
+  })
 })
