@@ -210,19 +210,20 @@ export const YearView: React.FC<YearViewProps> = ({
 
   const colorsByDay = useMemo(() => {
     const map = new Map<string, string[]>()
+    const shown = { first: `${year}-01-01`, last: `${year}-12-31` }
     for (const occ of occurrences) {
       const color = occ.color || DEFAULT_EVENT_COLOR
       // A multi-day event is marked on every day it covers. occurrenceDateKeys
       // reads all-day spans as the floating dates they are, so they are not
       // shifted by a UTC->local conversion.
-      for (const key of occurrenceDateKeys(occ.allDay, occ.startUtc, occ.endUtc)) {
+      for (const key of occurrenceDateKeys(occ.allDay, occ.startUtc, occ.endUtc, shown)) {
         const list = map.get(key)
         if (!list) map.set(key, [color])
         else if (list.length < 3 && !list.includes(color)) list.push(color)
       }
     }
     return map
-  }, [occurrences])
+  }, [occurrences, year])
 
   // A flick anywhere on the page steps a year; the grid below only keeps the
   // gesture while it still has somewhere to scroll, which a short window gives

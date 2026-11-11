@@ -264,6 +264,9 @@ export const MonthView: React.FC<MonthViewProps> = ({
 
   const { firstDayOfWeek: weekStart } = useDisplayPreferences()
   const gridStart = startOfWeek(anchorDate.startOf('month'), weekStart)
+  // The days on screen, for an event that runs on far beyond them.
+  const shownFirst = startOfWeek(anchorDate.startOf('month'), weekStart).toFormat('yyyy-MM-dd')
+  const shownLast = startOfWeek(anchorDate.startOf('month'), weekStart).plus({ days: 41 }).toFormat('yyyy-MM-dd')
 
   const days: DateTime[] = []
   for (let i = 0; i < 42; i++) {
@@ -279,7 +282,7 @@ export const MonthView: React.FC<MonthViewProps> = ({
     }
     for (const occ of occurrences) {
       // A multi-day event belongs to every day it covers, not just its first.
-      for (const key of occurrenceDateKeys(occ.allDay, occ.startUtc, occ.endUtc)) {
+      for (const key of occurrenceDateKeys(occ.allDay, occ.startUtc, occ.endUtc, { first: shownFirst, last: shownLast })) {
         addTo(key, occ)
       }
     }
@@ -287,7 +290,7 @@ export const MonthView: React.FC<MonthViewProps> = ({
     // all-day dates with real instants; each day needs its own ordering.
     for (const [key, list] of map) map.set(key, list.sort(compareOccurrencesWithinDay))
     return map
-  }, [occurrences])
+  }, [occurrences, shownFirst, shownLast])
 
   const headers = weekdayShortLabels(t, weekStart)
   const weekendColumns = weekdayOrder(weekStart).map((d) => d >= 6)

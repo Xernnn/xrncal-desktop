@@ -59,6 +59,7 @@
     "tests/new-event.test.ts",
     "tests/editor-double-save.test.ts",
     "tests/search-result-date.test.ts",
-    "tests/context-menu-slot.test.ts"
+    "tests/context-menu-slot.test.ts",
+    "tests/long-event-views.test.ts"
   ]
 }

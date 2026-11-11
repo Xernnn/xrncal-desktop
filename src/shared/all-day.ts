@@ -115,19 +115,24 @@ const MAX_SPAN_DAYS = 366
  * on. All-day spans are floating dates walked directly; timed ones are real
  * instants, so their local dates are used and an event running past midnight
  * lands on both days.
+ *
+ * `shown` (the first and last date on screen) limits the walk to those days.
+ * Walked from its own first day, an event longer than the cap was drawn on
+ * its first year only, and vanished from Month and Year view after that.
  */
 export function occurrenceDateKeys(
   allDay: boolean,
   startUtc: string,
-  endUtc: string
+  endUtc: string,
+  shown?: { first: string; last: string }
 ): string[] {
   const first = occurrenceDateKey(allDay, startUtc)
   const last = occurrenceDateKey(allDay, endUtc)
   if (last <= first) return [first]
 
   const keys: string[] = []
-  let cursor = DateTime.fromISO(first, { zone: 'utc' })
-  const end = DateTime.fromISO(last, { zone: 'utc' })
+  let cursor = DateTime.fromISO(shown && shown.first > first ? shown.first : first, { zone: 'utc' })
+  const end = DateTime.fromISO(shown && shown.last < last ? shown.last : last, { zone: 'utc' })
   while (cursor <= end && keys.length < MAX_SPAN_DAYS) {
     keys.push(cursor.toFormat('yyyy-MM-dd'))
     cursor = cursor.plus({ days: 1 })
