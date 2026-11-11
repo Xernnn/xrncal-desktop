@@ -22,9 +22,10 @@ import type { TitleSample } from '@shared/title-suggestions'
 import { parseRemindersJson, serializeReminders, type EventReminder } from '@shared/reminders'
 import { resolveLunarOccurrence } from '@shared/lunar-vietnam'
 import { expandOccurrences } from '@shared/expand-occurrences'
-import { calendarExpansionBudget, type ExpansionBudget } from '@shared/bounded-rrule'
+import { CALENDAR_MAX_OCCURRENCES, calendarExpansionBudget, type ExpansionBudget } from '@shared/bounded-rrule'
 import { namedDays, occurrenceShift, ruleForMovedStart, seriesZone, wallTime } from '@shared/series-update'
 import { DateTime } from 'luxon'
+import { log } from '../../log'
 
 export class ReadOnlyCalendarError extends Error {
   constructor(calendarId: string) {
@@ -252,6 +253,20 @@ function moveDates(list: string, move: (isoUtc: string) => string | null): strin
     .map(move)
     .filter((d): d is string => d !== null)
     .join(',')
+}
+
+/** Calendars whose series have filled a query's share of dates (see
+ *  CALENDAR_MAX_OCCURRENCES) since the app started: logged once each, as the
+ *  same views are queried again and again. */
+const cappedCalendars = new Set<string>()
+
+function reportCappedCalendar(calendarId: string): void {
+  if (cappedCalendars.has(calendarId)) return
+  cappedCalendars.add(calendarId)
+  log(
+    'warn',
+    `Calendar ${calendarId} has more than ${CALENDAR_MAX_OCCURRENCES} repeating dates in one view; the rest of its series are not shown`
+  )
 }
 
 /** A guest list compared for change: who, in what role, with what answer. */
@@ -1232,6 +1247,9 @@ export class EventsRepo {
         budgets.set(event.calendarId, budget)
       }
       occurrences.push(...expandOccurrences(event, exceptions, startUtc, endUtc, undefined, budget))
+    }
+    for (const [calendarId, budget] of budgets) {
+      if (budget.capped) reportCappedCalendar(calendarId)
     }
 
     // Sort chronologically by startUtc

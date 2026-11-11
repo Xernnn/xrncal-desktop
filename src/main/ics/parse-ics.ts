@@ -39,13 +39,13 @@ interface IcalTimeParts {
 }
 
 /**
- * Format ICAL.Time into an ISO 8601 UTC string
+ * Format ICAL.Time into an ISO 8601 UTC string. A missing time throws, and the
+ * VEVENT is skipped: it used to be read as "now", so an event with no DTSTART
+ * (or an override with an empty RECURRENCE-ID) sat at whatever moment the file
+ * was read, and moved with every pull.
  */
 function icalTimeToIso(time: IcalTimeParts | null | undefined): { iso: string; allDay: boolean; tzid: string } {
-  if (!time) {
-    const now = new Date().toISOString()
-    return { iso: now, allDay: false, tzid: 'UTC' }
-  }
+  if (!time) throw new Error('A date the VEVENT needs is missing')
 
   const allDay = time.isDate === true
   const tzid = time.timezone || (time.zone ? time.zone.tzid : 'UTC')
@@ -183,7 +183,26 @@ function parseAttendees(vEvent: ICAL.Component): Attendee[] {
  *  Reading them back is what stops a CalDAV pull from wiping both. */
 function urlOf(vEvent: ICAL.Component): string | undefined {
   const url = vEvent.getFirstPropertyValue('url')
-  return typeof url === 'string' && url.trim() ? url.trim() : undefined
+  return typeof url === 'string' && url.trim() ? unescapeTextEscapes(url.trim()) : undefined
+}
+
+/** A text escape in a URI: a backslash before a backslash, comma or semicolon. */
+const TEXT_ESCAPE_IN_URI = /\\([\\,;])/g
+
+/**
+ * A meeting link as it was before xrncal wrote it escaped as text. Until
+ * 2a60e6f a push sent "a,b" as "a\,b", which no reader unescapes in a URI, so
+ * the next pull stored it so and the next push escaped it again ("a\\\,b").
+ * A backslash is not a URI character at all, so none of these is ever meant:
+ * each layer is taken off until none is left. (Migration 026 does the same to
+ * the links already stored.)
+ */
+export function unescapeTextEscapes(url: string): string {
+  for (let out = url; ; ) {
+    const next = out.replace(TEXT_ESCAPE_IN_URI, '$1')
+    if (next === out) return out
+    out = next
+  }
 }
 
 /** COLOR (RFC 7986) may be a CSS colour name from another client; only the hex
@@ -230,8 +249,13 @@ export function parseIcsContent(icsContent: string, targetCalendarId: string): P
       const description = icalEvent.description || undefined
       const location = icalEvent.location || undefined
 
-      const startInfo = icalTimeToIso(icalEvent.startDate)
-      const endInfo = icalTimeToIso(icalEvent.endDate)
+      // RFC 5545 requires a DTSTART. Without one there is no date to put the
+      // event on: it is skipped (see icalTimeToIso), unless it is an override,
+      // which then stays at the date it stands for - left out, a cancelled one
+      // would have brought that date back.
+      const hasStart = vEvent.hasProperty('dtstart')
+      const startInfo = hasStart ? icalTimeToIso(icalEvent.startDate) : undefined
+      const endInfo = hasStart ? icalTimeToIso(icalEvent.endDate) : undefined
 
       // Check if this VEVENT is an occurrence exception (RECURRENCE-ID present)
       const recIdProp = vEvent.getFirstProperty('recurrence-id')
@@ -250,19 +274,20 @@ export function parseIcsContent(icsContent: string, targetCalendarId: string): P
           title: summary,
           notes: description,
           location,
-          dtStartUtc: startInfo.iso,
-          dtEndUtc: normaliseIcsEnd(startInfo, endInfo),
-          tzid: startInfo.tzid,
+          dtStartUtc: startInfo?.iso,
+          dtEndUtc: startInfo && endInfo ? normaliseIcsEnd(startInfo, endInfo) : undefined,
+          tzid: startInfo?.tzid,
           // One week of an all-day series moved to 10:00 is a timed occurrence
           // (and the other way round). Left out, it inherited the series' flag
           // and showed as an all-day event on the day it was moved to.
-          allDay: startInfo.allDay,
+          allDay: startInfo?.allDay,
           attendees: parseAttendees(vEvent),
           reminders: parseAlarms(vEvent),
           meetingUrl: urlOf(vEvent)
         })
         continue
       }
+      if (!startInfo || !endInfo) throw new Error('A VEVENT has no DTSTART')
 
       // Check RRULE
       let rruleString: string | undefined

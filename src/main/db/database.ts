@@ -595,6 +595,57 @@ CREATE UNIQUE INDEX idx_events_provider_id
   WHERE provider_event_id IS NOT NULL;
 `
 
+/**
+ * Meeting links pushed to CalDAV before 2a60e6f, which escaped a URL as text:
+ * "@10.7769,106.7009" went to the server as "@10.7769\,106.7009", no reader
+ * unescapes a URI, so the pull stored that here, and each later push added a
+ * layer ("\\\,"). The .ics reader now takes the escapes off
+ * (unescapeTextEscapes); this does the same to the links stored before it, to
+ * the same end: a backslash before a backslash, comma or semicolon goes, until
+ * none is left - a backslash is never part of a URI. A writable CalDAV event so
+ * repaired is pushed again, which corrects the server's copy for every other
+ * client.
+ */
+export const MIGRATION_026_SQL = String.raw`
+CREATE TEMP TABLE repaired_links AS
+WITH RECURSIVE pass(id, url) AS (
+  SELECT id, meeting_url FROM events WHERE meeting_url GLOB '*\[\,;]*'
+  UNION ALL
+  SELECT id, REPLACE(REPLACE(REPLACE(url, '\\', '\'), '\,', ','), '\;', ';')
+  FROM pass WHERE url GLOB '*\[\,;]*'
+)
+SELECT id, url FROM pass WHERE NOT url GLOB '*\[\,;]*';
+
+UPDATE events
+SET meeting_url = (SELECT url FROM repaired_links r WHERE r.id = events.id)
+WHERE id IN (SELECT id FROM repaired_links);
+
+UPDATE events SET dirty = 1
+WHERE id IN (SELECT id FROM repaired_links)
+  AND is_deleted = 0
+  AND has_conflict = 0
+  AND calendar_id IN (
+    SELECT c.id FROM calendars c JOIN accounts a ON a.id = c.account_id
+    WHERE a.type = 'caldav' AND c.is_read_only = 0
+  );
+
+DROP TABLE repaired_links;
+`
+
+/**
+ * Google series' excluded and added dates, which the pull now reads into
+ * exdate and rdate. A series stored before has neither, and an incremental
+ * pull brings only what changed on Google, so its next edit here would still
+ * send the rule alone and take the exclusions off on Google. Clearing the
+ * Google calendars' sync tokens makes the next sync list every event once.
+ */
+export const MIGRATION_027_SQL = `
+UPDATE sync_state SET sync_token = NULL
+WHERE calendar_id IN (
+  SELECT c.id FROM calendars c JOIN accounts a ON a.id = c.account_id WHERE a.type = 'google'
+);
+`
+
 /** Every migration in order: the one at index i is version i + 1. */
 const MIGRATIONS: readonly string[] = [
   MIGRATION_001_SQL,
@@ -621,12 +672,25 @@ const MIGRATIONS: readonly string[] = [
   MIGRATION_022_SQL,
   MIGRATION_023_SQL,
   MIGRATION_024_SQL,
-  MIGRATION_025_SQL
+  MIGRATION_025_SQL,
+  MIGRATION_026_SQL,
+  MIGRATION_027_SQL
 ]
 
 /** The newest migration this build knows: a restore refuses a backup made by
  *  a build with a newer schema. */
 export const SCHEMA_VERSION = MIGRATIONS.length
+
+/** A database a newer build has migrated: this one does not know its schema. */
+export class NewerDatabaseError extends Error {
+  constructor(
+    readonly version: number,
+    readonly knownVersion: number
+  ) {
+    super(`The database is at schema version ${version}; this build knows up to ${knownVersion}`)
+    this.name = 'NewerDatabaseError'
+  }
+}
 
 /**
  * Execute all schema migrations in order
@@ -642,6 +706,11 @@ export function runMigrations(db: ISqliteDatabase): void {
 
   const row = db.prepare('SELECT MAX(version) as max_version FROM schema_migrations').get<{ max_version: number | null }>()
   const currentVersion = row?.max_version ?? 0
+  // An older build opened after a newer one (a downgrade, a second copy left
+  // installed) carried on as if the schema were its own: its queries and
+  // writes ran on tables and meanings it does not know, and the newer build's
+  // migrations, recorded as done, never ran again over what it wrote.
+  if (currentVersion > SCHEMA_VERSION) throw new NewerDatabaseError(currentVersion, SCHEMA_VERSION)
   const record = db.prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)')
 
   // Each migration commits together with the row that records it. Run
@@ -683,6 +752,11 @@ export function seedDefaultData(db: ISqliteDatabase): void {
   }
 }
 
+/** The database file initDatabase() opens for a profile folder (or a file path given as is). */
+export function databaseFilePath(dbDirOrPath: string): string {
+  return dbDirOrPath === ':memory:' ? ':memory:' : dbDirOrPath.endsWith('.sqlite') || dbDirOrPath.endsWith('.db') ? dbDirOrPath : join(dbDirOrPath, 'xrncal.sqlite')
+}
+
 /**
  * Initialize SQLite database
  */
@@ -691,11 +765,17 @@ export function initDatabase(dbDirOrPath: string): ISqliteDatabase {
     return dbInstance
   }
 
-  const dbPath = dbDirOrPath === ':memory:' ? ':memory:' : dbDirOrPath.endsWith('.sqlite') || dbDirOrPath.endsWith('.db') ? dbDirOrPath : join(dbDirOrPath, 'xrncal.sqlite')
+  const dbPath = databaseFilePath(dbDirOrPath)
   const db = createSqliteDriver(dbPath)
 
-  runMigrations(db)
-  seedDefaultData(db)
+  try {
+    runMigrations(db)
+    seedDefaultData(db)
+  } catch (err) {
+    // Not left open: the file stays as it was for whatever opens it next.
+    db.close()
+    throw err
+  }
 
   dbInstance = db
   return db

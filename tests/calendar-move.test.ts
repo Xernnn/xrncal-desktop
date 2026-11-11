@@ -362,7 +362,7 @@ describe('moving an event to another calendar', () => {
 
       await new GoogleSyncEngine(db).pushDirtyEvents(G_B, 'token')
 
-      expect(calls.map((c) => c.method)).toEqual(['POST', 'PUT'])
+      expect(calls.map((c) => c.method)).toEqual(['POST', 'PATCH'])
       expect(ifMatchOf(calls[1])).toBe('e-moved')
       expect(row(id)).toMatchObject({ calendar_id: G_B, etag: 'e3', moved_from_calendar_id: null, dirty: 0 })
     })
