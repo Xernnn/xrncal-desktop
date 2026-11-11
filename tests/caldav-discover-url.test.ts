@@ -82,3 +82,33 @@ describe('CalDAV URL Normalization & Discovery Parser', () => {
     })
   })
 })
+
+/**
+ * A multistatus is read with patterns, and a pattern that looks for a closing
+ * tag from every opening one reads the rest of the text each time when there
+ * is none: 400 KB took a second, and the time grows with the square of the
+ * size. Two megabytes - a hundredth of what a REPORT may send - held the main
+ * process for half a minute. Both tests ran into the test timeout before.
+ */
+describe('a multistatus with elements that are never closed', () => {
+  const twoMegabytes = (unit: string): string => unit.repeat(Math.ceil((2 * 1024 * 1024) / unit.length))
+
+  it('is read in one pass when no response is closed', () => {
+    const xml = `<d:multistatus xmlns:d="DAV:">${twoMegabytes('<d:response><d:href>/a/</d:href>')}`
+    expect(parseCalDavMultistatus(xml, 'https://dav.example.com/')).toEqual([])
+  })
+
+  it('is read in one pass when a response is full of unclosed elements', () => {
+    const response = `<d:response>${twoMegabytes('<d:href>')}</d:response>`
+    expect(extractXmlTagValue(response, 'href')).toBeUndefined()
+    expect(parseCalDavMultistatus(`<d:multistatus xmlns:d="DAV:">${response}</d:multistatus>`, 'https://dav.example.com/')).toEqual([])
+  })
+
+  it('still reads the responses that are whole, and stops at the first that is not', () => {
+    const whole =
+      '<d:response><d:href>/cal/</d:href><d:propstat><d:prop><d:resourcetype><c:calendar/></d:resourcetype>' +
+      '<d:displayname>Home</d:displayname></d:prop><d:responsedescription>ok</d:responsedescription></d:propstat></d:response>'
+    const calendars = parseCalDavMultistatus(`<d:multistatus>${whole}<d:response><d:href>/cut/</d:href>`, 'https://dav.example.com/')
+    expect(calendars.map((c) => [c.href, c.displayName])).toEqual([['https://dav.example.com/cal/', 'Home']])
+  })
+})
