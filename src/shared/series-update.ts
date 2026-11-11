@@ -74,6 +74,60 @@ export function ruleForMovedStart(rrule: string, from: DateTime, to: DateTime): 
   return changed ? parts.map((p) => `${p.key}=${p.value}`).join(';') : rrule
 }
 
+const DAY_MS = 86_400_000
+
+function ruleParts(rrule: string): Map<string, string> {
+  return new Map(rrule.toUpperCase().split(';').map((part) => part.split('=') as [string, string]))
+}
+
+/** The days a rule names, as one string to compare. */
+export function namedDays(rrule: string): string {
+  const parts = ruleParts(rrule)
+  return ['BYDAY', 'BYMONTHDAY', 'BYMONTH'].map((key) => (parts.get(key) ?? '').split(',').sort().join(',')).join(';')
+}
+
+/**
+ * How far, on the clock, each date of a series moves when its first date
+ * moves from `from` to `to` and its rule goes from `stored` to `rule`: what a
+ * deleted or changed occurrence, keyed by the date it was, has to move by to
+ * stay on its occurrence.
+ *
+ * The time of day moves as the start's did. The day moves with it only as far
+ * as the dates do: not at all where the rule names days the move left alone
+ * (every weekday, the second Tuesday), by the start's move within one period
+ * for a daily or weekly series - a weekly series started a week later is on
+ * the same dates - by the change of day of the month for a monthly one, and
+ * of date in the year for a yearly one.
+ */
+export function occurrenceShift(stored: string, rule: string, from: DateTime, to: DateTime): number {
+  const total = to.toMillis() - from.toMillis()
+  const clock = total - Math.round(to.startOf('day').diff(from.startOf('day'), 'days').days) * DAY_MS
+  const parts = ruleParts(rule)
+  const names = ['BYDAY', 'BYMONTHDAY', 'BYMONTH', 'BYYEARDAY', 'BYWEEKNO', 'BYSETPOS'].some((key) => parts.has(key))
+  if (names && namedDays(rule) === namedDays(stored)) return clock
+
+  const interval = Math.max(1, Number(parts.get('INTERVAL')) || 1)
+  /** `total` less whole periods, as near nought as it goes. */
+  const withinPeriod = (period: number): number => {
+    const rest = ((total % period) + period) % period
+    return rest > period / 2 ? rest - period : rest
+  }
+  switch (parts.get('FREQ')) {
+    case 'DAILY':
+      return withinPeriod(interval * DAY_MS)
+    case 'WEEKLY':
+      return withinPeriod(7 * interval * DAY_MS)
+    case 'MONTHLY':
+      return (to.day - from.day) * DAY_MS + clock
+    case 'YEARLY': {
+      const sameYear = to.set({ year: from.year })
+      return sameYear.isValid && sameYear.month === to.month ? sameYear.toMillis() - from.toMillis() : total
+    }
+    default:
+      return total
+  }
+}
+
 /**
  * What "all events" sends for a change made on one occurrence.
  *

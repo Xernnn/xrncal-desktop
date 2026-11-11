@@ -23,7 +23,7 @@ import { parseRemindersJson, serializeReminders, type EventReminder } from '@sha
 import { resolveLunarOccurrence } from '@shared/lunar-vietnam'
 import { expandOccurrences } from '@shared/expand-occurrences'
 import { calendarExpansionBudget, type ExpansionBudget } from '@shared/bounded-rrule'
-import { ruleForMovedStart, seriesZone, wallTime } from '@shared/series-update'
+import { namedDays, occurrenceShift, ruleForMovedStart, seriesZone, wallTime } from '@shared/series-update'
 import { DateTime } from 'luxon'
 
 export class ReadOnlyCalendarError extends Error {
@@ -205,12 +205,6 @@ function remainingRule(series: CalendarEvent, splitUtc: number): string | undefi
   return rule.replace(/(^|;)COUNT=\d+/i, `$1COUNT=${Math.max(1, Number(count[2]) - before)}`)
 }
 
-/** The days a rule names, as one string to compare. */
-function namedDays(rrule: string): string {
-  const parts = new Map(rrule.toUpperCase().split(';').map((part) => part.split('=') as [string, string]))
-  return ['BYDAY', 'BYMONTHDAY', 'BYMONTH'].map((key) => (parts.get(key) ?? '').split(',').sort().join(',')).join(';')
-}
-
 /**
  * The rule of a series whose first date moved from `from` to `to` (clock
  * readings, see wallTime). One that still names the days the series' rule
@@ -226,6 +220,37 @@ function ruleFollowingStart<T extends string | null | undefined>(
 ): T | string {
   if (!rule || !stored || namedDays(rule) !== namedDays(stored)) return rule
   return ruleForMovedStart(rule, from, to)
+}
+
+/**
+ * Where a date of a series lands once the series' dates moved `shiftMs` on
+ * the clock (occurrenceShift), out of `fromZone` into the zone `series` now
+ * repeats in - or null when that is no date of `series`, which can happen where
+ * its days did not follow the move. Only the series' own rule is consulted.
+ */
+function occurrenceMover(series: CalendarEvent, fromZone: string, shiftMs: number): (isoUtc: string) => string | null {
+  const zone = seriesZone(series.allDay, series.tzid)
+  const plain = { ...series, exdate: undefined, isDeleted: false }
+  return (isoUtc) => {
+    const moved = DateTime.fromMillis(wallTime(isoUtc, fromZone).toMillis() + shiftMs, { zone: 'utc' })
+      .setZone(zone, { keepLocalTime: true })
+      .toUTC()
+    if (!moved.isValid) return null
+    const at = moved.toMillis()
+    const around = expandOccurrences(plain, [], new Date(at - 1000).toISOString(), new Date(at + 1000).toISOString())
+    return around.some((o) => Date.parse(o.originalStartUtc) === at) ? moved.toISO() : null
+  }
+}
+
+/** A comma-separated list of dates (EXDATE), moved; the ones that land on no date go. */
+function moveDates(list: string, move: (isoUtc: string) => string | null): string {
+  return list
+    .split(',')
+    .map((d) => d.trim())
+    .filter(Boolean)
+    .map(move)
+    .filter((d): d is string => d !== null)
+    .join(',')
 }
 
 /** A guest list compared for change: who, in what role, with what answer. */
@@ -463,14 +488,31 @@ export class EventsRepo {
     const dtEndUtc = input.dtEndUtc ?? existing.dtEndUtc
     const tzid = input.tzid ?? existing.tzid
     const allDay = (input.allDay !== undefined ? input.allDay : existing.allDay) ? 1 : 0
+    const fromZone = seriesZone(existing.allDay, existing.tzid)
+    const toZone = seriesZone(allDay === 1, tzid)
+    const from = wallTime(existing.dtStartUtc, fromZone)
+    const to = wallTime(dtStartUtc, toZone)
     // '' removes the rule and is stored as NULL, which is how a one-off event is told from a series.
     const rrule = ruleFollowingStart(
       input.rrule !== undefined ? input.rrule || null : (existing.rrule || null),
       existing.rrule,
-      wallTime(existing.dtStartUtc, seriesZone(existing.allDay, existing.tzid)),
-      wallTime(dtStartUtc, seriesZone(allDay === 1, tzid))
+      from,
+      to
     )
-    const exdate = input.exdate !== undefined ? input.exdate || null : (existing.exdate || null)
+    // A series' deleted and changed dates are keyed by the dates it gave them,
+    // so they move with its dates (see occurrenceShift). Left where they were,
+    // nothing matched them any more: a deleted date came back at the new time.
+    const shiftMs = existing.rrule && rrule ? occurrenceShift(existing.rrule, rrule, from, to) : 0
+    const move =
+      existing.rrule && rrule && (shiftMs !== 0 || fromZone !== toZone)
+        ? occurrenceMover({ ...existing, dtStartUtc, dtEndUtc, tzid, allDay: allDay === 1, rrule }, fromZone, shiftMs)
+        : undefined
+    const exdate =
+      input.exdate !== undefined
+        ? input.exdate || null
+        : move && existing.exdate
+          ? moveDates(existing.exdate, move) || null
+          : (existing.exdate || null)
     const lunarRule =
       input.lunarRule !== undefined
         ? input.lunarRule
@@ -484,34 +526,42 @@ export class EventsRepo {
     const reminders = serializeReminders(input.reminders !== undefined ? input.reminders : existing.reminders)
     const isDeleted = (input.isDeleted !== undefined ? input.isDeleted : existing.isDeleted) ? 1 : 0
 
-    this.db
-      .prepare(
-        `UPDATE events SET
-          calendar_id = ?,
-          title = ?, notes = ?, location = ?, dtstart_utc = ?, dtend_utc = ?,
-          tzid = ?, all_day = ?, rrule = ?, exdate = ?, lunar_rule = ?, color = ?,
-          meeting_url = ?, reminders = ?, dirty = 1, is_deleted = ?, updated_at = ?
-         WHERE id = ?`
-      )
-      .run(
-        calendarId,
-        title,
-        notes,
-        location,
-        dtStartUtc,
-        dtEndUtc,
-        tzid,
-        allDay,
-        rrule,
-        exdate,
-        lunarRule,
-        color,
-        meetingUrl,
-        reminders,
-        isDeleted,
-        now,
-        id
-      )
+    this.db.transaction(() => {
+      this.db
+        .prepare(
+          `UPDATE events SET
+            calendar_id = ?,
+            title = ?, notes = ?, location = ?, dtstart_utc = ?, dtend_utc = ?,
+            tzid = ?, all_day = ?, rrule = ?, exdate = ?, lunar_rule = ?, color = ?,
+            meeting_url = ?, reminders = ?, dirty = 1, is_deleted = ?, updated_at = ?
+           WHERE id = ?`
+        )
+        .run(
+          calendarId,
+          title,
+          notes,
+          location,
+          dtStartUtc,
+          dtEndUtc,
+          tzid,
+          allDay,
+          rrule,
+          exdate,
+          lunarRule,
+          color,
+          meetingUrl,
+          reminders,
+          isDeleted,
+          now,
+          id
+        )
+      if (move) {
+        this.moveExceptions(id, existingResult.exceptions, move, {
+          from: Date.parse(existing.dtEndUtc) - Date.parse(existing.dtStartUtc),
+          to: Date.parse(dtEndUtc) - Date.parse(dtStartUtc)
+        })
+      }
+    })()
 
     this.recordCalendarMove(id, existing.calendarId, calendarId)
 
@@ -521,6 +571,50 @@ export class EventsRepo {
 
     const updated = this.getEventById(id)
     return updated!.event
+  }
+
+  /**
+   * Put a series' deleted and changed occurrences on the dates they moved to
+   * (`move`, see occurrenceMover), as rows of `seriesId`. They are written as
+   * new rows, so each goes to the provider again, against the occurrence it is
+   * on now. One that lands on no date of the series is dropped: nothing would
+   * show it, and a provider would be asked on every sync for an occurrence
+   * it does not have.
+   *
+   * A change made to an occurrence left at the series' time goes with the
+   * series - to its new time, and to its new length if it had the old one.
+   * One moved on its own stays where it was put.
+   */
+  private moveExceptions(
+    seriesId: string,
+    exceptions: EventException[],
+    move: (isoUtc: string) => string | null,
+    lengthMs: { from: number; to: number }
+  ): void {
+    for (const ex of exceptions) this.db.prepare('DELETE FROM event_exceptions WHERE id = ?').run(ex.id)
+    for (const ex of exceptions) {
+      const key = move(ex.originalStartUtc)
+      if (!key) continue
+      const atSeriesTime =
+        ex.dtStartUtc !== undefined && Math.abs(Date.parse(ex.dtStartUtc) - Date.parse(ex.originalStartUtc)) < 1000
+      const ownLength = ex.dtStartUtc && ex.dtEndUtc ? Date.parse(ex.dtEndUtc) - Date.parse(ex.dtStartUtc) : lengthMs.from
+      this.upsertException({
+        masterEventId: seriesId,
+        originalStartUtc: key,
+        isCancelled: ex.isCancelled,
+        title: ex.title,
+        notes: ex.notes,
+        location: ex.location,
+        dtStartUtc: atSeriesTime ? key : ex.dtStartUtc,
+        dtEndUtc:
+          atSeriesTime && ex.dtEndUtc
+            ? new Date(Date.parse(key) + (ownLength === lengthMs.from ? lengthMs.to : ownLength)).toISOString()
+            : ex.dtEndUtc,
+        tzid: ex.tzid,
+        allDay: ex.allDay,
+        color: ex.color
+      })
+    }
   }
 
   deleteEvent(id: string): boolean {
@@ -1549,7 +1643,6 @@ export class EventsRepo {
         this.db
           .prepare('DELETE FROM event_exceptions WHERE master_event_id = ? AND original_start_utc = ?')
           .run(input.masterEventId, input.originalStartUtc)
-        for (const ex of laterExceptions) this.db.prepare('DELETE FROM event_exceptions WHERE id = ?').run(ex.id)
 
         this.updateEvent(input.masterEventId, {
           rrule: cappedRrule,
@@ -1560,6 +1653,20 @@ export class EventsRepo {
         const dtStartUtc = input.updateInput.dtStartUtc ?? input.originalStartUtc
         const tzid = input.updateInput.tzid ?? master.event.tzid
         const allDay = input.updateInput.allDay ?? master.event.allDay
+        const fromZone = seriesZone(master.event.allDay, master.event.tzid)
+        const from = wallTime(input.originalStartUtc, fromZone)
+        const to = wallTime(dtStartUtc, seriesZone(allDay, tzid))
+        // A rule picked in the editor is the new series' own. Otherwise it
+        // repeats as the series did: to the same end date, or for as many
+        // dates as the series had left - not for ever, which is what
+        // dropping the COUNT and UNTIL with the cap above used to give it.
+        // Either way, days named after the occurrence's move with it.
+        const rrule = ruleFollowingStart(
+          input.updateInput.rrule ?? remainingRule(master.event, split),
+          master.event.rrule,
+          from,
+          to
+        )
         const tail = this.createEvent({
           calendarId: master.event.calendarId,
           title: input.updateInput.title ?? master.event.title,
@@ -1569,18 +1676,7 @@ export class EventsRepo {
           dtEndUtc: input.updateInput.dtEndUtc ?? master.event.dtEndUtc,
           tzid,
           allDay,
-          // A rule picked in the editor is the new series' own. Otherwise it
-          // repeats as the series did: to the same end date, or for as many
-          // dates as the series had left - not for ever, which is what
-          // dropping the COUNT and UNTIL with the cap above used to give it.
-          // Either way, days named after the occurrence's move with it.
-          rrule: ruleFollowingStart(
-            input.updateInput.rrule ?? remainingRule(master.event, split),
-            master.event.rrule,
-            wallTime(input.originalStartUtc, seriesZone(master.event.allDay, master.event.tzid)),
-            wallTime(dtStartUtc, seriesZone(allDay, tzid))
-          ),
-          exdate: laterExdates.join(',') || undefined,
+          rrule,
           color: input.updateInput.color ?? master.event.color,
           meetingUrl: input.updateInput.meetingUrl ?? master.event.meetingUrl,
           reminders:
@@ -1593,22 +1689,16 @@ export class EventsRepo {
             ? undefined
             : (input.updateInput.attendees ?? master.event.attendees)?.map((a) => ({ ...a }))
         })
-        // New rows, so they are pushed with the new series, under its ids.
-        for (const ex of laterExceptions) {
-          this.upsertException({
-            masterEventId: tail.id,
-            originalStartUtc: ex.originalStartUtc,
-            isCancelled: ex.isCancelled,
-            title: ex.title,
-            notes: ex.notes,
-            location: ex.location,
-            dtStartUtc: ex.dtStartUtc,
-            dtEndUtc: ex.dtEndUtc,
-            tzid: ex.tzid,
-            allDay: ex.allDay,
-            color: ex.color
-          })
-        }
+        // On the new series' dates: moved as the occurrence was, if it was.
+        const move =
+          master.event.rrule && rrule
+            ? occurrenceMover(tail, fromZone, occurrenceShift(master.event.rrule, rrule, from, to))
+            : () => null
+        this.moveExceptions(tail.id, laterExceptions, move, {
+          from: Date.parse(master.event.dtEndUtc) - Date.parse(master.event.dtStartUtc),
+          to: Date.parse(tail.dtEndUtc) - Date.parse(tail.dtStartUtc)
+        })
+        if (laterExdates.length > 0) this.updateEvent(tail.id, { exdate: moveDates(laterExdates.join(','), move) })
       })()
 
       return true
