@@ -292,6 +292,18 @@ export function initialForm(
   }
 }
 
+/**
+ * A text field as a save sends it. To an update, a field left out means "as
+ * it was", which is right for one that was empty all along. One the user had
+ * just emptied was left out too, so notes, a location or a meeting link could
+ * be changed but never removed: the old text was back after the save. A field
+ * that had text when the editor opened and has none now is sent as '', which
+ * clears it.
+ */
+export function textFieldUpdate(value: string, opened: string): string | undefined {
+  return value.trim() || (opened.trim() ? '' : undefined)
+}
+
 /** The part of the form a typed title can set, and what to put back when the words are deleted. */
 interface ScheduleFields extends EntrySlot {
   recurrencePreset: string
@@ -872,9 +884,9 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
       calendarId,
       // Without the date and time words, which are in the fields by now.
       title: parsedTitle?.title ?? title.trim(),
-      notes: notes.trim() || undefined,
-      location: location.trim() || undefined,
-      meetingUrl: meetingUrl.trim() || undefined,
+      notes: textFieldUpdate(notes, initial.notes),
+      location: textFieldUpdate(location, initial.location),
+      meetingUrl: textFieldUpdate(meetingUrl, initial.meetingUrl),
       // '' clears an event's own colour; undefined would keep it.
       color,
       allDay: isLunarYearly ? true : allDay,
