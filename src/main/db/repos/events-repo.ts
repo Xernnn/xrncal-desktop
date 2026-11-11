@@ -1681,17 +1681,53 @@ export class EventsRepo {
     }
     this.checkReadOnlyCalendar(master.event.calendarId)
 
-    // A calendar lives on the event row, and a single occurrence is an
-    // exception row - there is nowhere to record "this one instance belongs to
-    // another calendar", and no provider supports it either. Say so rather than
-    // dropping the change and reporting success.
-    if (input.updateInput.calendarId && input.scope !== 'all') {
-      const master = this.getEventById(input.masterEventId)
-      if (master && input.updateInput.calendarId !== master.event.calendarId) {
-        throw new Error(
-          'A single occurrence cannot be moved to another calendar. Apply the change to the whole series, or delete this occurrence and create a new event.'
-        )
-      }
+    // A calendar lives on the event row, and one occurrence is an exception
+    // row of its series: there is nowhere to record "this date belongs to
+    // another calendar", and no provider has such a thing either. This used to
+    // be refused with an error, and before that dropped without a word; but
+    // "this one goes in another calendar" has a plain meaning. The date leaves
+    // the series and becomes an event of its own in that calendar, and "this
+    // and following" starts the rest of the series there.
+    const toCalendarId =
+      input.scope !== 'all' && input.updateInput.calendarId && input.updateInput.calendarId !== master.event.calendarId
+        ? input.updateInput.calendarId
+        : undefined
+    if (toCalendarId) {
+      this.checkReadOnlyCalendar(toCalendarId)
+      // Someone else's meeting: its dates are theirs, in the calendar they were sent to.
+      if (invitationSelf(master.event.attendees)) throw new Error(MOVE_REFUSED.invitation)
+    }
+
+    if (toCalendarId && input.scope === 'this') {
+      const update = input.updateInput
+      const own = master.exceptions.find((ex) => ex.originalStartUtc === input.originalStartUtc && !ex.isCancelled)
+      const durationMs = Date.parse(master.event.dtEndUtc) - Date.parse(master.event.dtStartUtc)
+      this.db.transaction(() => {
+        this.createEvent({
+          calendarId: toCalendarId,
+          title: update.title ?? own?.title ?? master.event.title,
+          notes: update.notes ?? own?.notes ?? master.event.notes,
+          location: update.location ?? own?.location ?? master.event.location,
+          dtStartUtc: update.dtStartUtc ?? own?.dtStartUtc ?? input.originalStartUtc,
+          dtEndUtc:
+            update.dtEndUtc ??
+            own?.dtEndUtc ??
+            new Date(Date.parse(input.originalStartUtc) + durationMs).toISOString(),
+          tzid: update.tzid ?? own?.tzid ?? master.event.tzid,
+          allDay: update.allDay ?? own?.allDay ?? master.event.allDay,
+          color: update.color ?? own?.color ?? master.event.color,
+          meetingUrl: update.meetingUrl ?? master.event.meetingUrl,
+          reminders: update.reminders !== undefined ? update.reminders : master.event.reminders,
+          // Its guests go with it, as with the rest of a series split off below.
+          attendees: (update.attendees ?? master.event.attendees)?.map((a) => ({ ...a }))
+        })
+        this.upsertException({
+          masterEventId: input.masterEventId,
+          originalStartUtc: input.originalStartUtc,
+          isCancelled: true
+        })
+      })()
+      return true
     }
 
     if (input.scope === 'all') {
@@ -1785,7 +1821,7 @@ export class EventsRepo {
           to
         )
         const tail = this.createEvent({
-          calendarId: master.event.calendarId,
+          calendarId: toCalendarId ?? master.event.calendarId,
           title: input.updateInput.title ?? master.event.title,
           notes: input.updateInput.notes ?? master.event.notes,
           location: input.updateInput.location ?? master.event.location,

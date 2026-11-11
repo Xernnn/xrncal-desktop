@@ -245,7 +245,48 @@ describe('moving an event between calendars', () => {
     expect(repo.getEventById(master.id)!.event.calendarId).toBe(calB)
   })
 
-  it('refuses to move one occurrence, which has nowhere to record a calendar', () => {
+  it('takes one occurrence out of the series and into the other calendar, as an event of its own', () => {
+    const master = repo.createEvent({
+      calendarId: calA,
+      title: 'Weekly',
+      notes: 'Bring the notes',
+      dtStartUtc: '2026-09-07T09:00:00.000Z',
+      dtEndUtc: '2026-09-07T09:30:00.000Z',
+      rrule: 'FREQ=WEEKLY;BYDAY=MO',
+      reminders: [{ minutesBefore: 10 }]
+    })
+
+    // The editor, opened on the 14th: another calendar, an hour later, renamed.
+    repo.updateRecurringScope({
+      masterEventId: master.id,
+      originalStartUtc: '2026-09-14T09:00:00.000Z',
+      scope: 'this',
+      updateInput: {
+        calendarId: calB,
+        title: 'Weekly (with the client)',
+        dtStartUtc: '2026-09-14T10:00:00.000Z',
+        dtEndUtc: '2026-09-14T10:30:00.000Z'
+      }
+    })
+
+    // The series stays where it was, without that date.
+    const series = repo.getEventById(master.id)!
+    expect(series.event.calendarId).toBe(calA)
+    expect(series.exceptions.map((ex) => [ex.originalStartUtc, ex.isCancelled])).toEqual([['2026-09-14T09:00:00.000Z', true]])
+
+    const drawn = repo.queryEventsByRange([calA, calB], '2026-09-07T00:00:00.000Z', '2026-09-22T00:00:00.000Z')
+    expect(drawn.map((o) => [o.calendarId === calB ? 'B' : 'A', o.startUtc, o.title, o.isRecurring])).toEqual([
+      ['A', '2026-09-07T09:00:00.000Z', 'Weekly', true],
+      ['B', '2026-09-14T10:00:00.000Z', 'Weekly (with the client)', false],
+      ['A', '2026-09-21T09:00:00.000Z', 'Weekly', true]
+    ])
+    // What the series had and the editor left alone goes with it.
+    const moved = repo.getEventById(drawn[1].eventId)!.event
+    expect(moved).toMatchObject({ notes: 'Bring the notes', reminders: [{ minutesBefore: 10 }], dirty: true })
+    expect(moved.rrule).toBeUndefined()
+  })
+
+  it('takes an occurrence already changed on its own, with its changes, when only the calendar is new', () => {
     const master = repo.createEvent({
       calendarId: calA,
       title: 'Weekly',
@@ -253,6 +294,88 @@ describe('moving an event between calendars', () => {
       dtEndUtc: '2026-09-07T09:30:00.000Z',
       rrule: 'FREQ=WEEKLY;BYDAY=MO'
     })
+    repo.updateRecurringScope({
+      masterEventId: master.id,
+      originalStartUtc: '2026-09-14T09:00:00.000Z',
+      scope: 'this',
+      updateInput: { title: 'Weekly (late)', dtStartUtc: '2026-09-14T11:00:00.000Z', dtEndUtc: '2026-09-14T11:45:00.000Z' }
+    })
+
+    repo.updateRecurringScope({
+      masterEventId: master.id,
+      originalStartUtc: '2026-09-14T09:00:00.000Z',
+      scope: 'this',
+      updateInput: { calendarId: calB }
+    })
+
+    const drawn = repo.queryEventsByRange([calA, calB], '2026-09-14T00:00:00.000Z', '2026-09-15T00:00:00.000Z')
+    expect(drawn.map((o) => [o.calendarId === calB ? 'B' : 'A', o.startUtc, o.endUtc, o.title])).toEqual([
+      ['B', '2026-09-14T11:00:00.000Z', '2026-09-14T11:45:00.000Z', 'Weekly (late)']
+    ])
+  })
+
+  it('starts the rest of the series in the other calendar for "this and following"', () => {
+    const master = repo.createEvent({
+      calendarId: calA,
+      title: 'Weekly',
+      dtStartUtc: '2026-09-07T09:00:00.000Z',
+      dtEndUtc: '2026-09-07T09:30:00.000Z',
+      rrule: 'FREQ=WEEKLY;BYDAY=MO;COUNT=4'
+    })
+
+    repo.updateRecurringScope({
+      masterEventId: master.id,
+      originalStartUtc: '2026-09-21T09:00:00.000Z',
+      scope: 'future',
+      updateInput: { calendarId: calB }
+    })
+
+    const drawn = repo.queryEventsByRange([calA, calB], '2026-09-01T00:00:00.000Z', '2026-10-31T00:00:00.000Z')
+    expect(drawn.map((o) => [o.calendarId === calB ? 'B' : 'A', o.startUtc])).toEqual([
+      ['A', '2026-09-07T09:00:00.000Z'],
+      ['A', '2026-09-14T09:00:00.000Z'],
+      ['B', '2026-09-21T09:00:00.000Z'],
+      ['B', '2026-09-28T09:00:00.000Z']
+    ])
+    expect(repo.getEventById(master.id)!.event.calendarId).toBe(calA)
+  })
+
+  it('leaves the dates of someone else’s meeting in the calendar it was sent to', () => {
+    const master = repo.createEvent({
+      calendarId: calA,
+      title: 'Their weekly',
+      dtStartUtc: '2026-09-07T09:00:00.000Z',
+      dtEndUtc: '2026-09-07T09:30:00.000Z',
+      rrule: 'FREQ=WEEKLY;BYDAY=MO',
+      attendees: [
+        { email: 'boss@example.com', isOrganizer: true },
+        { email: 'me@example.com', isSelf: true }
+      ]
+    })
+
+    for (const scope of ['this', 'future'] as const) {
+      expect(() =>
+        repo.updateRecurringScope({
+          masterEventId: master.id,
+          originalStartUtc: '2026-09-14T09:00:00.000Z',
+          scope,
+          updateInput: { calendarId: calB }
+        })
+      ).toThrow(/invitation stays/)
+    }
+    expect(repo.queryEventsByRange([calB], '2026-09-01T00:00:00.000Z', '2026-10-31T00:00:00.000Z')).toEqual([])
+    expect(repo.getEventById(master.id)!.exceptions).toEqual([])
+  })
+
+  it('does not write to a read-only calendar that way either', () => {
+    const master = repo.createEvent({
+      calendarId: calA,
+      title: 'Weekly',
+      dtStartUtc: '2026-09-07T09:00:00.000Z',
+      dtEndUtc: '2026-09-07T09:30:00.000Z',
+      rrule: 'FREQ=WEEKLY;BYDAY=MO'
+    })
+    db.prepare('UPDATE calendars SET is_read_only = 1 WHERE id = ?').run(calB)
 
     expect(() =>
       repo.updateRecurringScope({
@@ -261,8 +384,7 @@ describe('moving an event between calendars', () => {
         scope: 'this',
         updateInput: { calendarId: calB }
       })
-    ).toThrow(/single occurrence cannot be moved/i)
-
-    expect(repo.getEventById(master.id)!.event.calendarId).toBe(calA)
+    ).toThrow(/read-only/)
+    expect(repo.getEventById(master.id)!.exceptions).toEqual([])
   })
 })
