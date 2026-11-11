@@ -130,6 +130,30 @@ describe('ICS Parse, Generate & Roundtrip', () => {
     expect(parseIcsContent(ics('Asia/Ho_Chi_Minh'), 'cal-test').events[0].dtStartUtc).toBe('2026-10-10T02:00:00.000Z')
   })
 
+  it('writes a meeting link as it is: a URL is not text, and readers do not unescape it', () => {
+    // A map link, or any address with a comma or semicolon in it.
+    const link = 'https://maps.example.com/place/@10.7769,106.7009,17z;layer=transit'
+    const event: CalendarEvent = {
+      id: 'evt-link',
+      calendarId: 'cal-test',
+      uid: 'evt-link@xrncal.calendar',
+      title: 'Dinner',
+      dtStartUtc: '2026-08-18T10:00:00.000Z',
+      dtEndUtc: '2026-08-18T11:00:00.000Z',
+      tzid: 'UTC',
+      allDay: false,
+      meetingUrl: link,
+      dirty: true,
+      isDeleted: false,
+      createdAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: '2026-08-01T00:00:00.000Z'
+    }
+
+    const ics = generateIcs(mockCalendar, [event])
+    expect(ics.split('\r\n')).toContain(`URL:${link}`)
+    expect(parseIcsContent(ics, 'cal-test').events[0].meetingUrl).toBe(link)
+  })
+
   it('should reject payload exceeding 5MB size cap', () => {
     const largeContent = 'A'.repeat(MAX_ICS_SIZE_BYTES + 100)
     expect(() => parseIcsContent(largeContent, 'cal-test')).toThrowError(/exceeds size cap/)

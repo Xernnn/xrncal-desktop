@@ -44,12 +44,29 @@ function overrideZone(event: CalendarEvent, ex: EventException, seriesZone: stri
   return event.allDay ? writableZone(ex.tzid) : seriesZone
 }
 
+/**
+ * A value written with a line break of its own ends its content line there, and
+ * the rest is read as the next property. Titles, names and UIDs arrive from
+ * feeds, invitations and imported files: an imported `UID:x\nATTENDEE:mailto:...`
+ * (which a reader unescapes to a real line break) put a guest list back on an
+ * event whose guests the import had deliberately left out, and a guest's
+ * `CN="A^nB"` left a line no server would take, so a reply never went. A bare
+ * CR counts: some servers read it as the end of a line.
+ */
+const LINE_BREAK = /\r\n?|\n/g
+
 function escapeIcsText(text: string): string {
   return text
     .replace(/\\/g, '\\\\')
     .replace(/;/g, '\\;')
     .replace(/,/g, '\\,')
-    .replace(/\n/g, '\\n')
+    .replace(LINE_BREAK, '\\n')
+}
+
+/** A UID as other clients wrote it, which few escape as text: only its line
+ *  breaks are, the way a reader gave them. */
+function uidLine(uid: string): string {
+  return `UID:${uid.replace(LINE_BREAK, '\\n')}`
 }
 
 /** `-P1DT15H` for 2340 minutes before; `PT0S` for the start itself. */
@@ -88,7 +105,12 @@ const PARTSTAT: Record<NonNullable<Attendee['responseStatus']>, string> = {
 
 /** A quoted parameter value; RFC 5545 has no escape for a double quote. */
 function paramValue(text: string): string {
-  return `"${text.replace(/"/g, "'")}"`
+  return `"${text.replace(/"/g, "'").replace(LINE_BREAK, ' ')}"`
+}
+
+/** An address is one token: no line break belongs in it. */
+function mailto(email: string): string {
+  return `mailto:${email.replace(LINE_BREAK, '')}`
 }
 
 /**
@@ -101,7 +123,7 @@ function pushAttendeeLines(lines: string[], attendees: Attendee[] | undefined): 
   const organizer = attendees.find((a) => a.isOrganizer)
   if (organizer) {
     const cn = organizer.displayName ? `;CN=${paramValue(organizer.displayName)}` : ''
-    lines.push(`ORGANIZER${cn}:mailto:${organizer.email}`)
+    lines.push(`ORGANIZER${cn}:${mailto(organizer.email)}`)
   }
   for (const a of attendees) {
     const cn = a.displayName ? `;CN=${paramValue(a.displayName)}` : ''
@@ -113,7 +135,7 @@ function pushAttendeeLines(lines: string[], attendees: Attendee[] | undefined): 
           : a.role === 'optional'
             ? ';ROLE=OPT-PARTICIPANT'
             : ''
-    lines.push(`ATTENDEE${cn}${role};PARTSTAT=${PARTSTAT[a.responseStatus || 'needsAction']}:mailto:${a.email}`)
+    lines.push(`ATTENDEE${cn}${role};PARTSTAT=${PARTSTAT[a.responseStatus || 'needsAction']}:${mailto(a.email)}`)
   }
 }
 
@@ -164,7 +186,7 @@ export function generateIcs(
     const zone = event.allDay ? null : writableZone(event.tzid)
 
     lines.push('BEGIN:VEVENT')
-    lines.push(`UID:${event.uid}`)
+    lines.push(uidLine(event.uid))
     lines.push(`DTSTAMP:${DateTime.utc().toFormat("yyyyMMdd'T'HHmmss'Z'")}`)
 
     if (event.allDay) {
@@ -188,7 +210,10 @@ export function generateIcs(
     // URL and COLOR are both RFC-defined (5545 / 7986) and round-trip through
     // CalDAV servers, so a meeting link or per-event colour survives a push.
     if (event.meetingUrl) {
-      lines.push(`URL:${escapeIcsText(event.meetingUrl)}`)
+      // A URI, not text: escaped like the title, a link with a comma or a
+      // semicolon in it (a map link's "@10.77,106.70") reached the server with
+      // backslashes, which no reader takes out again - this one included.
+      lines.push(`URL:${event.meetingUrl.replace(LINE_BREAK, '')}`)
     }
     if (event.color) {
       lines.push(`COLOR:${escapeIcsText(event.color)}`)
@@ -228,7 +253,7 @@ export function generateIcs(
     const eventExceptions = (exceptionsByMaster.get(event.id) || []).filter((ex) => !ex.isCancelled)
     for (const ex of eventExceptions) {
       lines.push('BEGIN:VEVENT')
-      lines.push(`UID:${event.uid}`)
+      lines.push(uidLine(event.uid))
       lines.push(`DTSTAMP:${DateTime.utc().toFormat("yyyyMMdd'T'HHmmss'Z'")}`)
 
       lines.push(

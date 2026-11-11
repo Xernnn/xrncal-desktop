@@ -655,3 +655,66 @@ describe('dropping on a day that changes offset', () => {
     })
   })
 })
+
+describe('an all-day event dropped on another day stays on whole dates', () => {
+  /**
+   * As useEventDnD reads a dragged occurrence: its stored UTC times shown in
+   * this computer's zone. An all-day event is a floating date parked at UTC
+   * midnight, so that reading starts at 07:00 in Vietnam, at 19:00 the evening
+   * before in New York, and its end falls on the next local day east of GMT.
+   */
+  // TZ is what moves luxon's 'local'; this project's tsconfig has no Node types.
+  const env = (globalThis as unknown as { process: { env: Record<string, string | undefined> } }).process.env
+
+  function dropAllDay(
+    zone: string,
+    startUtc: string,
+    endUtc: string,
+    targetDay: string,
+    toAllDayLane?: boolean
+  ): [string, string] {
+    const previous = env.TZ
+    env.TZ = zone
+    try {
+      const origStart = DateTime.fromISO(startUtc, { zone: 'utc' }).setZone('local')
+      const origEnd = DateTime.fromISO(endUtc, { zone: 'utc' }).setZone('local')
+      const { start, end } = resolveDropRange({
+        allDay: true,
+        origStart,
+        origEnd,
+        segmentStart: origStart,
+        targetDate: DateTime.fromISO(targetDay, { zone: 'local' }).startOf('day'),
+        toAllDayLane
+      })
+      return [start.toUTC().toISO()!, end.toUTC().toISO()!]
+    } finally {
+      if (previous === undefined) delete env.TZ
+      else env.TZ = previous
+    }
+  }
+
+  const zones = ['UTC', 'Asia/Ho_Chi_Minh', 'America/New_York', 'Europe/Berlin', 'Pacific/Kiritimati']
+
+  for (const zone of zones) {
+    it(`along Week view's all-day lane a one-day event stays one day in ${zone}`, () => {
+      expect(dropAllDay(zone, '2026-03-20T00:00:00.000Z', '2026-03-20T23:59:59.999Z', '2026-03-30', true)).toEqual([
+        '2026-03-30T00:00:00.000Z',
+        '2026-03-30T23:59:59.999Z'
+      ])
+    })
+
+    // 20 to 30 March crosses the start of summer time in Berlin and New York.
+    it(`on a Month view day it lands on that date in ${zone}`, () => {
+      expect(dropAllDay(zone, '2026-03-20T00:00:00.000Z', '2026-03-20T23:59:59.999Z', '2026-03-30')).toEqual([
+        '2026-03-30T00:00:00.000Z',
+        '2026-03-30T23:59:59.999Z'
+      ])
+    })
+
+    it(`a three-day event keeps its three days in ${zone}`, () => {
+      const moved = ['2026-03-30T00:00:00.000Z', '2026-04-01T23:59:59.999Z']
+      expect(dropAllDay(zone, '2026-03-20T00:00:00.000Z', '2026-03-22T23:59:59.999Z', '2026-03-30', true)).toEqual(moved)
+      expect(dropAllDay(zone, '2026-03-20T00:00:00.000Z', '2026-03-22T23:59:59.999Z', '2026-03-30')).toEqual(moved)
+    })
+  }
+})

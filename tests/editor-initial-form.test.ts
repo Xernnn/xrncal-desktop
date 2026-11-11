@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { DateTime } from 'luxon'
-import { initialForm } from '../src/renderer/src/editor/EventEditorDialog'
+import { initialForm, repeatUpdate, textFieldUpdate } from '../src/renderer/src/editor/EventEditorDialog'
 import type { Calendar, CalendarEvent, ExpandedOccurrence } from '../src/shared/event-model'
 
 const calendar = (id: string, extra: Partial<Calendar> = {}): Calendar => ({
@@ -137,5 +137,44 @@ describe('initialForm (the editor form for what it was opened on)', () => {
     expect(withGuests.attendeesLoaded).toBe(true)
     expect(withGuests.attendees).toHaveLength(1)
     expect(initialForm({ event: event() }, calendars, []).attendeesLoaded).toBe(false)
+  })
+})
+
+describe('what a save sends for notes, a location and a meeting link', () => {
+  it('sends a field the user emptied as empty, so the event loses it', () => {
+    // Left out, an update keeps what the event had: the notes came back.
+    expect(textFieldUpdate('', 'Bring the contract')).toBe('')
+    expect(textFieldUpdate('   ', 'https://meet.example/abc')).toBe('')
+  })
+
+  it('leaves out a field that was empty and still is', () => {
+    expect(textFieldUpdate('', '')).toBeUndefined()
+    expect(textFieldUpdate('  ', '')).toBeUndefined()
+  })
+
+  it('sends the text, trimmed, when there is some', () => {
+    expect(textFieldUpdate(' Room 2 ', '')).toBe('Room 2')
+    expect(textFieldUpdate('Room 3', 'Room 2')).toBe('Room 3')
+  })
+})
+
+describe('what a save sends for the repeat rule', () => {
+  it('removes the rule when "Does not repeat" is picked on an event that repeated', () => {
+    // A whole series opened from search shows its preset; one occurrence opened
+    // from the grid shows "custom". Either way undefined would keep the rule.
+    expect(repeatUpdate(undefined, 'none', 'weekly')).toBe('')
+    expect(repeatUpdate(undefined, 'none', 'custom')).toBe('')
+    expect(repeatUpdate(undefined, 'none', 'lunar-yearly')).toBe('')
+  })
+
+  it('leaves the rule alone when nothing about it was said', () => {
+    // A new or one-off event, and an occurrence saved with its series' rule untouched.
+    expect(repeatUpdate(undefined, 'none', 'none')).toBeUndefined()
+    expect(repeatUpdate(undefined, 'custom', 'custom')).toBeUndefined()
+  })
+
+  it('sends the rule the form built, and none for a lunar anniversary', () => {
+    expect(repeatUpdate('FREQ=WEEKLY;BYDAY=MO', 'weekly', 'none')).toBe('FREQ=WEEKLY;BYDAY=MO')
+    expect(repeatUpdate(undefined, 'lunar-yearly', 'none')).toBe('')
   })
 })

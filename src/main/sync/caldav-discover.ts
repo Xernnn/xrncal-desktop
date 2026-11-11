@@ -71,9 +71,43 @@ export function defaultCalDavName(provider: CalDavProvider, normalizedUrl: strin
  */
 export function extractXmlTagValue(xml: string, tagName: string): string | undefined {
   // Support namespaced tags e.g. <D:displayname> or <displayname>
-  const regex = new RegExp(`<(?:[a-zA-Z0-9_-]+:)?${tagName}(?:\\s+[^>]*)?>([\\s\\S]*?)<\\/(?:[a-zA-Z0-9_-]+:)?${tagName}>`, 'i')
-  const match = xml.match(regex)
-  return match ? match[1].trim() : undefined
+  const open = new RegExp(`<(?:[a-zA-Z0-9_-]+:)?${tagName}(?:\\s+[^<>]*)?>`, 'gi')
+  const close = new RegExp(`<\\/(?:[a-zA-Z0-9_-]+:)?${tagName}>`, 'gi')
+  if (!open.exec(xml)) return undefined
+  // The first closing tag after the first opening one, looked for once. As one
+  // pattern (`<tag>[\s\S]*?</tag>`) an opening tag with no closing one sent the
+  // search to the end of the text and back for every opening tag after it.
+  close.lastIndex = open.lastIndex
+  const end = close.exec(xml)
+  return end ? xml.slice(open.lastIndex, end.index).trim() : undefined
+}
+
+/**
+ * The `response` elements of a multistatus, each whole.
+ *
+ * They were matched with one pattern, `<response[\s\S]*?</response>`, which
+ * reads to the end of the text for every `<response` that is never closed:
+ * time grows with the square of the size. A server answering with unclosed
+ * elements (or whoever answers for it over plain http) held the main process,
+ * and so the whole app, for a second at 400 KB and for hours within the sizes
+ * a REPORT is allowed. Each tag is now looked for once, going forward.
+ */
+export function multistatusResponses(xml: string): string[] {
+  const open = /<(?:[a-zA-Z0-9_-]+:)?response/gi
+  const close = /<\/(?:[a-zA-Z0-9_-]+:)?response>/gi
+  const responses: string[] = []
+  let from = 0
+  for (;;) {
+    open.lastIndex = from
+    const start = open.exec(xml)
+    if (!start) break
+    close.lastIndex = open.lastIndex
+    // No closing tag from here on: none for any later opening tag either.
+    if (!close.exec(xml)) break
+    responses.push(xml.slice(start.index, close.lastIndex))
+    from = close.lastIndex
+  }
+  return responses
 }
 
 const XML_ENTITIES: Record<string, string> = { lt: '<', gt: '>', quot: '"', apos: "'", amp: '&' }
@@ -133,8 +167,7 @@ export function resolveDavHref(href: string, baseUrl: string): string {
  * Parse CalDAV PROPFIND Multistatus XML into calendar descriptors
  */
 export function parseCalDavMultistatus(xml: string, baseUrl: string): CalDavCalendarDescriptor[] {
-  const responseRegex = /<(?:[a-zA-Z0-9_-]+:)?response(?:[\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?response>/gi
-  const responses = xml.match(responseRegex) || []
+  const responses = multistatusResponses(xml)
   const calendars: CalDavCalendarDescriptor[] = []
 
   for (const resp of responses) {

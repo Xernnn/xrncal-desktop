@@ -130,7 +130,7 @@ export const DayView: React.FC<DayViewProps> = ({
   )
   const timedOccurrences = displayOccurrences.filter((o) => !o.allDay)
   const daySegments = timedOccurrences
-    .flatMap(segmentTimedOccurrence)
+    .flatMap((occ) => segmentTimedOccurrence(occ, { first: anchorDate, last: anchorDate }))
     .filter((segment) => segment.dateKey === dayKey)
   const timedLayouts = layoutTimedSegments(daySegments, HOUR_HEIGHT)
   const hours = Array.from({ length: 24 }, (_, i) => i)

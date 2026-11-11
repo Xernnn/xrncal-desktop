@@ -197,6 +197,17 @@ export function resolveDropRange(args: {
 }): { start: DateTime; end: DateTime } {
   const step = args.snapStepMinutes ?? RESIZE_SNAP_MINUTES
 
+  // An all-day event that stays all-day moves by whole dates, wherever it is
+  // dropped. Its span is a floating date parked at UTC midnight, and the drag
+  // hands it over in this computer's zone: 07:00 to 06:59 the next day in
+  // Vietnam, which counted as two days, so a one-day event dragged along the
+  // lane came out two days long. On a Month view day it took the "keep the
+  // time of day" branch below with that local reading, landing a day late
+  // west of GMT and an hour off midnight across a daylight-saving change.
+  if (args.allDay && args.targetMinutes === undefined) {
+    return allDayRangeForDrop(args.targetDate, args.origStart.toUTC(), args.origEnd.toUTC())
+  }
+
   if (args.toAllDayLane) {
     return allDayRangeForDrop(args.targetDate, args.origStart, args.origEnd)
   }

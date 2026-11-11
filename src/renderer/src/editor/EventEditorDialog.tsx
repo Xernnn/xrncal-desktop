@@ -292,6 +292,32 @@ export function initialForm(
   }
 }
 
+/**
+ * A text field as a save sends it. To an update, a field left out means "as
+ * it was", which is right for one that was empty all along. One the user had
+ * just emptied was left out too, so notes, a location or a meeting link could
+ * be changed but never removed: the old text was back after the save. A field
+ * that had text when the editor opened and has none now is sent as '', which
+ * clears it.
+ */
+export function textFieldUpdate(value: string, opened: string): string | undefined {
+  return value.trim() || (opened.trim() ? '' : undefined)
+}
+
+/**
+ * The repeat rule a save sends: `rule` is what the form's repeat controls
+ * build, undefined when they build none. To an update undefined means "as it
+ * was" - what an occurrence opened from the grid relies on to leave its
+ * series' rule alone - so "Does not repeat" picked on an event that repeated
+ * when the editor opened kept it repeating. That case sends '', which removes
+ * the rule, as a lunar anniversary (which has no rule) always has.
+ */
+export function repeatUpdate(rule: string | undefined, preset: string, openedPreset: string): string | undefined {
+  if (preset === 'lunar-yearly') return ''
+  if (preset === 'none' && openedPreset !== 'none') return ''
+  return rule
+}
+
 /** The part of the form a typed title can set, and what to put back when the words are deleted. */
 interface ScheduleFields extends EntrySlot {
   recurrencePreset: string
@@ -872,16 +898,16 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
       calendarId,
       // Without the date and time words, which are in the fields by now.
       title: parsedTitle?.title ?? title.trim(),
-      notes: notes.trim() || undefined,
-      location: location.trim() || undefined,
-      meetingUrl: meetingUrl.trim() || undefined,
+      notes: textFieldUpdate(notes, initial.notes),
+      location: textFieldUpdate(location, initial.location),
+      meetingUrl: textFieldUpdate(meetingUrl, initial.meetingUrl),
       // '' clears an event's own colour; undefined would keep it.
       color,
       allDay: isLunarYearly ? true : allDay,
       tzid,
       dtStartUtc: startIso,
       dtEndUtc: endIso,
-      rrule: isLunarYearly ? '' : buildRrule(),
+      rrule: repeatUpdate(buildRrule(), recurrencePreset, initial.recurrencePreset),
       lunarRule: isLunarYearly ? lunarSpec! : null,
       // An edit sends guests only when they were changed here, and only once
       // the list has loaded. Sending the list untouched would overwrite

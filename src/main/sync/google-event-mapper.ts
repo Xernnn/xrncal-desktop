@@ -248,7 +248,9 @@ export function mapGoogleEventToDomain(
     for (const rule of gEvent.recurrence) {
       if (rule.startsWith('RRULE:')) {
         rruleString = rule.substring(6)
-      } else if (!rule.startsWith('EXDATE:') && !rule.startsWith('RDATE:')) {
+      } else if (!/^(EXDATE|RDATE|EXRULE)[:;]/i.test(rule)) {
+        // Not "EXDATE;TZID=Europe/Zurich:...": only "EXDATE:" was told apart,
+        // so a date list with a parameter, coming after the RRULE, replaced it.
         rruleString = rule
       }
     }

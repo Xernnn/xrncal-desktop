@@ -15,6 +15,7 @@ import type { EventEditorInitialData } from '../editor/EventEditorDialog'
 import type { PendingDropAction } from '../dnd/DropActionPopover'
 import { singleDayRange } from '../dnd/drop-target'
 import { defaultCalendarFor } from '../lib/new-event'
+import { seriesWideUpdate } from '@shared/series-update'
 import { isStaleEventError, showFriendlyError, toast } from '../components/ui'
 import type { UndoStack } from './use-undo-stack'
 
@@ -286,11 +287,16 @@ export function useEventCommands(deps: EventCommandDeps) {
 
     try {
       if (pendingScope.action === 'edit' && pendingScope.input) {
+        // The input describes the occurrence it was made on; for the whole
+        // series its times are carried over to the first date (seriesWideUpdate).
+        const series = scope === 'all' ? await events.getById(pendingScope.eventId) : null
         await events.updateScope({
           masterEventId: pendingScope.eventId,
           originalStartUtc: pendingScope.occurrenceStartUtc,
           scope,
-          updateInput: pendingScope.input
+          updateInput: series
+            ? seriesWideUpdate(pendingScope.input, pendingScope.occurrenceStartUtc, series)
+            : pendingScope.input
         })
       } else if (pendingScope.action === 'delete') {
         const snapshot = await events.getById(pendingScope.eventId)

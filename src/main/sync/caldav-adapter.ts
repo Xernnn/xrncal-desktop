@@ -6,6 +6,7 @@ import {
   extractXmlText,
   extractPropHref,
   mayCarryCredentials,
+  multistatusResponses,
   resolveDavHref,
   type CalDavCalendarDescriptor
 } from './caldav-discover'
@@ -342,9 +343,8 @@ function eventUrlFor(calendarUrl: string, uid: string): string {
 
 /** The `response` elements of a REPORT multistatus, with absolute hrefs so they can be stored and PUT or DELETEd as-is. */
 function parseCalendarItems(xml: string, baseUrl: string): CalDavItem[] {
-  const responseRegex = /<(?:[a-zA-Z0-9_-]+:)?response(?:[\s\S]*?)<\/(?:[a-zA-Z0-9_-]+:)?response>/gi
   const items: CalDavItem[] = []
-  for (const resp of xml.match(responseRegex) || []) {
+  for (const resp of multistatusResponses(xml)) {
     const href = extractXmlText(resp, 'href')
     if (!href) continue
     items.push({

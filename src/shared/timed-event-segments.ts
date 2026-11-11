@@ -14,8 +14,17 @@ export interface TimedSegment {
 /**
  * Split a timed occurrence into local calendar-day slices.
  * Exclusive midnight end stays on the previous day (22:00–24:00 is one segment).
+ *
+ * `days` is the span of days on screen, and only those are sliced. Without it
+ * every day the occurrence covers is, and the grid then kept the ones it
+ * shows: an event running twenty years cost 7,000 slices on each render of
+ * the week, and one from the year 1 to 9999 - which a feed or an invitation
+ * can carry - 3.6 million, a window that never drew again.
  */
-export function segmentTimedOccurrence(occ: ExpandedOccurrence): TimedSegment[] {
+export function segmentTimedOccurrence(
+  occ: ExpandedOccurrence,
+  days?: { first: DateTime; last: DateTime }
+): TimedSegment[] {
   if (occ.allDay) return []
 
   const start = DateTime.fromISO(occ.startUtc, { zone: 'utc' }).setZone('local')
@@ -29,9 +38,16 @@ export function segmentTimedOccurrence(occ: ExpandedOccurrence): TimedSegment[] 
   const useClockWindow = spansDays && startClock < endClock
 
   const segments: TimedSegment[] = []
-  let cursor = start.startOf('day')
+  let cursor: DateTime = start.startOf('day')
+  let stop: DateTime = lastDay
+  if (days) {
+    const first = days.first.setZone('local').startOf('day')
+    const last = days.last.setZone('local').startOf('day')
+    if (first > cursor) cursor = first
+    if (last < stop) stop = last
+  }
 
-  while (cursor <= lastDay) {
+  while (cursor <= stop) {
     let segStart: DateTime
     let segEnd: DateTime
     if (useClockWindow) {

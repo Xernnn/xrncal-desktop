@@ -420,7 +420,8 @@ export class EventsRepo {
     const dtEndUtc = input.dtEndUtc ?? existing.dtEndUtc
     const tzid = input.tzid ?? existing.tzid
     const allDay = (input.allDay !== undefined ? input.allDay : existing.allDay) ? 1 : 0
-    const rrule = input.rrule !== undefined ? input.rrule : (existing.rrule || null)
+    // '' removes the rule and is stored as NULL, which is how a one-off event is told from a series.
+    const rrule = input.rrule !== undefined ? input.rrule || null : (existing.rrule || null)
     const exdate = input.exdate !== undefined ? input.exdate : (existing.exdate || null)
     const lunarRule =
       input.lunarRule !== undefined

@@ -51,6 +51,25 @@ describe('Recurring Scope Operations (this / future / all)', () => {
     expect(exceptions[0].isCancelled).toBe(false)
   })
 
+  it('stores a removed repeat rule as no rule, so the event is a one-off everywhere', () => {
+    const master = eventsRepo.createEvent({
+      calendarId: testCalId,
+      title: 'Weekly Standup',
+      dtStartUtc: '2026-08-03T09:00:00.000Z',
+      dtEndUtc: '2026-08-03T09:30:00.000Z',
+      rrule: 'FREQ=WEEKLY;BYDAY=MO'
+    })
+
+    // What the editor sends for "Does not repeat".
+    const updated = eventsRepo.updateEvent(master.id, { rrule: '' })
+
+    expect(updated.rrule).toBeUndefined()
+    // NULL, not '': the range query and the sync engines tell a series by `rrule IS NOT NULL`.
+    expect(db.prepare('SELECT rrule FROM events WHERE id = ?').get<{ rrule: string | null }>(master.id)?.rrule).toBeNull()
+    const august = eventsRepo.queryEventsByRange([testCalId], '2026-08-01T00:00:00.000Z', '2026-08-31T23:59:59.999Z')
+    expect(august.map((o) => [o.startUtc, o.isRecurring])).toEqual([['2026-08-03T09:00:00.000Z', false]])
+  })
+
   it('should mark an occurrence cancelled when deleting scope "this"', () => {
     const master = eventsRepo.createEvent({
       calendarId: testCalId,

@@ -77,3 +77,43 @@ describe('segmentTimedOccurrence', () => {
     ])
   })
 })
+
+describe('segmentTimedOccurrence for the days on screen', () => {
+  const week = { first: DateTime.local(2026, 8, 17), last: DateTime.local(2026, 8, 23) }
+
+  it('slices only the days shown of an event that runs for centuries', () => {
+    // What a feed or an invitation can carry; every day of it used to be sliced on each render.
+    const forever = occ({ start: DateTime.local(1900, 1, 1, 22, 0, 0), end: DateTime.local(2100, 1, 1, 6, 0, 0) })
+
+    const segments = segmentTimedOccurrence(forever, week)
+
+    expect(segments.map((s) => s.dateKey)).toEqual([
+      '2026-08-17',
+      '2026-08-18',
+      '2026-08-19',
+      '2026-08-20',
+      '2026-08-21',
+      '2026-08-22',
+      '2026-08-23'
+    ])
+    expect(segments.every((s) => !s.isFirst && !s.isLast)).toBe(true)
+    expect(segments[0].startLocal.toFormat('HH:mm')).toBe('00:00')
+  })
+
+  it('gives the same slices as before for the days it is asked about', () => {
+    const start = DateTime.local(2026, 8, 16, 22, 0, 0)
+    const end = DateTime.local(2026, 8, 18, 6, 0, 0)
+    const all = segmentTimedOccurrence(occ({ start, end }))
+    const shown = segmentTimedOccurrence(occ({ start, end }), week)
+
+    expect(all.map((s) => s.dateKey)).toEqual(['2026-08-16', '2026-08-17', '2026-08-18'])
+    expect(shown.map((s) => [s.dateKey, s.startLocal.toISO(), s.endLocal.toISO(), s.isFirst, s.isLast])).toEqual(
+      all.slice(1).map((s) => [s.dateKey, s.startLocal.toISO(), s.endLocal.toISO(), s.isFirst, s.isLast])
+    )
+  })
+
+  it('returns nothing for an event outside the days shown', () => {
+    const start = DateTime.local(2026, 8, 30, 10, 0, 0)
+    expect(segmentTimedOccurrence(occ({ start, end: start.plus({ hours: 1 }) }), week)).toEqual([])
+  })
+})

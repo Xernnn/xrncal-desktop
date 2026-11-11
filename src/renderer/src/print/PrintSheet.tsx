@@ -104,7 +104,7 @@ const WeekPage: React.FC<PrintSheetProps> = ({ period, occurrences, timeFormat, 
   const hasHidden = band.hidden.some((n) => n > 0)
   const segments = occurrences
     .filter((occ) => !isBandEvent(occ))
-    .flatMap((occ) => segmentTimedOccurrence(occ))
+    .flatMap((occ) => segmentTimedOccurrence(occ, { first: days[0], last: days[days.length - 1] }))
     .filter((segment) => dayKeys.includes(segment.dateKey))
   const { from, to } = printHourWindow(segments.map(segmentDayMinutes))
   const windowMin = (to - from) * 60

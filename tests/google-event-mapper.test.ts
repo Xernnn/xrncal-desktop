@@ -92,6 +92,28 @@ describe('Google Event Mapper', () => {
     expect(domain.event!.rrule).toBe('FREQ=WEEKLY;BYDAY=MO,WE,FR;COUNT=20')
   })
 
+  it('reads the RRULE of a series whose recurrence also lists excluded or added dates', () => {
+    // Google writes these with parameters (its own example: EXDATE;VALUE=DATE:...),
+    // and in either order.
+    for (const recurrence of [
+      ['RRULE:FREQ=WEEKLY;BYDAY=TU', 'EXDATE;TZID=Europe/Zurich:20260825T120000'],
+      ['EXDATE;VALUE=DATE:20260825', 'RRULE:FREQ=WEEKLY;BYDAY=TU', 'RDATE;VALUE=DATE:20260826'],
+      ['RRULE:FREQ=WEEKLY;BYDAY=TU', 'EXDATE:20260825T100000Z', 'RDATE:20260826T100000Z']
+    ]) {
+      const result = mapGoogleEventToDomain(
+        {
+          id: 'evt-with-exdate',
+          summary: 'Weekly review',
+          start: { dateTime: '2026-08-18T12:00:00+02:00', timeZone: 'Europe/Zurich' },
+          end: { dateTime: '2026-08-18T13:00:00+02:00', timeZone: 'Europe/Zurich' },
+          recurrence
+        },
+        targetCalendarId
+      )
+      expect(result.event?.rrule).toBe('FREQ=WEEKLY;BYDAY=TU')
+    }
+  })
+
   it('should map a modified occurrence exception (recurringEventId + originalStartTime)', () => {
     const fixture: GoogleCalendarApiEvent = {
       id: 'g_master_recurring_20260810T020000Z',
