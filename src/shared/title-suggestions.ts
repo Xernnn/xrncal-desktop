@@ -1,5 +1,6 @@
 import { DateTime } from 'luxon'
 import { occurrenceDateKey } from './all-day'
+import { withoutLeadingEmoji } from './title-emoji'
 
 /**
  * Ranking for the event-title autocomplete.
@@ -82,6 +83,17 @@ const WEIGHTS = { freq: 0.34, recency: 0.28, timeFit: 0.26, dayFit: 0.12 }
 /** Collapses case and runs of whitespace so "Team  Standup" and "team standup" group. */
 export function normalizeTitle(title: string): string {
   return title.trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+/**
+ * A title, or what was typed, as the two are matched: normalized, and without
+ * an emoji leading it. The emoji in front of "🍴 Lunch at Pablo's" is not a
+ * word to type: "lunch" is how that title starts. And an emoji picked before
+ * typing (the editor's emoji button) must not hide every title stored without
+ * that emoji. Titles are still grouped and shown with theirs.
+ */
+function matchKey(text: string): string {
+  return normalizeTitle(withoutLeadingEmoji(text))
 }
 
 function parseRruleParts(rrule: string): Record<string, string> {
@@ -218,6 +230,8 @@ function mostCommon<T>(values: T[]): T | undefined {
 
 interface Group {
   display: string
+  /** The title as it is matched (see matchKey). */
+  matchKey: string
   samples: TitleSample[]
   uses: number
   lastUsedUtc: string
@@ -231,7 +245,7 @@ export function rankTitleSuggestions(
   const nowUtc = now.toUTC().toISO()!
   const windowStartUtc = now.minus({ days: 365 }).toUTC().toISO()!
   const limit = options.limit ?? 6
-  const normalizedQuery = normalizeTitle(options.query)
+  const normalizedQuery = matchKey(options.query)
 
   const target = DateTime.fromISO(options.targetStartUtc, { zone: 'utc' }).toLocal()
   const targetHour = target.hour + target.minute / 60
@@ -247,11 +261,12 @@ export function rankTitleSuggestions(
   for (const sample of ordered) {
     const key = normalizeTitle(sample.title)
     if (!key) continue
-    if (matchWeight(key, normalizedQuery) === 0) continue
+    const matched = matchKey(sample.title)
+    if (matchWeight(matched, normalizedQuery) === 0) continue
 
     let group = groups.get(key)
     if (!group) {
-      group = { display: sample.title.trim(), samples: [], uses: 0, lastUsedUtc: sample.startUtc }
+      group = { display: sample.title.trim(), matchKey: matched, samples: [], uses: 0, lastUsedUtc: sample.startUtc }
       groups.set(key, group)
     }
     group.samples.push(sample)
@@ -262,8 +277,8 @@ export function rankTitleSuggestions(
 
   const suggestions: TitleSuggestion[] = []
 
-  for (const [key, group] of groups) {
-    const weight = matchWeight(key, normalizedQuery)
+  for (const group of groups.values()) {
+    const weight = matchWeight(group.matchKey, normalizedQuery)
     if (weight === 0 || group.uses === 0) continue
 
     const freq = Math.min(1, Math.log1p(group.uses) / Math.log1p(FREQ_SATURATION))

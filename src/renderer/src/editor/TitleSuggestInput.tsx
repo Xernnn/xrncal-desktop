@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Calendar } from '@shared/event-model'
 import type { TitleSuggestion } from '@shared/title-suggestions'
+import { hasTitleText } from '@shared/title-emoji'
 import { useDisplayPreferences } from '../context/DisplayPreferencesContext'
 
 interface TitleSuggestInputProps {
@@ -67,7 +68,8 @@ export const TitleSuggestInput: React.FC<TitleSuggestInputProps> = ({
     [calendars]
   )
 
-  const hasQuery = value.trim().length > 0
+  // An emoji picked in front of the title is not a query (see hasTitleText).
+  const hasQuery = hasTitleText(value)
   // Suggestions are asked for only with something typed and a time to rank
   // them against; otherwise none are shown, whatever was found last.
   const searching = enabled && Boolean(targetStartUtc) && hasQuery
@@ -159,7 +161,7 @@ export const TitleSuggestInput: React.FC<TitleSuggestInputProps> = ({
         onChange={(e) => {
           onChange(e.target.value)
           // Cleared: the next letter starts a new list, not the last one.
-          if (!e.target.value.trim()) setSuggestions([])
+          if (!hasTitleText(e.target.value)) setSuggestions([])
           setIsOpen(true)
         }}
         onFocus={() => setIsOpen(hasQuery)}

@@ -100,6 +100,32 @@ describe('SQLite FTS5 Full-Text Search and Attendees', () => {
     expect(repo.searchEvents('ội').map((e) => e.title)).toEqual(['Giỗ ông nội'])
   })
 
+  // The editor can put an emoji in front of a title. Search goes by the
+  // words, wherever the emoji is.
+  it('finds a title that starts with an emoji by its words', () => {
+    repo.createEvent({
+      calendarId: calId,
+      title: "🍴 Lunch at Pablo's",
+      dtStartUtc: '2026-08-25T05:00:00.000Z',
+      dtEndUtc: '2026-08-25T06:00:00.000Z'
+    })
+    repo.createEvent({
+      calendarId: calId,
+      title: '🎂Sinh nhật bà',
+      dtStartUtc: '2026-08-26T05:00:00.000Z',
+      dtEndUtc: '2026-08-26T06:00:00.000Z'
+    })
+
+    expect(repo.searchEvents('lunch').map((e) => e.title)).toEqual(["🍴 Lunch at Pablo's"])
+    expect(repo.searchEvents('lun').map((e) => e.title)).toEqual(["🍴 Lunch at Pablo's"])
+    expect(repo.searchEvents('pablo').map((e) => e.title)).toEqual(["🍴 Lunch at Pablo's"])
+    // No space after the emoji, and no accents typed.
+    expect(repo.searchEvents('sinh nhat').map((e) => e.title)).toEqual(['🎂Sinh nhật bà'])
+    // The emoji itself finds it too, and typed with the words does not hide it.
+    expect(repo.searchEvents('🍴').map((e) => e.title)).toEqual(["🍴 Lunch at Pablo's"])
+    expect(repo.searchEvents('🍴 lunch').map((e) => e.title)).toEqual(["🍴 Lunch at Pablo's"])
+  })
+
   it('leaves the index alone when a row changes but its text does not', () => {
     const created = repo.createEvent({
       calendarId: calId,

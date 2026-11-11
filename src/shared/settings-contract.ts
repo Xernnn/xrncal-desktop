@@ -43,6 +43,10 @@ export interface AppSettings {
    *  Separate from the drag step: a coarse list is quicker to pick from while
    *  a drag still lands on quarter hours, or the other way round. */
   timePickerStepMinutes: 15 | 30 | 60
+  /** How long a new timed event is when it was started without a range of its
+   *  own: a click on an empty slot, "New event here", Create, N. A dragged
+   *  range keeps the range dragged (see event-length.ts). */
+  defaultEventMinutes: 15 | 30 | 45 | 60 | 90 | 120
   /** Title suggestions always show the calendar's colour dot; this adds its name
    *  next to it. Off keeps the list to one line per suggestion. */
   suggestionShowCalendarName: boolean
@@ -65,6 +69,9 @@ export interface AppSettings {
   /** Start xrncal, in the tray, when the user signs in to the computer - the
    *  only way reminders ring after a restart. Installed builds only. */
   launchAtLogin: boolean
+  /** The emojis picked in the event editor and how often ("🍴:5 🎂:2", see
+   *  title-emoji.ts): its "frequently used" row. Not a control. */
+  favoriteEmojis: string
   /** The first-run welcome has been shown (or was not needed: a profile that
    *  already had events when this setting arrived). Not a control. */
   welcomeDone: boolean
@@ -100,6 +107,8 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   zoneHistory: '',
   dragSnapMinutes: 15,
   timePickerStepMinutes: 15,
+  // An hour is what every new event was before the length could be chosen.
+  defaultEventMinutes: 60,
   suggestionShowCalendarName: true,
   // Ten minutes is what every timed event rang with before reminders existed.
   defaultReminderMinutes: 10,
@@ -108,6 +117,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   autoBackup: true,
   closeToTray: true,
   launchAtLogin: false,
+  favoriteEmojis: '',
   welcomeDone: false,
   lastSeenZone: ''
 }

@@ -4,6 +4,7 @@ import { DateTime } from 'luxon'
 import { CalendarPlus, Copy, CalendarDays, Pencil, Trash2 } from 'lucide-react'
 import type { Calendar, ExpandedOccurrence } from '@shared/event-model'
 import { atClockMinutes } from '@shared/clock-minutes'
+import { newEventEnd } from '@shared/event-length'
 import type { ContextMenuEntry } from '../components/ui'
 
 export interface OpenContextMenu {
@@ -15,6 +16,8 @@ export interface OpenContextMenu {
 interface ContextMenuActions {
   occurrences: ExpandedOccurrence[]
   calendars: Calendar[]
+  /** How long "New event here" makes an event on the hour grid (Settings). */
+  defaultEventMinutes: number
   /** Put the keyboard cursor on the event right-clicked. */
   select: (occ: ExpandedOccurrence) => void
   open: (occ: ExpandedOccurrence) => void
@@ -25,14 +28,18 @@ interface ContextMenuActions {
 }
 
 /**
- * An hour from the half hour `minutesFromTop` down `day`'s hour grid. The
- * grid is a clock face (clock-minutes.ts): counted as minutes elapsed since
- * midnight, the new event started an hour off on the days the zone changes
- * offset.
+ * A new event from the half hour `minutesFromTop` down `day`'s hour grid, of
+ * the default length (an hour unless Settings says otherwise). The grid is a
+ * clock face (clock-minutes.ts): counted as minutes elapsed since midnight,
+ * the new event started an hour off on the days the zone changes offset.
  */
-export function halfHourAt(day: DateTime, minutesFromTop: number): { start: DateTime; end: DateTime } {
+export function halfHourAt(
+  day: DateTime,
+  minutesFromTop: number,
+  defaultEventMinutes?: number
+): { start: DateTime; end: DateTime } {
   const start = atClockMinutes(day, Math.max(0, Math.min(23 * 60 + 30, Math.floor(minutesFromTop / 30) * 30)))
-  return { start, end: start.plus({ hours: 1 }) }
+  return { start, end: newEventEnd(start, defaultEventMinutes) }
 }
 
 /**
@@ -101,7 +108,7 @@ export function useCalendarContextMenu(actions: ContextMenuActions): {
     let slot: { start: DateTime; end: DateTime; allDay: boolean } = { start: day, end: day, allDay: true }
     if (hourHeight > 0) {
       const minutes = ((e.clientY - dayEl.getBoundingClientRect().top) / hourHeight) * 60
-      slot = { ...halfHourAt(day, minutes), allDay: false }
+      slot = { ...halfHourAt(day, minutes, actions.defaultEventMinutes), allDay: false }
     }
     setMenu({
       at,

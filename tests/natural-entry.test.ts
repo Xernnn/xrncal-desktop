@@ -157,6 +157,36 @@ describe('parseEntry, English', () => {
   })
 })
 
+// The editor's emoji button puts an emoji in front of the title. It is part
+// of the title: what the title says about when is read past it, and it stays.
+describe('parseEntry, a title that starts with an emoji', () => {
+  it.each([
+    ['🍴 Lunch tomorrow at 12:30', { title: '🍴 Lunch', date: '2026-11-06', start: '12:30' }],
+    ['🍴Lunch tomorrow at 12:30', { title: '🍴Lunch', date: '2026-11-06', start: '12:30' }],
+    ['☕ Cà phê 3h chiều thứ 6', { title: '☕ Cà phê', date: '2026-11-06', start: '15:00' }],
+    ['🎂 Sinh nhật Mai 12/8', { title: '🎂 Sinh nhật Mai', date: '2027-08-12' }],
+    ['🧑‍💻 Standup every monday 9:15', { title: '🧑‍💻 Standup', date: '2026-11-09', start: '09:15', repeat: { kind: 'weekly', byDay: 'MO' } }],
+    ['❤️ Dinner at 7', { title: '❤️ Dinner', start: '19:00' }],
+    ['🏃 Chạy bộ 6h sáng hàng ngày', { title: '🏃 Chạy bộ', start: '06:00', repeat: { kind: 'daily' } }],
+    ['🇻🇳 Trip on December 24th, 2026', { title: '🇻🇳 Trip', date: '2026-12-24' }],
+    // A keycap is an emoji, not an hour or a day.
+    ['1️⃣ Review Dec 3 2pm', { title: '1️⃣ Review', date: '2026-12-03', start: '14:00' }]
+  ])('%s', (text, expected) => {
+    expect(parse(text)).toMatchObject(expected)
+  })
+
+  it('reads the same date and time as the title without the emoji', () => {
+    for (const text of ['Lunch with Sam tomorrow at 12:30', 'Họp 3h chiều thứ 6', 'Giỗ ông 12/8 âm lịch', 'Meeting 3-5pm']) {
+      const plain = parse(text)!
+      expect(parse(`🍴 ${text}`)).toEqual({ ...plain, title: `🍴 ${plain.title}` })
+    }
+  })
+
+  it.each([['🍴 Lunch'], ['3️⃣ Phòng 3'], ['🎂 Sinh nhật Mai'], ['☀️ Sunset walk']])('leaves "%s" alone', (text) => {
+    expect(parse(text)).toBeNull()
+  })
+})
+
 describe('applyEntry', () => {
   const slot: EntrySlot = {
     allDay: false,
@@ -198,6 +228,21 @@ describe('applyEntry', () => {
       endDate: '2026-11-04',
       endTime: '10:00'
     })
+  })
+
+  it('a time on an all-day slot makes it as long as new events are set to be', () => {
+    const allDay = { ...slot, allDay: true, endDate: '2026-11-05' }
+    expect(applyEntry(allDay, entry({ start: '09:00' }), 30)).toMatchObject({ allDay: false, startTime: '09:00', endTime: '09:30' })
+    expect(applyEntry(allDay, entry({ start: '23:00' }), 120)).toMatchObject({
+      startDate: '2026-11-04',
+      startTime: '23:00',
+      endDate: '2026-11-05',
+      endTime: '01:00'
+    })
+    // A length or an end that was typed still wins, and a timed slot keeps its own.
+    expect(applyEntry(allDay, entry({ start: '09:00', durationMinutes: 45 }), 30)).toMatchObject({ endTime: '09:45' })
+    expect(applyEntry(allDay, entry({ start: '09:00', end: '11:00' }), 30)).toMatchObject({ endTime: '11:00' })
+    expect(applyEntry(slot, entry({ start: '15:00' }), 30)).toMatchObject({ startTime: '15:00', endTime: '16:30' })
   })
 
   it('a length alone keeps the start', () => {

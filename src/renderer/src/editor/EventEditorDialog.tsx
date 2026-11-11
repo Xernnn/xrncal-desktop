@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useEffectEvent, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DateTime, IANAZone } from 'luxon'
-import { Trash2, X, Share2, MapPin, Link as LinkIcon, Users, Check, Sparkles } from 'lucide-react'
+import { Trash2, X, Share2, Link as LinkIcon, Users, Check, Sparkles } from 'lucide-react'
 import type {
   Calendar,
   CalendarAccount,
@@ -37,11 +37,15 @@ import {
   showFriendlyError
 } from '../components/ui'
 import { TitleSuggestInput } from './TitleSuggestInput'
+import { LocationSuggestInput } from './LocationSuggestInput'
+import { EmojiPicker } from './EmojiPicker'
 import { ReminderListField } from './ReminderListField'
 import { useDisplayPreferences } from '../context/DisplayPreferencesContext'
 import { zoneForEditing, zonePickerOptions } from '../lib/time-zones'
 import { zoneAt, type ZonePeriod } from '@shared/zone-history'
 import { defaultCalendarFor } from '../lib/new-event'
+import { newEventEnd } from '@shared/event-length'
+import { leadingEmoji, titleFromSuggestion, withLeadingEmoji, withoutLeadingEmoji } from '@shared/title-emoji'
 import { useToday } from '../hooks/use-now'
 import { parseEntry, applyEntry, ENTRY_WEEKDAYS, type EntrySlot, type ParsedEntry } from '@shared/natural-entry'
 
@@ -87,6 +91,9 @@ interface EventEditorDialogProps {
   /** Fired whenever the draft's slot/color changes while creating a NEW event (null
    *  once it's no longer relevant - editing, closed, or the fields don't parse yet). */
   onDraftChange?: (draft: EventEditorDraftPreview | null) => void
+  /** An emoji was picked for the title: counted towards the picker's
+   *  "frequently used" row, whether or not the event is then saved. */
+  onEmojiPicked?: (emoji: string) => void
 }
 
 const LUNAR_MONTHS = [
@@ -169,7 +176,9 @@ const dateAndTime = (start: DateTime, end: DateTime) => ({
 
 /**
  * The form for what the editor was opened on: an occurrence from the grid, a
- * whole event (search, a copy just made), or a new event in a slot.
+ * whole event (search, a copy just made), or a new event in a slot. A new
+ * event handed a start but no end (Create, N, a day clicked in Month view) is
+ * `defaultEventMinutes` long, the length chosen in Settings.
  *
  * Worked out once per opening - App remounts the editor each time it opens. It
  * used to be an effect that also re-ran whenever the calendar list or Where
@@ -181,7 +190,8 @@ const dateAndTime = (start: DateTime, end: DateTime) => ({
 export function initialForm(
   data: EventEditorInitialData | null,
   calendars: Calendar[],
-  zoneHistory: ZonePeriod[]
+  zoneHistory: ZonePeriod[],
+  defaultEventMinutes?: number
 ): EditorForm {
   const userTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 
@@ -274,7 +284,7 @@ export function initialForm(
   }
 
   const start = data?.initialStart || DateTime.local().set({ hour: 9, minute: 0, second: 0 })
-  const end = data?.initialEnd || start.plus({ hours: 1 })
+  const end = data?.initialEnd || newEventEnd(start, defaultEventMinutes)
   return {
     calendarId: data?.initialCalendarId || defaultCalendarFor(calendars)?.id || '',
     title: '',
@@ -355,7 +365,8 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
   onDelete,
   onDataChanged,
   onClose,
-  onDraftChange
+  onDraftChange,
+  onEmojiPicked
 }) => {
   const { t, i18n } = useTranslation()
   const {
@@ -364,7 +375,9 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
     timeFormat,
     preferredTimeZones,
     zoneHistory,
-    firstDayOfWeek
+    firstDayOfWeek,
+    defaultEventMinutes,
+    favoriteEmojis
   } = useDisplayPreferences()
   const isEditing = Boolean(data?.occurrence || data?.event)
   // Lunar anniversaries have no per-instance RRULE semantics — edits always apply
@@ -375,12 +388,14 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
 
   // Form states (location / notes / meetingUrl / attendees / tzid / color are kept
   // so edits to synced events preserve those fields, but they are not shown in the UI)
-  const [initial] = useState(() => initialForm(data, calendars, zoneHistory))
+  const [initial] = useState(() => initialForm(data, calendars, zoneHistory, defaultEventMinutes))
   const [calendarIdState, setCalendarId] = useState<string>(initial.calendarId)
   // A new event opened before the calendars arrived gets the default one as
   // soon as they do.
   const calendarId = calendarIdState || (isEditing ? '' : defaultCalendarFor(calendars)?.id || '')
   const [title, setTitle] = useState<string>(initial.title)
+  // The title field's wrapper: where the emoji button sends the keyboard back.
+  const titleFieldRef = useRef<HTMLDivElement>(null)
   const [notes, setNotes] = useState<string>(initial.notes)
   const [location, setLocation] = useState<string>(initial.location)
   const [meetingUrl, setMeetingUrl] = useState<string>(initial.meetingUrl)
@@ -618,7 +633,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
 
   /** `base` with what the title says put into it. */
   const scheduleFor = (base: ScheduleFields, entry: ParsedEntry): ScheduleFields => {
-    const next = { ...base, ...applyEntry(base, entry) }
+    const next = { ...base, ...applyEntry(base, entry, defaultEventMinutes) }
     const repeat = entry.repeat
     if (!repeat) return next
     if (repeat.kind === 'lunar-yearly') {
@@ -674,11 +689,24 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
    * the switch cannot land somewhere nothing can be created.
    */
   const handlePickSuggestion = (suggestion: TitleSuggestion) => {
-    changeTitle(suggestion.title)
+    // An emoji picked before typing stays in front of a suggestion without one.
+    changeTitle(titleFromSuggestion(title, suggestion.title))
     if ((calendars || []).some((c) => c.id === suggestion.calendarId && !c.isReadOnly)) {
       setCalendarId(suggestion.calendarId)
     }
   }
+
+  /**
+   * The emoji button: an emoji goes in front of the title (in place of one
+   * already there) and "remove" takes it off. Both go through changeTitle, so
+   * a title that says when ("Lunch tomorrow at 12:30") is read as before.
+   */
+  const handlePickEmoji = (emoji: string): void => {
+    changeTitle(withLeadingEmoji(title, emoji))
+    onEmojiPicked?.(emoji)
+  }
+
+  const handleRemoveEmoji = (): void => changeTitle(withoutLeadingEmoji(title))
 
   const handleStartDateChange = (newStart: string) => {
     setStartDateStr(newStart)
@@ -1105,18 +1133,30 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
           className="px-6 py-3.5 overflow-y-auto overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden flex-1 text-xs space-y-0"
         >
           <div className="pb-2 mb-1 border-b border-hairline/60">
-            <TitleSuggestInput
-              value={title}
-              onChange={changeTitle}
-              onPick={handlePickSuggestion}
-              targetStartUtc={suggestionTargetStartUtc}
-              targetAllDay={allDay || isLunarYearly}
-              calendars={calendars || []}
-              placeholder={t('editor.titlePlaceholder')}
-              autoFocus
-              enabled={!isEditing}
-              onSubmit={submitEvent}
-            />
+            {/* The emoji button sits in front of the title, where the emoji goes. */}
+            <div className="flex items-center gap-1">
+              <EmojiPicker
+                current={leadingEmoji(title)?.emoji ?? null}
+                favorites={favoriteEmojis}
+                onPick={handlePickEmoji}
+                onRemove={handleRemoveEmoji}
+                onClosed={() => titleFieldRef.current?.querySelector('input')?.focus()}
+              />
+              <div ref={titleFieldRef} className="min-w-0 flex-1">
+                <TitleSuggestInput
+                  value={title}
+                  onChange={changeTitle}
+                  onPick={handlePickSuggestion}
+                  targetStartUtc={suggestionTargetStartUtc}
+                  targetAllDay={allDay || isLunarYearly}
+                  calendars={calendars || []}
+                  placeholder={t('editor.titlePlaceholder')}
+                  autoFocus
+                  enabled={!isEditing}
+                  onSubmit={submitEvent}
+                />
+              </div>
+            </div>
             {parsedTitle && (
               <div role="status" className="mt-1 flex items-center gap-1.5 text-[11px] text-muted">
                 <Sparkles className="h-3 w-3 shrink-0 text-accent" aria-hidden />
@@ -1458,11 +1498,10 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
             </FormRow>
 
             <FormRow label={t('editor.location')} divider>
-              <TextInput
+              <LocationSuggestInput
                 value={location}
                 onChange={(val) => handleFieldChange(setLocation, val)}
                 placeholder={t('editor.locationPlaceholder')}
-                prefixIcon={<MapPin className="h-3.5 w-3.5" />}
               />
             </FormRow>
 

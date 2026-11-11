@@ -59,6 +59,7 @@ describe('IPC Channels and Contracts', () => {
           zoneHistory: '',
           dragSnapMinutes: 15,
           timePickerStepMinutes: 15,
+          defaultEventMinutes: 60,
           suggestionShowCalendarName: true,
           defaultReminderMinutes: 10,
           defaultAllDayReminderMinutes: null,
@@ -66,6 +67,7 @@ describe('IPC Channels and Contracts', () => {
           autoBackup: true,
           closeToTray: true,
           launchAtLogin: false,
+          favoriteEmojis: '',
           welcomeDone: true,
           lastSeenZone: 'Australia/Sydney'
         }),
@@ -197,6 +199,7 @@ describe('IPC Channels and Contracts', () => {
         detachLunar: async () => ({ count: 0 }),
         search: async () => [],
         suggestTitles: async () => [],
+        suggestLocations: async () => [],
         shareIcs: async () => ({ success: true }),
         listConflicts: async () => [],
         respond: async () => ({}) as never,

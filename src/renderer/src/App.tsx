@@ -13,6 +13,7 @@ import {
 } from '@shared/keyboard-nav'
 import { stepAnchor, weekTitle, type CalendarViewType } from '@shared/visible-range'
 import { startOfWeek } from '@shared/week-start'
+import { recordEmojiUse } from '@shared/title-emoji'
 import { useVisibleRange } from './hooks/use-visible-range'
 import { useTheme } from './hooks/use-theme'
 import { useQueryRange } from './hooks/use-query-range'
@@ -80,7 +81,7 @@ const CalendarApp: React.FC = () => {
   const { settings, ready, setSetting, setLanguage } = useSettings()
   const { themeConfig } = useTheme()
   const displayPreferences = useMemo(() => displayPreferencesOf(settings), [settings])
-  const { firstDayOfWeek, dragSnapMinutes } = displayPreferences
+  const { firstDayOfWeek, dragSnapMinutes, defaultEventMinutes } = displayPreferences
 
   const [currentView, setCurrentView] = useState<CalendarViewType>('week')
   const [anchorDate, setAnchorDate] = useState<DateTime>(() => DateTime.local())
@@ -185,13 +186,13 @@ const CalendarApp: React.FC = () => {
   )
 
   /** A new event from 09:00 on `date`: a Month view day click (with where it
-   *  was, so the editor opens away from it), Create, N or Enter on a day. */
+   *  was, so the editor opens away from it), Create, N or Enter on a day. No
+   *  end is handed over: the editor makes it the default length (Settings). */
   const openEditorForDate = useCallback(
     (date: DateTime, clientX?: number) => {
       if (wasJustDragging()) return
       openEditor({
         initialStart: date.set({ hour: 9, minute: 0, second: 0 }),
-        initialEnd: date.set({ hour: 10, minute: 0, second: 0 }),
         initialClientX: clientX
       })
     },
@@ -237,6 +238,7 @@ const CalendarApp: React.FC = () => {
   const contextMenu = useCalendarContextMenu({
     occurrences,
     calendars,
+    defaultEventMinutes,
     select: (occ) => setSelection({ occurrenceId: occ.id, eventId: occ.eventId }),
     open: handleSelectOccurrence,
     duplicate: (occ) => void commands.duplicateOccurrence(occ),
@@ -694,6 +696,9 @@ const CalendarApp: React.FC = () => {
           onDataChanged={reload}
           onClose={closeEditor}
           onDraftChange={setDraftPreview}
+          onEmojiPicked={(emoji) =>
+            void setSetting('favoriteEmojis', recordEmojiUse(settings.favoriteEmojis, emoji), { quiet: true })
+          }
         />
       )}
 

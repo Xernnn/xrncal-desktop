@@ -554,14 +554,17 @@ export interface EntrySlot {
  * `slot` with what the title said put into it. Whatever the title left out
  * stays as it was: a time alone keeps the day clicked, a day alone keeps the
  * hour, and an event keeps its length unless an end or a length was given.
+ * An all-day slot has no length to keep, so a time typed onto one makes an
+ * event of `defaultEventMinutes` (the length new events are set to have).
  * Clock arithmetic is on the wall clock, so "3pm" stays 3pm across a change of
  * the clocks.
  */
-export function applyEntry(slot: EntrySlot, entry: ParsedEntry): EntrySlot {
+export function applyEntry(slot: EntrySlot, entry: ParsedEntry, defaultEventMinutes = 60): EntrySlot {
   const wall = (date: string, time: string): DateTime => DateTime.fromISO(`${date}T${time}`, { zone: 'utc' })
   const baseStart = wall(slot.startDate, slot.startTime)
   const baseEnd = wall(slot.endDate, slot.endTime)
-  const length = !slot.allDay && baseEnd.isValid && baseEnd > baseStart ? baseEnd.diff(baseStart, 'minutes').minutes : 60
+  const length =
+    !slot.allDay && baseEnd.isValid && baseEnd > baseStart ? baseEnd.diff(baseStart, 'minutes').minutes : defaultEventMinutes
   const spanDays = Math.max(
     0,
     Math.round(DateTime.fromISO(slot.endDate, { zone: 'utc' }).diff(DateTime.fromISO(slot.startDate, { zone: 'utc' }), 'days').days) || 0

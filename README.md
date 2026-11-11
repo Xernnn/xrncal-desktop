@@ -203,6 +203,8 @@ If something goes wrong, **Settings → Show log file** opens the folder with `x
 - Click an empty slot or an event for the full editor, or Create in the header; right-click an event to edit, duplicate or delete it, or a day to start an event there
 - Drag and drop, edge resize, drag-select a range
 - Snap step of 15 / 30 / 60 minutes, and a separate step for the editor's time lists
+- A new event is as long as you set it to be (15 minutes to 2 hours) when you click a slot, right-click or press Create; a dragged range keeps its own length
+- An emoji in front of a title from a button in the editor ("🍴 Lunch"), with the ones you pick most kept at the top
 - Type the when into the title: "Lunch tomorrow at 12:30", "Họp 3h chiều thứ 6", "Standup every monday 9:15" fill the date, time and repeat, and the title is saved without them
 - Recurring edits: this one / this and future / all
 - `Ctrl+Z` undoes a move, resize, copy or delete
@@ -245,6 +247,7 @@ If something goes wrong, **Settings → Show log file** opens the folder with `x
 - Reminders per event (all-day ones too), with snooze and a Join button
 - Light / dark / system theme, custom wallpaper
 - Search that ignores accents ("hop" finds "họp"), title suggestions from your own history
+- The Location field offers the places you have used before as you type, accents optional ("ca phe" finds "Cà phê")
 - Each event can keep its own time zone and colour, kept when it syncs over CalDAV or is exported; events saved without one (as Google's export writes them) open in the zone you were in on their date
 - `.ics` import (Settings, drag a file onto the window, or *Open with xrncal*) and export per calendar; database backup and restore
 - Detach a provider and keep every event it brought

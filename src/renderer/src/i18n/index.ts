@@ -87,6 +87,16 @@ export const resources = {
         dragSnapMin: '{{count}} min',
         dragSnapHour: '1 hour',
         timePickerStep: 'Times listed in the event editor',
+        defaultEventLength: 'Length of a new event',
+        defaultEventLengthHint: 'For a click on an empty time, Create or N. A range you drag keeps its own length.',
+        eventLengthOption: {
+          '15': '15 min',
+          '30': '30 min',
+          '45': '45 min',
+          '60': '1 hour',
+          '90': '1.5 hours',
+          '120': '2 hours'
+        },
         suggestionShowCalendarName: 'Name the calendar in title suggestions',
         timeFormat: 'Time format',
         timeFormat24h: '24h',
@@ -194,6 +204,21 @@ export const resources = {
           savesAs: 'Saved as “{{title}}”',
           keepTyped: 'Keep the title as typed'
         },
+        emoji: {
+          button: 'Put an emoji in front of the title',
+          title: 'Emoji',
+          remove: 'Remove the emoji',
+          frequent: 'Frequently used',
+          groups: {
+            people: 'People',
+            activities: 'Activities and sport',
+            food: 'Food and drink',
+            travel: 'Travel and places',
+            objects: 'Objects',
+            symbols: 'Symbols',
+            nature: 'Nature'
+          }
+        },
         calendar: 'Calendar',
         chooseCalendar: 'Choose a calendar…',
         allDay: 'All day',
@@ -201,6 +226,7 @@ export const resources = {
         end: 'End',
         location: 'Location',
         locationPlaceholder: 'Add location',
+        locationSuggestions: 'Places used before',
         meetingUrl: 'Meeting link',
         timeZone: 'Time zone',
         timeZoneHere: '{{time}} here',
@@ -776,6 +802,16 @@ export const resources = {
         dragSnapMin: '{{count}} phút',
         dragSnapHour: '1 giờ',
         timePickerStep: 'Các mốc giờ trong cửa sổ sự kiện',
+        defaultEventLength: 'Độ dài của sự kiện mới',
+        defaultEventLengthHint: 'Khi bấm vào một ô giờ trống, bấm Tạo hoặc phím N. Khoảng giờ bạn kéo chọn thì giữ nguyên độ dài.',
+        eventLengthOption: {
+          '15': '15 phút',
+          '30': '30 phút',
+          '45': '45 phút',
+          '60': '1 giờ',
+          '90': '1,5 giờ',
+          '120': '2 giờ'
+        },
         suggestionShowCalendarName: 'Hiện tên lịch trong gợi ý tiêu đề',
         timeFormat: 'Định dạng giờ',
         timeFormat24h: '24 giờ',
@@ -883,6 +919,21 @@ export const resources = {
           savesAs: 'Lưu thành “{{title}}”',
           keepTyped: 'Giữ nguyên tiêu đề đã gõ'
         },
+        emoji: {
+          button: 'Thêm biểu tượng cảm xúc trước tiêu đề',
+          title: 'Biểu tượng cảm xúc',
+          remove: 'Bỏ biểu tượng cảm xúc',
+          frequent: 'Hay dùng',
+          groups: {
+            people: 'Con người',
+            activities: 'Hoạt động và thể thao',
+            food: 'Đồ ăn và thức uống',
+            travel: 'Du lịch và địa điểm',
+            objects: 'Đồ vật',
+            symbols: 'Ký hiệu',
+            nature: 'Thiên nhiên'
+          }
+        },
         calendar: 'Lịch',
         chooseCalendar: 'Chọn lịch…',
         allDay: 'Cả ngày',
@@ -890,6 +941,7 @@ export const resources = {
         end: 'Kết thúc',
         location: 'Địa điểm',
         locationPlaceholder: 'Thêm địa điểm',
+        locationSuggestions: 'Địa điểm đã dùng',
         meetingUrl: 'Liên kết họp',
         timeZone: 'Múi giờ',
         timeZoneHere: '{{time}} theo giờ máy này',
