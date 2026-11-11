@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { DateTime } from 'luxon'
 import type { XrncalAPI } from '@shared/ipc-contract'
@@ -88,6 +88,12 @@ export function useEventCommands(deps: EventCommandDeps) {
   const { pushUndo, offerUndoDelete } = undo
   const { t } = useTranslation()
   const [pendingScope, setPendingScope] = useState<PendingRecurringScope | null>(null)
+  // A save, or a choice in the scope prompt, still on its way to the main
+  // process. Ctrl+Enter saves from anywhere in the editor, which stays open
+  // until the save is back: pressed twice while the main process was busy, it
+  // created the event twice. A double click on "this and following" split the
+  // series twice the same way.
+  const saving = useRef(false)
 
   const moveOccurrence = useCallback(
     async (
@@ -186,7 +192,8 @@ export function useEventCommands(deps: EventCommandDeps) {
   )
 
   const saveEvent = async (payload: EditorSavePayload): Promise<void> => {
-    if (!window.xrncal?.events) return
+    if (!window.xrncal?.events || saving.current) return
+    saving.current = true
 
     try {
       if (payload.isNew) {
@@ -211,6 +218,8 @@ export function useEventCommands(deps: EventCommandDeps) {
       }
     } catch (err) {
       showFriendlyError(err, t('toast.saveFailed'))
+    } finally {
+      saving.current = false
     }
   }
 
@@ -282,8 +291,9 @@ export function useEventCommands(deps: EventCommandDeps) {
   )
 
   const confirmScope = async (scope: RecurringEditScope): Promise<void> => {
-    if (!pendingScope || !window.xrncal?.events) return
+    if (!pendingScope || !window.xrncal?.events || saving.current) return
     const events = window.xrncal.events
+    saving.current = true
 
     try {
       if (pendingScope.action === 'edit' && pendingScope.input) {
@@ -313,6 +323,8 @@ export function useEventCommands(deps: EventCommandDeps) {
       await reload()
     } catch (err) {
       showFriendlyError(err, t('toast.recurringUpdateFailed'))
+    } finally {
+      saving.current = false
     }
   }
 
