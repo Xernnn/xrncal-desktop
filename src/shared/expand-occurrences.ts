@@ -140,6 +140,17 @@ function expandLunarOccurrences(
   return results
 }
 
+/**
+ * How far before the range a series is searched for dates still running into
+ * it. The search went back as far as one date lasts, and that length is input
+ * like the rule is: a daily series from a feed with DTSTART in 1900 and DTEND
+ * in 2100 put every date since 1900 into every query - 46,000 occurrences and
+ * most of a second for one event, on each view and each reminder check, which
+ * bounded-rrule.ts's meter allows because the walk is that long. No real series
+ * has dates longer than a year; of one that does, the last year's show.
+ */
+const MAX_LOOK_BACK_MS = 366 * 86_400_000
+
 function expandRruleOccurrences(
   event: CalendarEvent,
   exceptions: EventException[],
@@ -260,7 +271,7 @@ function expandRruleOccurrences(
     // Expand between rangeStart and rangeEnd, in the same wall-clock space.
     // Expand a bit earlier/later to account for duration overlap.
     const searchStart = toWallClockUtc(
-      rangeStart.minus({ milliseconds: Math.max(0, durationMillis) }).setZone(zone)
+      rangeStart.minus({ milliseconds: Math.min(Math.max(0, durationMillis), MAX_LOOK_BACK_MS) }).setZone(zone)
     )
     const searchEnd = toWallClockUtc(rangeEnd.setZone(zone))
 

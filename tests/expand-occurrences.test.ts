@@ -341,6 +341,25 @@ describe('a rule that would cost too much to expand', () => {
     expect(occs).toEqual([])
   })
 
+  it('does not go back centuries for the dates of a series whose every date lasts centuries', () => {
+    // One 200-byte event: each date of it is still running two centuries
+    // later, so every one since 1900 overlapped any range asked for - 46,000
+    // occurrences and most of a second for ten minutes of the reminder check,
+    // which runs every 30 s, and 700,000 with 24 times a day.
+    const endless = { ...series, dtStartUtc: '1900-01-01T09:00:00.000Z', dtEndUtc: '2100-01-01T09:00:00.000Z', rrule: 'FREQ=DAILY' }
+    const occs = expandOccurrences(endless, [], '2026-10-05T00:00:00.000Z', '2026-10-05T00:10:00.000Z')
+    // The dates of the year before the range, and no further back.
+    expect(occs.length).toBeGreaterThan(300)
+    expect(occs.length).toBeLessThanOrEqual(367)
+    expect(occs.at(-1)?.startUtc).toBe('2026-10-04T09:00:00.000Z')
+  })
+
+  it('still shows a yearly event of several months part-way through it', () => {
+    const term = { ...series, dtStartUtc: '2020-06-01T00:00:00.000Z', dtEndUtc: '2020-09-15T00:00:00.000Z', rrule: 'FREQ=YEARLY' }
+    const occs = expandOccurrences(term, [], '2026-09-01T00:00:00.000Z', '2026-09-07T00:00:00.000Z')
+    expect(occs.map((o) => o.startUtc)).toEqual(['2026-06-01T00:00:00.000Z'])
+  })
+
   it('still finds this month of a daily series that started in the year 1000', () => {
     const ancient = { ...series, dtStartUtc: '1000-01-01T09:00:00.000Z', dtEndUtc: '1000-01-01T09:01:00.000Z', rrule: 'FREQ=DAILY' }
     const occs = expandOccurrences(ancient, [], ...october)
