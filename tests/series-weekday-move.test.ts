@@ -125,6 +125,13 @@ describe('ruleForMovedStart', () => {
     expect(ruleForMovedStart('FREQ=WEEKLY;BYDAY=MO', monday, at('2026-09-07T10:00'))).toBe('FREQ=WEEKLY;BYDAY=MO')
   })
 
+  it('keeps the days of a rule that already has the new one, such as every weekday', () => {
+    expect(ruleForMovedStart('FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR', monday, at('2026-09-08T09:00'))).toBe(
+      'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR'
+    )
+    expect(ruleForMovedStart('FREQ=WEEKLY;BYDAY=MO,WE', monday, at('2026-09-09T09:00'))).toBe('FREQ=WEEKLY;BYDAY=MO,WE')
+  })
+
   it('turns the days round by as many as the start moved, either way', () => {
     expect(ruleForMovedStart('FREQ=WEEKLY;BYDAY=MO,WE', monday, at('2026-09-08T09:00'))).toBe('FREQ=WEEKLY;BYDAY=TU,TH')
     expect(ruleForMovedStart('FREQ=WEEKLY;BYDAY=MO', monday, at('2026-09-06T09:00'))).toBe('FREQ=WEEKLY;BYDAY=SU')

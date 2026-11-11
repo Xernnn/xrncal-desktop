@@ -56,7 +56,9 @@ export function ruleForMovedStart(rrule: string, from: DateTime, to: DateTime): 
 
   if (freq === 'WEEKLY' && value('BYDAY') !== undefined) {
     const named = list('BYDAY').map((d) => WEEKDAY_CODES.indexOf(d.toUpperCase()))
-    if (!named.includes(-1) && named.includes(from.weekday - 1)) {
+    // Only when the new day isn't one of the rule's already: "every weekday" started on a
+    // Tuesday instead of a Monday is still every weekday, not Tuesday to Saturday.
+    if (!named.includes(-1) && named.includes(from.weekday - 1) && !named.includes(to.weekday - 1)) {
       set('BYDAY', named.map((d) => WEEKDAY_CODES[(((d + days) % 7) + 7) % 7]).join(','))
     }
   } else if (freq === 'MONTHLY' && pickers.length === 0) {
