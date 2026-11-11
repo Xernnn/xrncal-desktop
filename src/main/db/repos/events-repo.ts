@@ -185,6 +185,25 @@ function mapRowToException(row: ExceptionRow): EventException {
   }
 }
 
+/**
+ * The rule of a series' dates from `splitUtc` on, for "this and following".
+ * A COUNT counts the dates the rule makes from the series' first, deleted
+ * ones included (RFC 5545), so the rest gets what is left of it after the
+ * dates before the split. An UNTIL stays as it is.
+ */
+function remainingRule(series: CalendarEvent, splitUtc: number): string | undefined {
+  const rule = series.rrule
+  const count = rule ? /(^|;)COUNT=(\d+)/i.exec(rule) : null
+  if (!rule || !count) return rule
+  const before = expandOccurrences(
+    { ...series, exdate: undefined },
+    [],
+    series.dtStartUtc,
+    new Date(splitUtc - 1).toISOString()
+  ).filter((o) => Date.parse(o.originalStartUtc) < splitUtc).length
+  return rule.replace(/(^|;)COUNT=\d+/i, `$1COUNT=${Math.max(1, Number(count[2]) - before)}`)
+}
+
 /** A guest list compared for change: who, in what role, with what answer. */
 function guestListKey(attendees: readonly Attendee[] | undefined): string {
   return JSON.stringify(
@@ -422,7 +441,7 @@ export class EventsRepo {
     const allDay = (input.allDay !== undefined ? input.allDay : existing.allDay) ? 1 : 0
     // '' removes the rule and is stored as NULL, which is how a one-off event is told from a series.
     const rrule = input.rrule !== undefined ? input.rrule || null : (existing.rrule || null)
-    const exdate = input.exdate !== undefined ? input.exdate : (existing.exdate || null)
+    const exdate = input.exdate !== undefined ? input.exdate || null : (existing.exdate || null)
     const lunarRule =
       input.lunarRule !== undefined
         ? input.lunarRule
@@ -1480,39 +1499,79 @@ export class EventsRepo {
     }
 
     if (input.scope === 'future') {
-      // 1. Cap master event with UNTIL right before this occurrence
-      const occDt = DateTime.fromISO(input.originalStartUtc, { zone: 'utc' })
-      const untilUtc = occDt.minus({ seconds: 1 }).toFormat("yyyyMMdd'T'HHmmss'Z'")
+      this.db.transaction(() => {
+        const split = Date.parse(input.originalStartUtc)
+        const after = (iso: string): boolean => Date.parse(iso) > split
 
-      let cleanRrule = master.event.rrule || ''
-      cleanRrule = cleanRrule.replace(/;?UNTIL=[^;]+/gi, '').replace(/;?COUNT=\d+/gi, '')
-      const cappedRrule = `${cleanRrule};UNTIL=${untilUtc}`
+        // 1. Cap master event with UNTIL right before this occurrence
+        const occDt = DateTime.fromISO(input.originalStartUtc, { zone: 'utc' })
+        const untilUtc = occDt.minus({ seconds: 1 }).toFormat("yyyyMMdd'T'HHmmss'Z'")
 
-      this.updateEvent(input.masterEventId, { rrule: cappedRrule })
+        let cleanRrule = master.event.rrule || ''
+        cleanRrule = cleanRrule.replace(/;?UNTIL=[^;]+/gi, '').replace(/;?COUNT=\d+/gi, '')
+        const cappedRrule = `${cleanRrule};UNTIL=${untilUtc}`
 
-      // 2. Create new recurring event starting from this occurrence
-      this.createEvent({
-        calendarId: master.event.calendarId,
-        title: input.updateInput.title ?? master.event.title,
-        notes: input.updateInput.notes ?? master.event.notes,
-        location: input.updateInput.location ?? master.event.location,
-        dtStartUtc: input.updateInput.dtStartUtc ?? input.originalStartUtc,
-        dtEndUtc: input.updateInput.dtEndUtc ?? master.event.dtEndUtc,
-        tzid: input.updateInput.tzid ?? master.event.tzid,
-        allDay: input.updateInput.allDay ?? master.event.allDay,
-        rrule: input.updateInput.rrule ?? cleanRrule,
-        color: input.updateInput.color ?? master.event.color,
-        meetingUrl: input.updateInput.meetingUrl ?? master.event.meetingUrl,
-        reminders:
-          input.updateInput.reminders !== undefined ? input.updateInput.reminders : master.event.reminders,
-        // The rest of the series is a new event, so its guests go with it -
-        // otherwise they are uninvited from every remaining date. Not on
-        // someone else's invitation: that would make a copy with this account
-        // as organizer and, on Microsoft, invite everyone again.
-        attendees: invitationSelf(master.event.attendees)
-          ? undefined
-          : (input.updateInput.attendees ?? master.event.attendees)?.map((a) => ({ ...a }))
-      })
+        // The dates deleted from the rest of the series, and the ones changed on
+        // their own, go with it; the occurrence this was opened on is what the
+        // new series starts with.
+        const exdates = (master.event.exdate || '').split(',').map((d) => d.trim()).filter(Boolean)
+        const laterExdates = exdates.filter(after)
+        const laterExceptions = master.exceptions.filter((ex) => after(ex.originalStartUtc))
+        this.db
+          .prepare('DELETE FROM event_exceptions WHERE master_event_id = ? AND original_start_utc = ?')
+          .run(input.masterEventId, input.originalStartUtc)
+        for (const ex of laterExceptions) this.db.prepare('DELETE FROM event_exceptions WHERE id = ?').run(ex.id)
+
+        this.updateEvent(input.masterEventId, {
+          rrule: cappedRrule,
+          ...(laterExdates.length > 0 ? { exdate: exdates.filter((d) => !after(d)).join(',') } : {})
+        })
+
+        // 2. Create new recurring event starting from this occurrence
+        const tail = this.createEvent({
+          calendarId: master.event.calendarId,
+          title: input.updateInput.title ?? master.event.title,
+          notes: input.updateInput.notes ?? master.event.notes,
+          location: input.updateInput.location ?? master.event.location,
+          dtStartUtc: input.updateInput.dtStartUtc ?? input.originalStartUtc,
+          dtEndUtc: input.updateInput.dtEndUtc ?? master.event.dtEndUtc,
+          tzid: input.updateInput.tzid ?? master.event.tzid,
+          allDay: input.updateInput.allDay ?? master.event.allDay,
+          // A rule picked in the editor is the new series' own. Otherwise it
+          // repeats as the series did: to the same end date, or for as many
+          // dates as the series had left - not for ever, which is what
+          // dropping the COUNT and UNTIL with the cap above used to give it.
+          rrule: input.updateInput.rrule ?? remainingRule(master.event, split),
+          exdate: laterExdates.join(',') || undefined,
+          color: input.updateInput.color ?? master.event.color,
+          meetingUrl: input.updateInput.meetingUrl ?? master.event.meetingUrl,
+          reminders:
+            input.updateInput.reminders !== undefined ? input.updateInput.reminders : master.event.reminders,
+          // The rest of the series is a new event, so its guests go with it -
+          // otherwise they are uninvited from every remaining date. Not on
+          // someone else's invitation: that would make a copy with this account
+          // as organizer and, on Microsoft, invite everyone again.
+          attendees: invitationSelf(master.event.attendees)
+            ? undefined
+            : (input.updateInput.attendees ?? master.event.attendees)?.map((a) => ({ ...a }))
+        })
+        // New rows, so they are pushed with the new series, under its ids.
+        for (const ex of laterExceptions) {
+          this.upsertException({
+            masterEventId: tail.id,
+            originalStartUtc: ex.originalStartUtc,
+            isCancelled: ex.isCancelled,
+            title: ex.title,
+            notes: ex.notes,
+            location: ex.location,
+            dtStartUtc: ex.dtStartUtc,
+            dtEndUtc: ex.dtEndUtc,
+            tzid: ex.tzid,
+            allDay: ex.allDay,
+            color: ex.color
+          })
+        }
+      })()
 
       return true
     }
