@@ -1,6 +1,8 @@
 import type { ISqliteDatabase } from '../db/sqlite-driver'
 import { SecureStore } from '../secure-store'
 import { CalDavAdapter, type CalDavCredentials, type CalDavItem } from './caldav-adapter'
+import { mayCarryCredentials } from './caldav-discover'
+import { LOCAL_ACCOUNT_ID } from '../db/repos/detach-account'
 import { describeError } from './http'
 import { parseIcsContent } from '../ics/parse-ics'
 import { answerOccurrences } from '../ics/merge-ics'
@@ -51,19 +53,24 @@ export class CalDavSyncEngine {
       const color = desc.color || '#10b981'
       const isReadOnly = desc.isReadOnly === true
 
-      const existing = this.db
-        .prepare(
-          `SELECT c.id, c.account_id, a.type AS account_type
-           FROM calendars c LEFT JOIN accounts a ON a.id = c.account_id
-           WHERE c.id = ?`
-        )
-        .get<{ id: string; account_id: string; account_type: string | null }>(calId)
+      // The id is the href the server names, so a server could name any
+      // calendar here: `calendar-local-default`, a Google calendar's address.
+      // A CalDAV calendar is a URL its password may be sent to (the same host
+      // or domain); nothing else of this server's is a calendar it can sync,
+      // and no other provider's or the app's own ids are such URLs.
+      if (!mayCarryCredentials(creds.url, calId)) continue
 
+      const existing = this.db
+        .prepare('SELECT id, account_id FROM calendars WHERE id = ?')
+        .get<{ id: string; account_id: string }>(calId)
+
+      // Only this account's calendar, or one detached from it onto the local
+      // account (a URL id there can only be that), is its to rename and sync.
       // Another CalDAV account signed in to the same calendar (the same user
       // added twice under the old account ids) would sync it a second time,
       // with its own copy of every push. Connecting decides which account holds
       // it (resolveCalDavAccount()); the other one leaves it alone.
-      if (existing && existing.account_id !== accountId && existing.account_type === 'caldav') continue
+      if (existing && existing.account_id !== accountId && existing.account_id !== LOCAL_ACCOUNT_ID) continue
 
       if (!existing) {
         this.db
