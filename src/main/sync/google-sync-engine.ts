@@ -492,7 +492,7 @@ export class GoogleSyncEngine {
           }
         } else {
           // A calendar change is a move, not an update: the event lives in a
-          // calendar, so PUTting it to the destination with an id that only
+          // calendar, so writing it to the destination with an id that only
           // exists in the origin returns 404 and the row stays dirty for ever.
           // Google's move endpoint keeps the id, so the etag and any exception
           // rows pointing at it stay valid.
@@ -505,7 +505,7 @@ export class GoogleSyncEngine {
             )
 
             if (moveRes.ok) {
-              // Moving changes the event, and its etag with it: the PUT below,
+              // Moving changes the event, and its etag with it: the update below,
               // checked against the old one, failed as a conflict nobody caused.
               const moved = (await moveRes.json().catch(() => null)) as { etag?: string } | null
               etag = moved?.etag || etag
@@ -531,11 +531,10 @@ export class GoogleSyncEngine {
           // The guest list goes out only when it is the whole list: an event
           // never pushed has nothing on Google to lose, and a pulled one has its
           // list once attendees_synced is set. A row edited before its list
-          // was ever fetched asks Google for it first - leaving it out of a PUT
-          // would delete every guest.
+          // was ever read leaves it out, which a PATCH keeps as Google has it.
           let attendees = row.attendees_synced === 1 || !etag
             ? this.eventsRepo.getEventById(row.id)?.event.attendees ?? []
-            : await this.fetchAttendees(calendarId, googleEventId, accessToken)
+            : undefined
 
           // INSERT or UPDATE
           const payload = mapDomainEventToGoogle({
@@ -555,16 +554,19 @@ export class GoogleSyncEngine {
             color: row.color ?? undefined,
             meetingUrl: row.meeting_url ?? undefined,
             reminders: parseRemindersJson(row.reminders),
-            attendees: attendees ?? undefined
-          })
+            attendees
+          }, etag ? 'patch' : 'insert')
 
           let putRes: Response
           if (etag) {
-            // Existing event update
+            // Existing event update. A PATCH, not a PUT: Google's update
+            // replaces the whole resource, so a PUT of the fields the app
+            // models reset every other one - visibility, free/busy,
+            // attachments, other apps' extended properties - on each edit here.
             putRes = await fetchWithTimeout(
               `${GOOGLE_API_BASE}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(googleEventId)}`,
               {
-                method: 'PUT',
+                method: 'PATCH',
                 headers: {
                   Authorization: `Bearer ${accessToken}`,
                   'Content-Type': 'application/json',
@@ -602,7 +604,7 @@ export class GoogleSyncEngine {
               sentUpdatedAt: row.updated_at
             })
             // The response is the event as Google now holds it, guests and all -
-            // but a guest list edited while the PUT was out is newer than that.
+            // but a guest list edited while the request was out is newer than that.
             if (Array.isArray(resJson.attendees) || attendees) {
               attendees = googleAttendeesToDomain(resJson.attendees)
               if (unchanged && !row.rsvp_pending) this.eventsRepo.replaceAttendees(row.id, attendees)
@@ -707,27 +709,6 @@ export class GoogleSyncEngine {
     }
 
     return { pushedCount, errorCount }
-  }
-
-  /**
-   * The guest list Google holds for an event. Null when the event is gone from
-   * Google - the PUT that follows gets the same 404 and is handled as before.
-   * Any other failure throws, so the row waits for the next poll: a PUT sent
-   * without the list would delete every guest.
-   */
-  private async fetchAttendees(
-    calendarId: string,
-    googleEventId: string,
-    accessToken: string
-  ): Promise<ReturnType<typeof googleAttendeesToDomain> | null> {
-    const res = await fetchWithTimeout(
-      `${GOOGLE_API_BASE}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(googleEventId)}`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    )
-    if (res.status === 404 || res.status === 410) return null
-    if (!res.ok) throw new Error(`Could not read the guest list first: ${await describeHttpFailure(res)}`)
-    const json = (await res.json()) as GoogleCalendarApiEvent
-    return googleAttendeesToDomain(json.attendees)
   }
 
   /**

@@ -23,8 +23,29 @@ interface GoogleEventDateTime {
  * What we send to Google. The id is deliberately not part of this shape: on an
  * update it lives in the request URL, and on an insert Google assigns it. Typing
  * the write payload separately is what stops an id being put back by accident.
+ *
+ * An update is a PATCH: a field it leaves out keeps what Google has, a nested
+ * object is merged into Google's, and null deletes a field.
  */
-type GoogleEventWritePayload = Omit<GoogleCalendarApiEvent, 'id'>
+type GoogleEventWritePayload = Omit<
+  GoogleCalendarApiEvent,
+  'id' | 'description' | 'location' | 'start' | 'end' | 'recurrence' | 'colorId' | 'reminders' | 'extendedProperties'
+> & {
+  description?: string | null
+  location?: string | null
+  start?: GoogleEventDateTimeWrite
+  end?: GoogleEventDateTimeWrite
+  recurrence?: string[] | null
+  colorId?: string | null
+  reminders?: { useDefault?: boolean; overrides?: GoogleReminderOverride[] | null }
+  extendedProperties?: { private?: Record<string, string | null> }
+}
+
+interface GoogleEventDateTimeWrite {
+  dateTime?: string | null
+  date?: string | null
+  timeZone?: string
+}
 
 export interface GoogleCalendarApiEvent {
   id: string
@@ -120,8 +141,10 @@ export function googleOverridesToDomain(overrides?: GoogleReminderOverride[]): E
   )
 }
 
-function domainRemindersToGoogle(reminders: EventReminder[] | null | undefined): GoogleReminders {
-  if (!reminders) return { useDefault: true }
+function domainRemindersToGoogle(reminders: EventReminder[] | null | undefined, patch: boolean): GoogleEventWritePayload['reminders'] {
+  // Google refuses a default together with overrides, and a PATCH merges into
+  // the reminders it has: the event's own list has to be deleted with it.
+  if (!reminders) return patch ? { useDefault: true, overrides: null } : { useDefault: true }
   return {
     useDefault: false,
     overrides: remindersForProvider('google', reminders).map((r) => ({
@@ -352,28 +375,42 @@ export function mapGoogleEventToDomain(
  */
 /**
  * `event.attendees` must be the complete guest list, or left undefined when
- * it is not known: an update is a PUT, which replaces the whole resource, so a
- * list that is merely empty here removes every guest on Google.
+ * it is not known: a list that is merely empty here removes every guest on
+ * Google.
+ *
+ * An update (`'patch'`) names only what the app models, so an edit here keeps
+ * what Google has and the app does not - visibility, free/busy, attachments,
+ * conference data, other apps' extended properties - which a PUT of this
+ * payload reset. A field removed here ('', or no rule) is deleted with null;
+ * one never known (undefined) is left out.
  */
 export function mapDomainEventToGoogle(
-  event: CalendarEvent | (CreateEventInput & { id?: string; rdate?: string })
+  event: CalendarEvent | (CreateEventInput & { id?: string; rdate?: string }),
+  mode: 'insert' | 'patch' = 'insert'
 ): GoogleEventWritePayload {
+  const patch = mode === 'patch'
+  const text = (value: string | undefined): string | null | undefined =>
+    value || (patch && value !== undefined ? null : undefined)
   const isAllDay = Boolean(event.allDay)
-  let start: GoogleEventDateTime
-  let end: GoogleEventDateTime
+  let start: GoogleEventDateTimeWrite
+  let end: GoogleEventDateTimeWrite
 
+  // A PATCH merges these into Google's: the other form is deleted, or an
+  // event changed between timed and all-day would carry both.
   if (isAllDay) {
-    start = { date: event.dtStartUtc.split('T')[0] }
+    start = { date: event.dtStartUtc.split('T')[0], ...(patch ? { dateTime: null } : {}) }
     // Google wants the exclusive end date back.
-    end = { date: inclusiveEndToExclusiveDate(event.dtStartUtc, event.dtEndUtc) }
+    end = { date: inclusiveEndToExclusiveDate(event.dtStartUtc, event.dtEndUtc), ...(patch ? { dateTime: null } : {}) }
   } else {
     start = {
       dateTime: event.dtStartUtc,
-      timeZone: event.tzid || 'UTC'
+      timeZone: event.tzid || 'UTC',
+      ...(patch ? { date: null } : {})
     }
     end = {
       dateTime: event.dtEndUtc,
-      timeZone: event.tzid || 'UTC'
+      timeZone: event.tzid || 'UTC',
+      ...(patch ? { date: null } : {})
     }
   }
 
@@ -385,18 +422,19 @@ export function mapDomainEventToGoogle(
     // created here ever reached Google. Let the provider assign the id; the
     // engine already re-keys the local row when the response id differs.
     summary: event.title,
-    description: event.notes || undefined,
-    location: event.location || undefined,
+    description: text(event.notes),
+    location: text(event.location),
     start,
     end,
-    // Always sent: an update is a PUT, which replaces the whole resource, so
-    // leaving this out would reset the event's reminders on Google.
-    reminders: domainRemindersToGoogle(event.reminders)
+    reminders: domainRemindersToGoogle(event.reminders, patch)
   }
 
   const recurrence = recurrenceLines(event)
   if (recurrence.length > 0) {
     gEvent.recurrence = recurrence
+  } else if (patch) {
+    // "Does not repeat": the series becomes a single event.
+    gEvent.recurrence = null
   }
   if (event.attendees) {
     gEvent.attendees = domainAttendeesToGoogle(event.attendees)
@@ -405,10 +443,18 @@ export function mapDomainEventToGoogle(
   const hex = event.color?.toLowerCase()
   if (hex && GOOGLE_COLOR_ID_BY_HEX[hex]) {
     gEvent.colorId = GOOGLE_COLOR_ID_BY_HEX[hex]
+  } else if (patch && event.color !== undefined) {
+    // The event's own colour removed: the calendar's again.
+    gEvent.colorId = null
   }
   if (event.meetingUrl) {
     gEvent.extendedProperties = {
       private: { [XRNCAL_MEETING_URL_PROP]: event.meetingUrl }
+    }
+  } else if (patch && event.meetingUrl !== undefined) {
+    // Removed here: the link is gone under either name the pull reads it by.
+    gEvent.extendedProperties = {
+      private: { [XRNCAL_MEETING_URL_PROP]: null, [LEGACY_MEETING_URL_PROP]: null }
     }
   }
 

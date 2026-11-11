@@ -383,7 +383,7 @@ describe('replying to invitations', () => {
     expect(invitationSelf(repo.getEventById(id)!.event.attendees)?.responseStatus).toBe('needsAction')
   })
 
-  it('does not PUT a Google event without its guests when their list cannot be read', async () => {
+  it('leaves the guests of a Google event alone when their list was never read', async () => {
     const created = repo.createEvent({
       calendarId: CAL,
       title: 'Old meeting',
@@ -393,18 +393,20 @@ describe('replying to invitations', () => {
     db.prepare("UPDATE events SET provider_event_id = 'g9', etag = 'e1', attendees_synced = 0 WHERE id = ?").run(
       created.id
     )
-    const methods: string[] = []
+    const sent: { method: string; body?: Record<string, unknown> }[] = []
     vi.stubGlobal(
       'fetch',
       vi.fn(async (_url: string, init?: RequestInit) => {
-        methods.push(init?.method ?? 'GET')
+        sent.push({ method: init?.method ?? 'GET', body: init?.body ? JSON.parse(String(init.body)) : undefined })
         return jsonResponse({ error: 'backend' }, 503)
       })
     )
 
     const res = await new GoogleSyncEngine(db).pushDirtyEvents(CAL, 'token')
 
-    expect(methods).toEqual(['GET'])
+    // A PATCH without the list keeps Google's: nothing to read first.
+    expect(sent.map((r) => r.method)).toEqual(['PATCH'])
+    expect(sent[0].body).not.toHaveProperty('attendees')
     expect(res.errorCount).toBe(1)
     expect(repo.getEventById(created.id)!.event.dirty).toBe(true)
   })
