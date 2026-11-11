@@ -57,6 +57,7 @@
     "tests/account-display.test.ts",
     "tests/time-zones.test.ts",
     "tests/new-event.test.ts",
-    "tests/editor-double-save.test.ts"
+    "tests/editor-double-save.test.ts",
+    "tests/search-result-date.test.ts"
   ]
 }

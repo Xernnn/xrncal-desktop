@@ -11,8 +11,22 @@ import {
 } from 'lucide-react'
 import { DateTime } from 'luxon'
 import type { CalendarEvent, Calendar } from '@shared/event-model'
-import { formatClockTime } from '@shared/time-format'
+import { formatClockTime, type TimeFormatPref } from '@shared/time-format'
 import { useDisplayPreferences } from '../context/DisplayPreferencesContext'
+
+/**
+ * When a search result is, as the list shows it. An all-day event is a
+ * floating date parked at UTC midnight, so its date is read in UTC: in this
+ * computer's zone it was the day before west of GMT.
+ */
+export function resultWhen(event: CalendarEvent, timeFormat: TimeFormatPref, allDaySuffix: string): string {
+  if (event.allDay) {
+    return `${DateTime.fromISO(event.dtStartUtc, { zone: 'utc' }).toFormat('dd/MM/yyyy')} (${allDaySuffix})`
+  }
+  const dt = DateTime.fromISO(event.dtStartUtc)
+  const endDt = DateTime.fromISO(event.dtEndUtc)
+  return `${dt.toFormat('dd/MM/yyyy')} ${formatClockTime(dt, timeFormat)} – ${formatClockTime(endDt, timeFormat)}`
+}
 
 interface SearchPaletteModalProps {
   isOpen: boolean
@@ -114,15 +128,6 @@ export const SearchPaletteModal: React.FC<SearchPaletteModalProps> = ({
     onClose()
   }
 
-  const formatEventTime = (event: CalendarEvent) => {
-    const dt = DateTime.fromISO(event.dtStartUtc)
-    if (event.allDay) {
-      return `${dt.toFormat('dd/MM/yyyy')} (${t('search.allDaySuffix')})`
-    }
-    const endDt = DateTime.fromISO(event.dtEndUtc)
-    return `${dt.toFormat('dd/MM/yyyy')} ${formatClockTime(dt, timeFormat)} – ${formatClockTime(endDt, timeFormat)}`
-  }
-
   if (!isOpen) return null
 
   return (
@@ -210,7 +215,7 @@ export const SearchPaletteModal: React.FC<SearchPaletteModalProps> = ({
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
                       <span className="flex items-center gap-1">
                         <Clock className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
-                        {formatEventTime(evt)}
+                        {resultWhen(evt, timeFormat, t('search.allDaySuffix'))}
                       </span>
 
                       {evt.location && (
