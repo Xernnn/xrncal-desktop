@@ -1,5 +1,6 @@
-import { DateTime } from 'luxon'
+import { DateTime, IANAZone } from 'luxon'
 import { exclusiveEndToInclusive, inclusiveEndToExclusiveDate } from '@shared/all-day'
+import { localStamp, writableZone } from '../ics/vtimezone'
 import type {
   Attendee,
   AttendeeResponseStatus,
@@ -191,6 +192,64 @@ function parseGoogleDateTime(dt?: GoogleEventDateTime): {
 }
 
 /**
+ * The dates an EXDATE or RDATE line of a series' `recurrence` lists, as the
+ * app stores them: UTC instants, or UTC midnight for a date. A time with
+ * neither a Z nor a zone it names is read in the series' zone; a period
+ * (RDATE;VALUE=PERIOD) counts by its start.
+ */
+export function recurrenceLineDates(line: string, seriesZone: string): string[] {
+  const colon = line.indexOf(':')
+  if (colon < 0) return []
+  const tzid = line
+    .slice(0, colon)
+    .split(';')
+    .slice(1)
+    .find((p) => /^TZID=/i.test(p))
+    ?.slice(5)
+    .replace(/^"(.*)"$/, '$1')
+  const zone = tzid && IANAZone.isValidZone(tzid) ? tzid : seriesZone
+  const out: string[] = []
+  for (const value of line.slice(colon + 1).split(',')) {
+    const m = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z?))?$/i.exec(value.trim().split('/')[0])
+    if (!m) continue
+    const [, year, month, day, hour, minute, second, utc] = m
+    if (hour === undefined) {
+      out.push(`${year}-${month}-${day}T00:00:00.000Z`)
+      continue
+    }
+    const at = DateTime.fromObject(
+      { year: +year, month: +month, day: +day, hour: +hour, minute: +minute, second: +second },
+      { zone: utc ? 'utc' : zone }
+    )
+    if (at.isValid) out.push(at.toUTC().toISO()!)
+  }
+  return out
+}
+
+/**
+ * The `recurrence` lines of a series: its rule, then the dates it leaves out
+ * and adds - written in its own zone, as Google writes them, or as dates for
+ * an all-day series. A rule sent alone drops every EXDATE and RDATE on Google.
+ */
+function recurrenceLines(event: { rrule?: string; exdate?: string; rdate?: string; allDay?: boolean; tzid?: string }): string[] {
+  const zone = event.allDay ? null : writableZone(event.tzid)
+  const dateLine = (name: string, list: string | undefined): string[] => {
+    const dates = (list ?? '')
+      .split(',')
+      .map((d) => d.trim())
+      .filter((d) => DateTime.fromISO(d, { zone: 'utc' }).isValid)
+    if (dates.length === 0) return []
+    const utc = (d: string) => DateTime.fromISO(d, { zone: 'utc' })
+    if (event.allDay) return [`${name};VALUE=DATE:${dates.map((d) => utc(d).toFormat('yyyyMMdd')).join(',')}`]
+    if (zone) return [`${name};TZID=${zone}:${dates.map((d) => localStamp(d, zone)).join(',')}`]
+    return [`${name}:${dates.map((d) => utc(d).toFormat("yyyyMMdd'T'HHmmss'Z'")).join(',')}`]
+  }
+  const rdates = dateLine('RDATE', event.rdate)
+  if (!event.rrule && rdates.length === 0) return []
+  return [...(event.rrule ? [`RRULE:${event.rrule}`] : []), ...dateLine('EXDATE', event.exdate), ...rdates]
+}
+
+/**
  * Map Google API event to Canonical CalendarEvent / EventException
  */
 export function mapGoogleEventToDomain(
@@ -198,7 +257,7 @@ export function mapGoogleEventToDomain(
   calendarId: string
 ): {
   isException: boolean
-  event?: CreateEventInput & { id: string; etag?: string; isDeleted?: boolean }
+  event?: CreateEventInput & { id: string; etag?: string; isDeleted?: boolean; rdate?: string }
   exception?: Omit<EventException, 'id' | 'createdAt' | 'updatedAt'> & { etag?: string }
 } {
   const startInfo = parseGoogleDateTime(gEvent.start)
@@ -244,11 +303,17 @@ export function mapGoogleEventToDomain(
 
   // Master event
   let rruleString: string | undefined
+  const exdates: string[] = []
+  const rdates: string[] = []
   if (gEvent.recurrence && gEvent.recurrence.length > 0) {
     for (const rule of gEvent.recurrence) {
       if (rule.startsWith('RRULE:')) {
         rruleString = rule.substring(6)
-      } else if (!/^(EXDATE|RDATE|EXRULE)[:;]/i.test(rule)) {
+      } else if (/^EXDATE[:;]/i.test(rule)) {
+        exdates.push(...recurrenceLineDates(rule, startInfo.tzid))
+      } else if (/^RDATE[:;]/i.test(rule)) {
+        rdates.push(...recurrenceLineDates(rule, startInfo.tzid))
+      } else if (!/^EXRULE[:;]/i.test(rule)) {
         // Not "EXDATE;TZID=Europe/Zurich:...": only "EXDATE:" was told apart,
         // so a date list with a parameter, coming after the RRULE, replaced it.
         rruleString = rule
@@ -270,6 +335,8 @@ export function mapGoogleEventToDomain(
       tzid: startInfo.tzid,
       allDay: startInfo.allDay,
       rrule: rruleString,
+      exdate: exdates.length > 0 ? exdates.join(',') : undefined,
+      rdate: rdates.length > 0 ? rdates.join(',') : undefined,
       color,
       meetingUrl,
       reminders: googleRemindersToDomain(gEvent.reminders),
@@ -289,7 +356,7 @@ export function mapGoogleEventToDomain(
  * list that is merely empty here removes every guest on Google.
  */
 export function mapDomainEventToGoogle(
-  event: CalendarEvent | (CreateEventInput & { id?: string })
+  event: CalendarEvent | (CreateEventInput & { id?: string; rdate?: string })
 ): GoogleEventWritePayload {
   const isAllDay = Boolean(event.allDay)
   let start: GoogleEventDateTime
@@ -327,8 +394,9 @@ export function mapDomainEventToGoogle(
     reminders: domainRemindersToGoogle(event.reminders)
   }
 
-  if (event.rrule) {
-    gEvent.recurrence = [`RRULE:${event.rrule}`]
+  const recurrence = recurrenceLines(event)
+  if (recurrence.length > 0) {
+    gEvent.recurrence = recurrence
   }
   if (event.attendees) {
     gEvent.attendees = domainAttendeesToGoogle(event.attendees)

@@ -335,9 +335,9 @@ export class GoogleSyncEngine {
           .prepare(
             `INSERT INTO events (
               id, provider_event_id, calendar_id, uid, title, notes, location,
-              dtstart_utc, dtend_utc, tzid, all_day, rrule, color,
+              dtstart_utc, dtend_utc, tzid, all_day, rrule, exdate, rdate, color,
               meeting_url, reminders, etag, dirty, is_deleted, attendees_synced, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 1, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 1, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
               provider_event_id = excluded.provider_event_id,
               title = excluded.title,
@@ -348,6 +348,8 @@ export class GoogleSyncEngine {
               tzid = excluded.tzid,
               all_day = excluded.all_day,
               rrule = excluded.rrule,
+              exdate = excluded.exdate,
+              rdate = excluded.rdate,
               color = excluded.color,
               meeting_url = excluded.meeting_url,
               reminders = excluded.reminders,
@@ -371,6 +373,8 @@ export class GoogleSyncEngine {
           evt.tzid || 'UTC',
           evt.allDay ? 1 : 0,
           evt.rrule || null,
+          evt.exdate || null,
+          evt.rdate || null,
           evt.color || null,
           evt.meetingUrl || null,
           serializeReminders(reminders),
@@ -546,6 +550,8 @@ export class GoogleSyncEngine {
             tzid: row.tzid,
             allDay: row.all_day === 1,
             rrule: row.rrule ?? undefined,
+            exdate: row.exdate ?? undefined,
+            rdate: row.rdate ?? undefined,
             color: row.color ?? undefined,
             meetingUrl: row.meeting_url ?? undefined,
             reminders: parseRemindersJson(row.reminders),
