@@ -87,6 +87,16 @@ export const resources = {
         dragSnapMin: '{{count}} min',
         dragSnapHour: '1 hour',
         timePickerStep: 'Times listed in the event editor',
+        defaultEventLength: 'Length of a new event',
+        defaultEventLengthHint: 'For a click on an empty time, Create or N. A range you drag keeps its own length.',
+        eventLengthOption: {
+          '15': '15 min',
+          '30': '30 min',
+          '45': '45 min',
+          '60': '1 hour',
+          '90': '1.5 hours',
+          '120': '2 hours'
+        },
         suggestionShowCalendarName: 'Name the calendar in title suggestions',
         timeFormat: 'Time format',
         timeFormat24h: '24h',
@@ -776,6 +786,16 @@ export const resources = {
         dragSnapMin: '{{count}} phút',
         dragSnapHour: '1 giờ',
         timePickerStep: 'Các mốc giờ trong cửa sổ sự kiện',
+        defaultEventLength: 'Độ dài của sự kiện mới',
+        defaultEventLengthHint: 'Khi bấm vào một ô giờ trống, bấm Tạo hoặc phím N. Khoảng giờ bạn kéo chọn thì giữ nguyên độ dài.',
+        eventLengthOption: {
+          '15': '15 phút',
+          '30': '30 phút',
+          '45': '45 phút',
+          '60': '1 giờ',
+          '90': '1,5 giờ',
+          '120': '2 giờ'
+        },
         suggestionShowCalendarName: 'Hiện tên lịch trong gợi ý tiêu đề',
         timeFormat: 'Định dạng giờ',
         timeFormat24h: '24 giờ',

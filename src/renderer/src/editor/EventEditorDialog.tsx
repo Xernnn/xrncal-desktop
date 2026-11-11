@@ -42,6 +42,7 @@ import { useDisplayPreferences } from '../context/DisplayPreferencesContext'
 import { zoneForEditing, zonePickerOptions } from '../lib/time-zones'
 import { zoneAt, type ZonePeriod } from '@shared/zone-history'
 import { defaultCalendarFor } from '../lib/new-event'
+import { newEventEnd } from '@shared/event-length'
 import { useToday } from '../hooks/use-now'
 import { parseEntry, applyEntry, ENTRY_WEEKDAYS, type EntrySlot, type ParsedEntry } from '@shared/natural-entry'
 
@@ -169,7 +170,9 @@ const dateAndTime = (start: DateTime, end: DateTime) => ({
 
 /**
  * The form for what the editor was opened on: an occurrence from the grid, a
- * whole event (search, a copy just made), or a new event in a slot.
+ * whole event (search, a copy just made), or a new event in a slot. A new
+ * event handed a start but no end (Create, N, a day clicked in Month view) is
+ * `defaultEventMinutes` long, the length chosen in Settings.
  *
  * Worked out once per opening - App remounts the editor each time it opens. It
  * used to be an effect that also re-ran whenever the calendar list or Where
@@ -181,7 +184,8 @@ const dateAndTime = (start: DateTime, end: DateTime) => ({
 export function initialForm(
   data: EventEditorInitialData | null,
   calendars: Calendar[],
-  zoneHistory: ZonePeriod[]
+  zoneHistory: ZonePeriod[],
+  defaultEventMinutes?: number
 ): EditorForm {
   const userTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
 
@@ -274,7 +278,7 @@ export function initialForm(
   }
 
   const start = data?.initialStart || DateTime.local().set({ hour: 9, minute: 0, second: 0 })
-  const end = data?.initialEnd || start.plus({ hours: 1 })
+  const end = data?.initialEnd || newEventEnd(start, defaultEventMinutes)
   return {
     calendarId: data?.initialCalendarId || defaultCalendarFor(calendars)?.id || '',
     title: '',
@@ -364,7 +368,8 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
     timeFormat,
     preferredTimeZones,
     zoneHistory,
-    firstDayOfWeek
+    firstDayOfWeek,
+    defaultEventMinutes
   } = useDisplayPreferences()
   const isEditing = Boolean(data?.occurrence || data?.event)
   // Lunar anniversaries have no per-instance RRULE semantics — edits always apply
@@ -375,7 +380,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
 
   // Form states (location / notes / meetingUrl / attendees / tzid / color are kept
   // so edits to synced events preserve those fields, but they are not shown in the UI)
-  const [initial] = useState(() => initialForm(data, calendars, zoneHistory))
+  const [initial] = useState(() => initialForm(data, calendars, zoneHistory, defaultEventMinutes))
   const [calendarIdState, setCalendarId] = useState<string>(initial.calendarId)
   // A new event opened before the calendars arrived gets the default one as
   // soon as they do.
@@ -618,7 +623,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
 
   /** `base` with what the title says put into it. */
   const scheduleFor = (base: ScheduleFields, entry: ParsedEntry): ScheduleFields => {
-    const next = { ...base, ...applyEntry(base, entry) }
+    const next = { ...base, ...applyEntry(base, entry, defaultEventMinutes) }
     const repeat = entry.repeat
     if (!repeat) return next
     if (repeat.kind === 'lunar-yearly') {

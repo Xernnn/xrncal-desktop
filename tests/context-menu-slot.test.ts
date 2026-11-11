@@ -36,4 +36,19 @@ describe('right-click "New event here" on the hour grid', () => {
     expect(clock('2026-11-11', 9 * 60 + 29)).toEqual(['09:00', '10:00'])
     expect(clock('2026-11-11', 24 * 60)).toEqual(['23:30', '00:30'])
   })
+
+  // The hour was written into the menu; it is the length chosen in Settings.
+  it('makes the event as long as new events are set to be', () => {
+    env.TZ = 'Asia/Ho_Chi_Minh'
+    const slot = (minutes: number, length: number): string[] => {
+      const { start, end } = halfHourAt(DateTime.fromISO('2026-11-11'), minutes, length)
+      return [start.toFormat('MM-dd HH:mm'), end.toFormat('MM-dd HH:mm')]
+    }
+    expect(slot(9 * 60 + 29, 30)).toEqual(['11-11 09:00', '11-11 09:30'])
+    expect(slot(9 * 60 + 40, 15)).toEqual(['11-11 09:30', '11-11 09:45'])
+    expect(slot(14 * 60, 90)).toEqual(['11-11 14:00', '11-11 15:30'])
+    // Late enough, it ends on the next day, as the hour from 23:30 always did.
+    expect(slot(24 * 60, 120)).toEqual(['11-11 23:30', '11-12 01:30'])
+    expect(slot(24 * 60, 30)).toEqual(['11-11 23:30', '11-12 00:00'])
+  })
 })

@@ -128,6 +128,37 @@ describe('initialForm (the editor form for what it was opened on)', () => {
     })
   })
 
+  // Create, N and a day clicked in Month view hand over a start and no end.
+  // The end was an hour later, whatever length new events were set to have.
+  it('makes a new event with no end of its own the default length', () => {
+    const start = DateTime.fromISO('2026-03-04T09:00:00')
+    const times = (minutes?: number) => {
+      const form = initialForm({ initialStart: start }, calendars, [], minutes)
+      return [form.startTimeStr, form.endDateStr, form.endTimeStr]
+    }
+    expect(times()).toEqual(['09:00', '2026-03-04', '10:00'])
+    expect(times(30)).toEqual(['09:00', '2026-03-04', '09:30'])
+    expect(times(90)).toEqual(['09:00', '2026-03-04', '10:30'])
+    expect(times(120)).toEqual(['09:00', '2026-03-04', '11:00'])
+  })
+
+  it('keeps the range a new event was opened on, whatever the default length', () => {
+    const start = DateTime.fromISO('2026-03-04T14:00:00')
+    const form = initialForm({ initialStart: start, initialEnd: start.plus({ minutes: 45 }) }, calendars, [], 120)
+    expect(form).toMatchObject({ startTimeStr: '14:00', endTimeStr: '14:45' })
+  })
+
+  it('ends a late new event on the next day, after its start', () => {
+    const start = DateTime.fromISO('2026-03-04T23:30:00')
+    const form = initialForm({ initialStart: start }, calendars, [], 90)
+    expect(form).toMatchObject({
+      startDateStr: '2026-03-04',
+      startTimeStr: '23:30',
+      endDateStr: '2026-03-05',
+      endTimeStr: '01:00'
+    })
+  })
+
   it('keeps a guest list handed over, and marks one not handed over as unread', () => {
     const withGuests = initialForm(
       { event: event({ attendees: [{ email: 'a@example.com', responseStatus: 'accepted' }] }) },

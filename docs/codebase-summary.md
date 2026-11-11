@@ -120,6 +120,7 @@ xrncal/
 │       ├── all-day.ts           # Floating-date vs instant: inclusive/exclusive ends, day keys
 │       ├── occurrence-order.ts  # Within-day ordering (all-day first, then by time)
 │       ├── title-suggestions.ts # Ranking for the event-title autocomplete
+│       ├── event-length.ts      # How long a new event is when it was started without a range (defaultEventMinutes)
 │       ├── expand-occurrences.ts # RRULE + exception expansion
 │       ├── bounded-rrule.ts     # Limits on what expanding one rule may cost
 │       ├── lunar-vietnam.ts     # Vietnamese lunar calendar conversion

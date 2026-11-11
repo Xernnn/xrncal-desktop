@@ -200,6 +200,21 @@ describe('applyEntry', () => {
     })
   })
 
+  it('a time on an all-day slot makes it as long as new events are set to be', () => {
+    const allDay = { ...slot, allDay: true, endDate: '2026-11-05' }
+    expect(applyEntry(allDay, entry({ start: '09:00' }), 30)).toMatchObject({ allDay: false, startTime: '09:00', endTime: '09:30' })
+    expect(applyEntry(allDay, entry({ start: '23:00' }), 120)).toMatchObject({
+      startDate: '2026-11-04',
+      startTime: '23:00',
+      endDate: '2026-11-05',
+      endTime: '01:00'
+    })
+    // A length or an end that was typed still wins, and a timed slot keeps its own.
+    expect(applyEntry(allDay, entry({ start: '09:00', durationMinutes: 45 }), 30)).toMatchObject({ endTime: '09:45' })
+    expect(applyEntry(allDay, entry({ start: '09:00', end: '11:00' }), 30)).toMatchObject({ endTime: '11:00' })
+    expect(applyEntry(slot, entry({ start: '15:00' }), 30)).toMatchObject({ startTime: '15:00', endTime: '16:30' })
+  })
+
   it('a length alone keeps the start', () => {
     expect(applyEntry(slot, entry({ durationMinutes: 45 }))).toMatchObject({ startTime: '10:00', endTime: '10:45' })
   })

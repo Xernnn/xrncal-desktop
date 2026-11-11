@@ -23,6 +23,7 @@ import {
 import { useSettings } from '../context/SettingsContext'
 import { NumberInput, CustomSelect, DatePicker, toast } from './ui'
 import { SNAP_STEP_OPTIONS } from '../dnd/resize-math'
+import { EVENT_LENGTH_OPTIONS, newEventMinutes } from '@shared/event-length'
 import { ALL_DAY_REMINDER_PRESETS, TIMED_REMINDER_PRESETS } from '@shared/reminders'
 import { reminderLabel } from '../lib/reminder-labels'
 import { TIME_ZONE_NAMES, parseZoneList, serializeZoneList, zoneLabel, zoneOptions } from '../lib/time-zones'
@@ -550,6 +551,26 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
                       ))}
                     </div>
                   </Row>
+                  {/* Full width, and wrapping: six lengths do not fit beside a label. */}
+                  <div className="border-b border-hairline py-3 last:border-b-0">
+                    <div className="text-sm text-primary">{t('settings.defaultEventLength')}</div>
+                    <div className="mt-0.5 mb-2 text-xs leading-snug text-muted">
+                      {t('settings.defaultEventLengthHint')}
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {EVENT_LENGTH_OPTIONS.map((opt) => (
+                        <button
+                          key={opt}
+                          type="button"
+                          aria-pressed={newEventMinutes(settings.defaultEventMinutes) === opt}
+                          className={newEventMinutes(settings.defaultEventMinutes) === opt ? 'gc-btn-primary' : 'gc-btn'}
+                          onClick={() => void setSetting('defaultEventMinutes', opt)}
+                        >
+                          {t(`settings.eventLengthOption.${opt}`)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <Row label={t('settings.autoHideHeader')}>
                     <Toggle on={settings.autoHideHeader} onChange={(next) => void setSetting('autoHideHeader', next)} />
                   </Row>

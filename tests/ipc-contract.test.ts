@@ -59,6 +59,7 @@ describe('IPC Channels and Contracts', () => {
           zoneHistory: '',
           dragSnapMinutes: 15,
           timePickerStepMinutes: 15,
+          defaultEventMinutes: 60,
           suggestionShowCalendarName: true,
           defaultReminderMinutes: 10,
           defaultAllDayReminderMinutes: null,

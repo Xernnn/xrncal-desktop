@@ -51,6 +51,8 @@
     "tests/editor-double-save.test.ts",
     "tests/search-result-date.test.ts",
     "tests/context-menu-slot.test.ts",
-    "tests/long-event-views.test.ts"
+    "tests/long-event-views.test.ts",
+    "tests/slot-drag-select.test.ts",
+    "tests/settings-event-length.test.ts"
   ]
 }

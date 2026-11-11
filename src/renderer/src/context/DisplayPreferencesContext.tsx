@@ -1,6 +1,7 @@
 import { createContext, useContext } from 'react'
 import type { AppSettings } from '@shared/settings-contract'
 import { parseZoneHistory, type ZonePeriod } from '@shared/zone-history'
+import { newEventMinutes } from '@shared/event-length'
 import { parseZoneList } from '../lib/time-zones'
 
 export interface DisplayPreferences {
@@ -15,6 +16,8 @@ export interface DisplayPreferences {
   dragSnapMinutes: AppSettings['dragSnapMinutes']
   /** Gap between the times the editor's time lists offer. */
   timePickerStepMinutes: AppSettings['timePickerStepMinutes']
+  /** Length of a new timed event started without a range of its own. */
+  defaultEventMinutes: AppSettings['defaultEventMinutes']
   /** What an event with no reminders of its own rings with (see effectiveReminders). */
   defaultReminderMinutes: AppSettings['defaultReminderMinutes']
   defaultAllDayReminderMinutes: AppSettings['defaultAllDayReminderMinutes']
@@ -34,6 +37,7 @@ const DEFAULT_DISPLAY_PREFERENCES: DisplayPreferences = {
   suggestionShowCalendarName: true,
   dragSnapMinutes: 15,
   timePickerStepMinutes: 15,
+  defaultEventMinutes: 60,
   defaultReminderMinutes: 10,
   defaultAllDayReminderMinutes: null,
   preferredTimeZones: [],
@@ -51,6 +55,7 @@ export function displayPreferencesOf(settings: AppSettings): DisplayPreferences 
     suggestionShowCalendarName: settings.suggestionShowCalendarName,
     dragSnapMinutes: settings.dragSnapMinutes,
     timePickerStepMinutes: settings.timePickerStepMinutes,
+    defaultEventMinutes: newEventMinutes(settings.defaultEventMinutes),
     defaultReminderMinutes: settings.defaultReminderMinutes,
     defaultAllDayReminderMinutes: settings.defaultAllDayReminderMinutes,
     preferredTimeZones: parseZoneList(settings.preferredTimeZones),
