@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { resultWhen } from '../src/renderer/src/components/SearchPaletteModal'
-import type { CalendarEvent } from '../src/shared/event-model'
+import { resultDate, resultWhen } from '../src/renderer/src/components/SearchPaletteModal'
+import type { CalendarEvent, EventSearchResult } from '../src/shared/event-model'
 
 /**
  * An all-day event is a floating date parked at UTC midnight. Search showed
@@ -33,5 +33,30 @@ describe('the date a search result shows', () => {
     expect(resultWhen(event(false, '2026-09-14T02:00:00.000Z', '2026-09-14T03:00:00.000Z'), '24h', 'all day')).toBe(
       '13/09/2026 22:00 – 23:00'
     )
+  })
+
+  // A series found by search stands for its date nearest to now (EventsRepo.searchEvents);
+  // its own start is its first-ever date, years back.
+  it("is a series' date nearest to now, and that is the day it goes to", () => {
+    env.TZ = 'UTC'
+    const series: EventSearchResult = {
+      ...event(false, '2023-01-02T09:00:00.000Z', '2023-01-02T09:15:00.000Z'),
+      rrule: 'FREQ=WEEKLY;BYDAY=MO',
+      occurrence: {
+        id: 'e_2026-11-16T09:00:00.000Z',
+        eventId: 'e',
+        calendarId: 'c',
+        title: 'Standup',
+        startUtc: '2026-11-16T09:00:00.000Z',
+        endUtc: '2026-11-16T09:15:00.000Z',
+        tzid: 'UTC',
+        allDay: false,
+        isRecurring: true,
+        isException: false,
+        originalStartUtc: '2026-11-16T09:00:00.000Z'
+      }
+    }
+    expect(resultWhen(series, '24h', 'all day')).toBe('16/11/2026 09:00 – 09:15')
+    expect(resultDate(series)).toBe('2026-11-16')
   })
 })

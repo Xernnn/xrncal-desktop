@@ -3,8 +3,7 @@ import { initDatabase, closeDatabase } from '../src/main/db/database'
 import type { ISqliteDatabase } from '../src/main/db/sqlite-driver'
 import { EventsRepo } from '../src/main/db/repos/events-repo'
 import { nearestOccurrence } from '../src/shared/nearest-occurrence'
-import { resultDate, resultWhen } from '../src/renderer/src/components/SearchPaletteModal'
-import type { CalendarEvent, EventSearchResult } from '../src/shared/event-model'
+import type { CalendarEvent } from '../src/shared/event-model'
 
 /**
  * Search opened a recurring series at its first-ever date: "standup" for a
@@ -103,38 +102,5 @@ describe('searching for a recurring series', () => {
     })
     // A one-off is still itself.
     expect(results[1].occurrence).toBeUndefined()
-  })
-})
-
-describe('a series in the search list', () => {
-  const result: EventSearchResult = {
-    ...weekly(),
-    occurrence: {
-      id: 'evt_standup_2026-11-16T09:00:00.000Z',
-      eventId: 'evt_standup',
-      calendarId: CAL,
-      title: 'Standup',
-      startUtc: '2026-11-16T09:00:00.000Z',
-      endUtc: '2026-11-16T09:15:00.000Z',
-      tzid: 'UTC',
-      allDay: false,
-      isRecurring: true,
-      isException: false,
-      originalStartUtc: '2026-11-16T09:00:00.000Z'
-    }
-  }
-
-  // TZ is what moves luxon's 'local'; this project's tsconfig has no Node types.
-  const env = (globalThis as unknown as { process: { env: Record<string, string | undefined> } }).process.env
-  const previous = env.TZ
-  afterEach(() => {
-    if (previous === undefined) delete env.TZ
-    else env.TZ = previous
-  })
-
-  it('shows and goes to the date nearest to now, not the first', () => {
-    env.TZ = 'UTC'
-    expect(resultWhen(result, '24h', 'all day')).toBe('16/11/2026 09:00 – 09:15')
-    expect(resultDate(result)).toBe('2026-11-16')
   })
 })
