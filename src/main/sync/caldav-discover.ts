@@ -92,7 +92,7 @@ export function sendsPasswordInClear(url: string): boolean {
 /**
  * What to call a CalDAV account the user did not name: the server it lives on
  * (`homeserver.example.ts.net`, `cloud.example.com`), which is what tells two
- * accounts apart in the list - the old `GENERIC (sonn)` said neither.
+ * accounts apart in the list - the old `GENERIC (alex)` said neither.
  */
 export function defaultCalDavName(provider: CalDavProvider, normalizedUrl: string): string {
   if (provider === 'icloud') return 'iCloud'
@@ -183,8 +183,8 @@ export function normalizeCalendarColor(value: string | undefined): string | unde
 }
 
 /**
- * The href a DAV property points at, e.g. the `/sonn/` in
- * `<current-user-principal><href>/sonn/</href></current-user-principal>`.
+ * The href a DAV property points at, e.g. the `/alex/` in
+ * `<current-user-principal><href>/alex/</href></current-user-principal>`.
  */
 export function extractPropHref(xml: string, propName: string): string | undefined {
   const inner = extractXmlTagValue(xml, propName)

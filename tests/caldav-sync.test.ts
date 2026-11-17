@@ -18,8 +18,8 @@ import { SyncStateRepo } from '../src/main/db/repos/sync-state-repo'
  * whole calendar on every 20-second poll even when its ctag said nothing changed.
  */
 
-const CAL = 'https://dav.example/sonn/personal/'
-const CREDS: CalDavCredentials = { url: 'https://dav.example/sonn/', username: 'sonn', password: 'pw' }
+const CAL = 'https://dav.example/alex/personal/'
+const CREDS: CalDavCredentials = { url: 'https://dav.example/alex/', username: 'alex', password: 'pw' }
 
 interface ServerItem {
   name: string
@@ -53,7 +53,7 @@ function xmlEscape(text: string): string {
 function multistatus(items: ServerItem[], withData = true): string {
   const responses = items
     .map(
-      (i) => `<D:response><D:href>/sonn/personal/${i.name}</D:href><D:propstat><D:prop>` +
+      (i) => `<D:response><D:href>/alex/personal/${i.name}</D:href><D:propstat><D:prop>` +
         `<D:getetag>${xmlEscape(i.etag)}</D:getetag>` +
         (withData ? `<C:calendar-data>${xmlEscape(i.ics ?? vevent(i.uid, i.title))}</C:calendar-data>` : '') +
         `</D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response>`
@@ -75,7 +75,7 @@ function response(status: number, body = '', headers: Record<string, string> = {
 
 function calendarListing(ctag: string): string {
   return `<?xml version="1.0"?><D:multistatus xmlns:D="DAV:" xmlns:CS="http://calendarserver.org/ns/">` +
-    `<D:response><D:href>/sonn/personal/</D:href><D:propstat><D:prop>` +
+    `<D:response><D:href>/alex/personal/</D:href><D:propstat><D:prop>` +
     `<D:resourcetype><D:collection/><C:calendar xmlns:C="urn:ietf:params:xml:ns:caldav"/></D:resourcetype>` +
     `<D:displayname>Personal</D:displayname><CS:getctag>${ctag}</CS:getctag>` +
     `<D:current-user-privilege-set><D:privilege><D:write/></D:privilege></D:current-user-privilege-set>` +
@@ -110,7 +110,7 @@ function stubServer(
         const body = String(init.body)
         if (body.includes('calendar-multiget')) {
           if (options.multiget === false) return response(405)
-          const names = [...body.matchAll(/<D:href>\/sonn\/personal\/([^<]+)<\/D:href>/g)].map((m) => m[1])
+          const names = [...body.matchAll(/<D:href>\/alex\/personal\/([^<]+)<\/D:href>/g)].map((m) => m[1])
           reports.push(names.join(','))
           return response(207, multistatus(items.filter((i) => names.includes(i.name) && !options.gone?.includes(i.name))))
         }
@@ -208,7 +208,7 @@ describe('CalDAV sync', () => {
         id: created.id,
         uid: created.uid,
         title: 'Edited on the phone',
-        provider_event_id: `https://dav.example/sonn/personal/${created.uid}.ics`
+        provider_event_id: `https://dav.example/alex/personal/${created.uid}.ics`
       }
     ])
   })
@@ -271,7 +271,7 @@ describe('CalDAV sync', () => {
   it('edits and deletes a server-made event at the address the server listed it under', async () => {
     stubServer([{ name: 'onecal-1234.ics', uid: 'uid-from-phone', title: 'Made on the phone', etag: '"p1"' }])
     await engine.pullCalendarEvents(CAL, CREDS)
-    const href = 'https://dav.example/sonn/personal/onecal-1234.ics'
+    const href = 'https://dav.example/alex/personal/onecal-1234.ics'
     const id = rows()[0].id
 
     repo.updateEvent(id, { title: 'Edited here' })
@@ -293,7 +293,7 @@ describe('CalDAV sync', () => {
   })
 
   it('keeps the same UID in two calendars as two events', async () => {
-    const other = 'https://dav.example/sonn/work/'
+    const other = 'https://dav.example/alex/work/'
     const now = new Date().toISOString()
     db.prepare(
       `INSERT INTO calendars (id, account_id, name, color, is_visible, is_read_only, is_default, created_at, updated_at)
@@ -362,7 +362,7 @@ describe('CalDAV sync', () => {
     const now = new Date().toISOString()
     db.prepare(
       `INSERT INTO accounts (id, type, name, email, is_active, created_at, updated_at)
-       VALUES ('acc_caldav_test', 'caldav', 'Home server', 'sonn', 1, ?, ?)`
+       VALUES ('acc_caldav_test', 'caldav', 'Home server', 'alex', 1, ?, ?)`
     ).run(now, now)
     vi.spyOn(SecureStore.prototype, 'getToken').mockReturnValue(CREDS as never)
     const reportCount = (calls: { method: string }[]) => calls.filter((c) => c.method === 'REPORT').length
@@ -491,7 +491,7 @@ describe('CalDAV sync', () => {
     const now = new Date().toISOString()
     db.prepare(
       `INSERT INTO accounts (id, type, name, email, is_active, created_at, updated_at)
-       VALUES ('acc_caldav_test', 'caldav', 'Home server', 'sonn', 1, ?, ?)`
+       VALUES ('acc_caldav_test', 'caldav', 'Home server', 'alex', 1, ?, ?)`
     ).run(now, now)
     vi.spyOn(SecureStore.prototype, 'getToken').mockReturnValue(CREDS as never)
     const a = { name: 'a.ics', uid: 'uid-a', title: 'A', etag: '"a"' }
@@ -550,7 +550,7 @@ describe('CalDAV sync', () => {
       'TRIGGER:-P1D',
       'SUMMARY:Dentist',
       'DESCRIPTION:Tomorrow',
-      'ATTENDEE:mailto:sonn@example.com',
+      'ATTENDEE:mailto:alex@example.com',
       'END:VALARM',
       'END:VEVENT',
       'END:VCALENDAR'
@@ -582,7 +582,7 @@ describe('CalDAV sync', () => {
     for (const id of ['acc_caldav_holder', 'acc_caldav_twin']) {
       db.prepare(
         `INSERT INTO accounts (id, type, name, email, is_active, created_at, updated_at)
-         VALUES (?, 'caldav', 'Home server', 'sonn', 1, ?, ?)`
+         VALUES (?, 'caldav', 'Home server', 'alex', 1, ?, ?)`
       ).run(id, now, now)
     }
     db.prepare("UPDATE calendars SET account_id = 'acc_caldav_holder' WHERE id = ?").run(CAL)
@@ -600,7 +600,7 @@ describe('CalDAV sync', () => {
     const now = new Date().toISOString()
     db.prepare(
       `INSERT INTO accounts (id, type, name, email, is_active, created_at, updated_at)
-       VALUES ('acc_google', 'google', 'Google', 'me@gmail.com', 1, ?, ?), ('acc_dav', 'caldav', 'Server', 'sonn', 1, ?, ?)`
+       VALUES ('acc_google', 'google', 'Google', 'me@gmail.com', 1, ?, ?), ('acc_dav', 'caldav', 'Server', 'alex', 1, ?, ?)`
     ).run(now, now, now, now)
     db.prepare(
       `INSERT INTO calendars (id, account_id, name, color, is_visible, is_read_only, is_default, created_at, updated_at)
@@ -617,19 +617,19 @@ describe('CalDAV sync', () => {
       calendar('me@gmail.com', 'Taken over') +
       calendar('calendar-local-default', 'Taken over') +
       calendar('https://elsewhere.example/cal/', 'Elsewhere') +
-      calendar('/sonn/work/', 'Work') +
+      calendar('/alex/work/', 'Work') +
       `</D:multistatus>`
     vi.stubGlobal('fetch', vi.fn(async () => response(207, listing)))
 
     const synced = await engine.syncCalendarList('acc_dav', CREDS)
 
-    expect(synced.map((c) => c.id)).toEqual(['https://dav.example/sonn/work/'])
+    expect(synced.map((c) => c.id)).toEqual(['https://dav.example/alex/work/'])
     const cal = (id: string) =>
       db.prepare('SELECT name, account_id, is_read_only FROM calendars WHERE id = ?').get<Record<string, unknown>>(id)
     expect(cal('me@gmail.com')).toEqual({ name: 'Gmail', account_id: 'acc_google', is_read_only: 0 })
     expect(cal('calendar-local-default')).toEqual({ name: 'Personal Calendar', account_id: 'account-local-primary', is_read_only: 0 })
     expect(cal('https://elsewhere.example/cal/')).toBeUndefined()
-    expect(cal('https://dav.example/sonn/work/')).toMatchObject({ name: 'Work', account_id: 'acc_dav' })
+    expect(cal('https://dav.example/alex/work/')).toMatchObject({ name: 'Work', account_id: 'acc_dav' })
   })
 
   describe('when the account cannot sync', () => {
@@ -637,7 +637,7 @@ describe('CalDAV sync', () => {
       const now = new Date().toISOString()
       db.prepare(
         `INSERT INTO accounts (id, type, name, email, is_active, created_at, updated_at)
-         VALUES ('acc_caldav_test', 'caldav', 'Home server', 'sonn', 1, ?, ?)`
+         VALUES ('acc_caldav_test', 'caldav', 'Home server', 'alex', 1, ?, ?)`
       ).run(now, now)
     })
 
