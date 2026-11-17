@@ -601,9 +601,20 @@ export class CalDavSyncEngine {
             continue
           }
           // From where the server has it, which a move not yet pushed has not changed.
+          // Only the version read here: an edit made on another device since is
+          // the user's to weigh (as on Google and Outlook), not to delete unseen -
+          // unless they chose this version over the server's ("keep mine").
           const holder = row.moved_from_calendar_id || calendarId
-          const ok = await adapter.deleteEvent(holder, row.uid || row.id, row.provider_event_id || undefined)
-          if (ok) {
+          const ok = await adapter.deleteEvent(
+            holder,
+            row.uid || row.id,
+            row.provider_event_id || undefined,
+            row.keep_mine === 1 ? undefined : row.etag ?? undefined
+          )
+          if (ok === 'conflict') {
+            this.db.prepare('UPDATE events SET has_conflict = 1 WHERE id = ?').run(row.id)
+            errorCount++
+          } else if (ok) {
             this.eventsRepo.forgetPushedDelete(row.id, row.updated_at)
             pushedCount++
           } else {
@@ -674,7 +685,10 @@ export class CalDavSyncEngine {
             this.db.transaction(() => {
               this.eventsRepo.markEventPushed(row.id, {
                 providerEventId: newHref,
-                etag: movedFrom ? pushRes.etag || null : pushRes.etag || row.etag,
+                // A server that sends no ETag back leaves the version unknown
+                // until the next pull reads it. Keeping the old one made the
+                // next edit's PUT (and delete) fail as a conflict nobody caused.
+                etag: pushRes.etag || null,
                 sentUpdatedAt: row.updated_at,
                 calendarId,
                 clearRsvp: true
@@ -773,11 +787,20 @@ export class CalDavSyncEngine {
               continue
             }
 
+            // A push changes the ctag read above, so storing that one made the
+            // next poll list every etag again for nothing. The ctag after the
+            // push, read before the pull: a change landing after it still
+            // differs next time.
+            let pulledAt = ctag
+            if (ctag && pushRes.pushedCount > 0) {
+              pulledAt = (await new CalDavAdapter(creds).readCtag(calId).catch(() => undefined)) ?? ctag
+            }
+
             const pullRes = await this.pullCalendarEvents(calId, creds, acc.email || creds.username)
             totalPulled += pullRes.pulledCount
             // Without a ctag every poll pulls, but the stored state still lets
             // that pull download only what changed.
-            this.syncStateRepo.saveSyncToken(calId, ctag ?? PULLED_WITHOUT_CTAG)
+            this.syncStateRepo.saveSyncToken(calId, pulledAt ?? PULLED_WITHOUT_CTAG)
             this.recordOutcome(calId, pushRes, pullRes.pulledCount)
           } catch (calErr) {
             this.syncStateRepo.recordFailure(calId, describeError(calErr))
