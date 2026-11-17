@@ -689,6 +689,8 @@ export const resources = {
         rruleBody: 'The recurrence rule (RRULE) is not valid RFC 5545 syntax.'
       },
       toast: {
+        readFailed: 'Could not read the calendar',
+        calendarUpdateFailed: 'Could not change the calendar',
         conflictResolveFailed: 'Failed to resolve conflict',
         saveFailed: 'Failed to save event',
         deleteFailed: 'Failed to delete event',
@@ -1403,6 +1405,8 @@ export const resources = {
         rruleBody: 'Cú pháp quy tắc lặp lại (RRULE) không đúng định dạng RFC 5545.'
       },
       toast: {
+        readFailed: 'Không đọc được lịch',
+        calendarUpdateFailed: 'Không đổi được lịch',
         conflictResolveFailed: 'Xử lý xung đột thất bại',
         saveFailed: 'Lưu sự kiện thất bại',
         deleteFailed: 'Xóa sự kiện thất bại',
