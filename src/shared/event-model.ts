@@ -3,6 +3,7 @@
  */
 
 import type { EventReminder } from './reminders'
+import type { HolidayCalendarType } from './holiday-calendars'
 
 export type { EventReminder }
 
@@ -35,6 +36,8 @@ export interface Calendar {
   /** The .ics feed a subscribed calendar is refreshed from (read-only, local). */
   subscriptionUrl?: string
   subscriptionRefreshedAt?: string
+  /** Which holiday subscription fills this calendar; what finds it, never its name. */
+  holidayType?: HolidayCalendarType
   syncToken?: string
   createdAt: string
   updatedAt: string

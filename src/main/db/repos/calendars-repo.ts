@@ -1,5 +1,6 @@
 import type { ISqliteDatabase } from '../sqlite-driver'
 import type { Calendar } from '@shared/event-model'
+import type { HolidayCalendarType } from '@shared/holiday-calendars'
 import { parseRemindersJson } from '@shared/reminders'
 
 interface CreateCalendarParams {
@@ -11,6 +12,8 @@ interface CreateCalendarParams {
   isReadOnly?: boolean
   isDefault?: boolean
   subscriptionUrl?: string
+  /** Set on the calendar a holiday subscription fills (migration 029). */
+  holidayType?: HolidayCalendarType
 }
 
 interface UpdateCalendarParams {
@@ -33,6 +36,7 @@ interface CalendarRow {
   default_reminders: string | null
   subscription_url: string | null
   subscription_refreshed_at: string | null
+  holiday_type: string | null
   sync_token: string | null
   created_at: string
   updated_at: string
@@ -51,6 +55,7 @@ function mapRowToCalendar(row: CalendarRow): Calendar {
     defaultReminders: parseRemindersJson(row.default_reminders),
     subscriptionUrl: row.subscription_url || undefined,
     subscriptionRefreshedAt: row.subscription_refreshed_at || undefined,
+    holidayType: (row.holiday_type as HolidayCalendarType | null) || undefined,
     syncToken: row.sync_token || undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -84,10 +89,22 @@ export class CalendarsRepo {
 
     this.db
       .prepare(
-        `INSERT INTO calendars (id, account_id, name, color, is_visible, is_read_only, is_default, subscription_url, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO calendars (id, account_id, name, color, is_visible, is_read_only, is_default, subscription_url, holiday_type, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(id, accountId, params.name, params.color, isVisible, isReadOnly, isDefault, params.subscriptionUrl ?? null, now, now)
+      .run(
+        id,
+        accountId,
+        params.name,
+        params.color,
+        isVisible,
+        isReadOnly,
+        isDefault,
+        params.subscriptionUrl ?? null,
+        params.holidayType ?? null,
+        now,
+        now
+      )
 
     const created = this.getCalendarById(id)
     if (!created) {
