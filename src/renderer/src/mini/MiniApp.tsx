@@ -7,6 +7,7 @@ import { applyDocumentTheme, shouldUseDarkClass, type ThemeMode } from '@shared/
 import { DEFAULT_APP_SETTINGS } from '@shared/settings-contract'
 import { formatClockTime, type TimeFormatPref } from '@shared/time-format'
 import i18n from '../i18n'
+import { keepUpcomingFresh } from './upcoming-refresh'
 
 /** The next events, or null when they could not be read (the list stays as it was). */
 function readUpcoming(): Promise<ExpandedOccurrence[] | null> {
@@ -40,7 +41,18 @@ export const MiniApp: React.FC = () => {
 
   useEffect(() => {
     void loadData()
-    const interval = setInterval(() => void loadData(), 60000)
+    const stopRefreshing = keepUpcomingFresh(() => void loadData(), {
+      isHidden: () => document.visibilityState === 'hidden',
+      onVisibilityChange: (listener) => {
+        document.addEventListener('visibilitychange', listener)
+        return () => document.removeEventListener('visibilitychange', listener)
+      },
+      onSyncChanged: window.xrncal?.sync?.onChanged,
+      every: (tick, ms) => {
+        const interval = setInterval(tick, ms)
+        return () => clearInterval(interval)
+      }
+    })
     const loadTheme = async () => {
       try {
         const settings = await window.xrncal?.settings?.getAll()
@@ -55,7 +67,7 @@ export const MiniApp: React.FC = () => {
       }
     }
     loadTheme()
-    return () => clearInterval(interval)
+    return stopRefreshing
   }, [])
 
   const handleToggleAlwaysOnTop = async () => {

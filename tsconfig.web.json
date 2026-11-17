@@ -57,6 +57,7 @@
     "tests/location-suggest-input.test.ts",
     "tests/grid-nav.test.ts",
     "tests/emoji-picker.test.ts",
-    "tests/wallpapers.test.ts"
+    "tests/wallpapers.test.ts",
+    "tests/mini-refresh.test.ts"
   ]
 }
