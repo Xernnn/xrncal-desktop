@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { DateTime } from 'luxon'
-import { initialForm, repeatUpdate, textFieldUpdate } from '../src/renderer/src/editor/EventEditorDialog'
+import { initialForm, keepDraftPreview, repeatUpdate, textFieldUpdate } from '../src/renderer/src/editor/EventEditorDialog'
 import type { Calendar, CalendarEvent, ExpandedOccurrence } from '../src/shared/event-model'
 
 const calendar = (id: string, extra: Partial<Calendar> = {}): Calendar => ({
@@ -207,5 +207,41 @@ describe('what a save sends for the repeat rule', () => {
   it('sends the rule the form built, and none for a lunar anniversary', () => {
     expect(repeatUpdate('FREQ=WEEKLY;BYDAY=MO', 'weekly', 'none')).toBe('FREQ=WEEKLY;BYDAY=MO')
     expect(repeatUpdate(undefined, 'lunar-yearly', 'none')).toBe('')
+  })
+})
+
+/**
+ * Each keystroke in a new event's title handed App a new preview object, so
+ * App and the Week, Day or Month view behind the editor re-rendered with
+ * every event block, per character. The preview draws no title; an update
+ * that draws the same slot keeps the object already drawn, and React skips it.
+ */
+describe('keepDraftPreview', () => {
+  const slot = (endHour = 10, color = '#4A90E2') => ({
+    start: DateTime.fromISO('2026-03-02T09:00:00', { zone: 'Asia/Ho_Chi_Minh' }),
+    end: DateTime.fromISO(`2026-03-02T${endHour}:00:00`, { zone: 'Asia/Ho_Chi_Minh' }),
+    allDay: false,
+    color
+  })
+
+  it('keeps the drawn preview while the slot it shows is the same', () => {
+    const drawn = slot()
+    expect(keepDraftPreview(drawn, slot())).toBe(drawn)
+  })
+
+  it('takes a preview that moves or recolours the slot', () => {
+    const drawn = slot()
+    const longer = slot(11)
+    expect(keepDraftPreview(drawn, longer)).toBe(longer)
+    const recoloured = slot(10, '#EB5757')
+    expect(keepDraftPreview(drawn, recoloured)).toBe(recoloured)
+    const allDay = { ...slot(), allDay: true }
+    expect(keepDraftPreview(drawn, allDay)).toBe(allDay)
+  })
+
+  it('takes the preview down, and puts the first one up', () => {
+    const next = slot()
+    expect(keepDraftPreview(slot(), null)).toBeNull()
+    expect(keepDraftPreview(null, next)).toBe(next)
   })
 })

@@ -32,6 +32,7 @@ import DayView from './views/DayView'
 import YearView from './views/YearView'
 import ListView from './views/ListView'
 import EventEditorDialog, {
+  keepDraftPreview,
   type EventEditorInitialData,
   type EventEditorDraftPreview
 } from './editor/EventEditorDialog'
@@ -104,6 +105,12 @@ const CalendarApp: React.FC = () => {
   // Live slot/color preview for a NEW event while its editor is open - null the rest
   // of the time.
   const [draftPreview, setDraftPreview] = useState<EventEditorDraftPreview | null>(null)
+  // Stable, and a no-op while the preview is unchanged: typing in the editor
+  // must not re-render every view behind it.
+  const onDraftChange = useCallback(
+    (next: EventEditorDraftPreview | null) => setDraftPreview((drawn) => keepDraftPreview(drawn, next)),
+    []
+  )
   // Each opening is a new editor (see EventEditorDialog's initialForm).
   const [editorSession, setEditorSession] = useState(0)
   const openEditor = useCallback((data: EventEditorInitialData) => {
@@ -696,7 +703,7 @@ const CalendarApp: React.FC = () => {
           onDelete={commands.deleteEvent}
           onDataChanged={reload}
           onClose={closeEditor}
-          onDraftChange={setDraftPreview}
+          onDraftChange={onDraftChange}
           onEmojiPicked={(emoji) =>
             void setSetting('favoriteEmojis', recordEmojiUse(settings.favoriteEmojis, emoji), { quiet: true })
           }

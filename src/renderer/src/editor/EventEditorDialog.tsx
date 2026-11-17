@@ -63,13 +63,33 @@ export interface EventEditorInitialData {
 }
 
 /** Live snapshot of a not-yet-saved new event, so the calendar behind the dialog can
- *  paint a preview at the exact slot/color the form currently holds. */
+ *  paint a preview at the exact slot/color the form currently holds. No title:
+ *  the preview draws none, and carrying it re-rendered the whole calendar behind
+ *  the editor on every keystroke typed into it. */
 export interface EventEditorDraftPreview {
   start: DateTime
   end: DateTime
   allDay: boolean
   color: string
-  title: string
+}
+
+/**
+ * The preview to draw next: the one already drawn while what it shows is the
+ * same, so a form change that moves nothing on the grid (a title, notes, a
+ * guest) leaves the calendar behind the editor alone - React skips a state
+ * update to the same object.
+ */
+export function keepDraftPreview(
+  drawn: EventEditorDraftPreview | null,
+  next: EventEditorDraftPreview | null
+): EventEditorDraftPreview | null {
+  if (!drawn || !next) return next ?? null
+  const same =
+    drawn.allDay === next.allDay &&
+    drawn.color === next.color &&
+    drawn.start.toMillis() === next.start.toMillis() &&
+    drawn.end.toMillis() === next.end.toMillis()
+  return same ? drawn : next
 }
 
 /** Mounted only while open, and anew for each opening (App keys it), so the
@@ -577,12 +597,10 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
       start,
       end,
       allDay: allDay || lunarYearly,
-      color: color || cal?.color || DEFAULT_EVENT_COLOR,
-      title: title.trim() || t('common.untitled')
+      color: color || cal?.color || DEFAULT_EVENT_COLOR
     })
   }, [
     onDraftChange,
-    t,
     isEditing,
     allDay,
     recurrencePreset,
@@ -593,7 +611,6 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
     color,
     calendarId,
     calendars,
-    title,
     tzid
   ])
 
