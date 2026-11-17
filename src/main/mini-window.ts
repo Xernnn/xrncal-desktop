@@ -7,6 +7,7 @@ import { EventsRepo } from './db/repos/events-repo'
 import { CalendarsRepo } from './db/repos/calendars-repo'
 import { DateTime } from 'luxon'
 import { windowBackground } from './window-background'
+import { miniWindowPosition } from './mini-window-position'
 
 let miniWindow: BrowserWindow | null = null
 /**
@@ -72,31 +73,15 @@ function createMiniWindow(): BrowserWindow {
 function positionMiniWindow(trayBounds?: { x: number; y: number; width: number; height: number }): void {
   if (!miniWindow || miniWindow.isDestroyed()) return
 
-  const display = screen.getPrimaryDisplay()
-  const { width: screenWidth, height: screenHeight } = display.workAreaSize
-
-  const winBounds = miniWindow.getBounds()
-
-  if (trayBounds) {
-    // Position near tray icon
-    let x = Math.round(trayBounds.x + trayBounds.width / 2 - winBounds.width / 2)
-    let y = trayBounds.y > screenHeight / 2
-      ? Math.round(trayBounds.y - winBounds.height - 8)
-      : Math.round(trayBounds.y + trayBounds.height + 8)
-
-    // Clamp inside screen bounds
-    if (x + winBounds.width > screenWidth) x = screenWidth - winBounds.width - 12
-    if (x < 12) x = 12
-    if (y + winBounds.height > screenHeight) y = screenHeight - winBounds.height - 12
-    if (y < 12) y = 12
-
-    miniWindow.setPosition(x, y, false)
-  } else {
-    // Default to top-right corner
-    const x = screenWidth - winBounds.width - 24
-    const y = 48
-    miniWindow.setPosition(x, y, false)
-  }
+  // The display the tray icon is on, not always the primary one.
+  const display = trayBounds
+    ? screen.getDisplayNearestPoint({
+        x: Math.round(trayBounds.x + trayBounds.width / 2),
+        y: Math.round(trayBounds.y + trayBounds.height / 2)
+      })
+    : screen.getPrimaryDisplay()
+  const { x, y } = miniWindowPosition(miniWindow.getBounds(), display.workArea, trayBounds)
+  miniWindow.setPosition(x, y, false)
 }
 
 export function toggleMiniWindow(trayBounds?: { x: number; y: number; width: number; height: number }): void {
