@@ -45,6 +45,7 @@ import { zoneForEditing, zonePickerOptions } from '../lib/time-zones'
 import { zoneAt, type ZonePeriod } from '@shared/zone-history'
 import { defaultCalendarFor } from '../lib/new-event'
 import { newEventEnd } from '@shared/event-length'
+import { editorCommandForKey, isTextField } from '@shared/keyboard-commands'
 import { leadingEmoji, titleFromSuggestion, withLeadingEmoji, withoutLeadingEmoji } from '@shared/title-emoji'
 import { useToday } from '../hooks/use-now'
 import { parseEntry, applyEntry, ENTRY_WEEKDAYS, type EntrySlot, type ParsedEntry } from '@shared/natural-entry'
@@ -979,15 +980,14 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
 
     // Everything else is behind Ctrl/Cmd: the form is full of text fields,
     // and a bare letter belongs to whichever one has focus.
-    if (!(e.ctrlKey || e.metaKey) || showDiscardConfirm) return
-
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      submitEvent()
-    } else if (e.key === 'Backspace' || e.key === 'Delete') {
-      e.preventDefault()
-      deleteEvent()
-    }
+    const command = editorCommandForKey(
+      { key: e.key, ctrl: e.ctrlKey || e.metaKey, inTextField: isTextField(e.target as HTMLElement | null) },
+      showDiscardConfirm
+    )
+    if (!command) return
+    e.preventDefault()
+    if (command === 'save') submitEvent()
+    else deleteEvent()
   })
 
   useEffect(() => {
