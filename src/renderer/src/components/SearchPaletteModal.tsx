@@ -13,6 +13,7 @@ import { DateTime } from 'luxon'
 import type { Calendar, EventSearchResult } from '@shared/event-model'
 import { formatClockTime, type TimeFormatPref } from '@shared/time-format'
 import { useDisplayPreferences } from '../context/DisplayPreferencesContext'
+import { useDialogFocus } from '../hooks/use-dialog-focus'
 
 /** The dates a search result stands for: a series' date nearest to now, else its own. */
 function resultSpan(event: EventSearchResult): { startUtc: string; endUtc: string; allDay: boolean } {
@@ -65,6 +66,7 @@ export const SearchPaletteModal: React.FC<SearchPaletteModalProps> = ({
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const { ref: dialogRef, onKeyDown: onDialogKeyDown } = useDialogFocus<HTMLDivElement>(isOpen)
 
   const calendarMap = new Map(calendars.map((c) => [c.id, c]))
 
@@ -150,7 +152,15 @@ export const SearchPaletteModal: React.FC<SearchPaletteModalProps> = ({
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div className="gc-dialog w-full max-w-2xl max-h-[80vh]">
+      <div
+        ref={dialogRef}
+        className="gc-dialog w-full max-w-2xl max-h-[80vh]"
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('search.placeholder')}
+        tabIndex={-1}
+        onKeyDown={onDialogKeyDown}
+      >
         {/* Search Header Input */}
         <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-3 bg-slate-50 dark:bg-slate-950/60">
           <Search className="h-5 w-5 text-slate-400 shrink-0" />

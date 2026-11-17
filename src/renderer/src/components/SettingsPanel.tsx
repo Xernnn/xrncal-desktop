@@ -21,6 +21,7 @@ import {
   Printer
 } from 'lucide-react'
 import { useSettings } from '../context/SettingsContext'
+import { useDialogFocus } from '../hooks/use-dialog-focus'
 import { NumberInput, CustomSelect, DatePicker, toast } from './ui'
 import { SNAP_STEP_OPTIONS } from '../dnd/resize-math'
 import { EVENT_LENGTH_OPTIONS, newEventMinutes } from '@shared/event-length'
@@ -134,6 +135,7 @@ export const RestoreBackupRow: React.FC<{ onRestore: () => void; initiallyAsking
 export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
   const { t, i18n } = useTranslation()
   const { settings, setSetting, setLanguage } = useSettings()
+  const { ref: dialogRef, onKeyDown: onDialogKeyDown } = useDialogFocus<HTMLDivElement>(props.isOpen)
   if (!props.isOpen) return null
 
   const preferredTimeZones = parseZoneList(settings.preferredTimeZones)
@@ -149,7 +151,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
     // sheet sliding in from the right, rather than a centred modal.
     <div className="fixed inset-0 z-50 select-none bg-black/30" onMouseDown={props.onClose}>
       <div
+        ref={dialogRef}
         className="gc-slide-right absolute top-0 right-0 flex h-full w-full max-w-[400px] flex-col overflow-hidden border-l border-hairline bg-dialog text-primary shadow-xl"
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('settings.title')}
+        tabIndex={-1}
+        onKeyDown={onDialogKeyDown}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <header className="flex shrink-0 items-center gap-1 border-b border-hairline px-2 py-2.5">

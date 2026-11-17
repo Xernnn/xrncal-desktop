@@ -59,6 +59,7 @@
     "tests/emoji-picker.test.ts",
     "tests/wallpapers.test.ts",
     "tests/mini-refresh.test.ts",
-    "tests/calendar-read-failure.test.ts"
+    "tests/calendar-read-failure.test.ts",
+    "tests/dialog-focus.test.ts"
   ]
 }

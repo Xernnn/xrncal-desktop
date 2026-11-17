@@ -48,6 +48,7 @@ import { newEventEnd } from '@shared/event-length'
 import { editorCommandForKey, isTextField } from '@shared/keyboard-commands'
 import { leadingEmoji, titleFromSuggestion, withLeadingEmoji, withoutLeadingEmoji } from '@shared/title-emoji'
 import { useToday } from '../hooks/use-now'
+import { useDialogFocus } from '../hooks/use-dialog-focus'
 import { parseEntry, applyEntry, ENTRY_WEEKDAYS, type EntrySlot, type ParsedEntry } from '@shared/natural-entry'
 
 export interface EventEditorInitialData {
@@ -1114,6 +1115,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
   // slot clicked to create, an event clicked to edit - it comes in from the side
   // away from that spot so the spot stays in sight; without one (Create, search)
   // from the right.
+  const { ref: dialogRef, onKeyDown: onDialogKeyDown } = useDialogFocus<HTMLDivElement>()
   const panelSide: 'left' | 'right' =
     typeof data?.initialClientX === 'number' && data.initialClientX >= window.innerWidth / 2 ? 'left' : 'right'
 
@@ -1125,9 +1127,15 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
       }}
     >
       <div
+        ref={dialogRef}
         className={`absolute top-0 flex h-full w-full max-w-[420px] flex-col overflow-hidden bg-dialog text-primary shadow-xl ${
           panelSide === 'right' ? 'right-0 border-l border-hairline gc-slide-right' : 'left-0 border-r border-hairline gc-slide-left'
         }`}
+        role="dialog"
+        aria-modal="true"
+        aria-label={isEditing ? t('editor.editEvent') : t('editor.newEvent')}
+        tabIndex={-1}
+        onKeyDown={onDialogKeyDown}
       >
         <div className="flex shrink-0 items-center justify-between border-b border-hairline px-5 py-3">
           <div className="flex items-center gap-2.5">

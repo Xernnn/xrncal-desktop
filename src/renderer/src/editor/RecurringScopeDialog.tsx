@@ -1,5 +1,6 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
+import { useDialogFocus } from '../hooks/use-dialog-focus'
 import { X } from 'lucide-react'
 import type { RecurringEditScope } from '@shared/event-model'
 
@@ -19,6 +20,7 @@ export const RecurringScopeDialog: React.FC<RecurringScopeDialogProps> = ({
   onCancel
 }) => {
   const { t } = useTranslation()
+  const { ref: dialogRef, onKeyDown: onDialogKeyDown } = useDialogFocus<HTMLDivElement>(isOpen)
   if (!isOpen) return null
 
   const isDelete = action === 'delete'
@@ -31,7 +33,15 @@ export const RecurringScopeDialog: React.FC<RecurringScopeDialogProps> = ({
 
   return (
     <div className="gc-overlay select-none">
-      <div className="gc-dialog w-full max-w-sm p-5">
+      <div
+        ref={dialogRef}
+        className="gc-dialog w-full max-w-sm p-5"
+        role="dialog"
+        aria-modal="true"
+        aria-label={isDelete ? t('recurring.deleteTitle') : t('recurring.editTitle')}
+        tabIndex={-1}
+        onKeyDown={onDialogKeyDown}
+      >
         <button type="button" onClick={onCancel} className="gc-icon-btn absolute top-3 right-3">
           <X className="h-4 w-4" />
         </button>
