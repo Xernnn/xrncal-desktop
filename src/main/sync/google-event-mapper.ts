@@ -419,8 +419,8 @@ export function mapDomainEventToGoogle(
     // redundant; on an insert it is actively harmful. Google only accepts
     // base32hex ids - lowercase a-v and digits - and ours look like
     // `evt_1789396326299_uqqwff`, so every insert came back 400 and no event
-    // created here ever reached Google. Let the provider assign the id; the
-    // engine already re-keys the local row when the response id differs.
+    // created here ever reached Google. A create gets a base32hex id of its
+    // own from the engine (EventsRepo.assignCreateId), never the row's.
     summary: event.title,
     description: text(event.notes),
     location: text(event.location),

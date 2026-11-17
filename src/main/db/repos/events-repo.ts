@@ -81,6 +81,9 @@ export interface EventRow {
   /** The date of someone else's series this event stands for, when that
    *  series is not here (a CalDAV invitation to some of its dates, migration 025). */
   recurrence_id: string | null
+  /** The id this event's create goes out with until the provider has it
+   *  (migration 028; see assignCreateId). */
+  create_id: string | null
   created_at: string
   updated_at: string
 }
@@ -961,8 +964,12 @@ export class EventsRepo {
           )
           .run(push.calendarId, push.providerEventId, id)
       }
+      // The provider has the event now: a later create of this row (after a
+      // move, or an undone delete) is a new one, with an id of its own.
       this.db
-        .prepare('UPDATE events SET provider_event_id = ?, etag = ?, has_conflict = 0, keep_mine = 0 WHERE id = ?')
+        .prepare(
+          'UPDATE events SET provider_event_id = ?, etag = ?, has_conflict = 0, keep_mine = 0, create_id = NULL WHERE id = ?'
+        )
         .run(push.providerEventId, push.etag, id)
       const clean =
         this.db
@@ -973,6 +980,37 @@ export class EventsRepo {
           .run(now, id, push.sentUpdatedAt).changes > 0
       return this.recordWhereProviderHasIt(id, push.calendarId) && clean
     })()
+  }
+
+  /**
+   * The id the create of event `id` goes out with - Google's event id, Outlook's
+   * transactionId - made by `make` and stored before the first try, and the
+   * same on every retry until the provider has the event (markEventPushed).
+   * Without it, a create that reached the provider but whose answer was lost
+   * was read back in as a second event by the pull and made again by the next
+   * push.
+   */
+  assignCreateId(id: string, make: () => string): string {
+    this.db.prepare('UPDATE events SET create_id = ? WHERE id = ? AND create_id IS NULL').run(make(), id)
+    return this.db.prepare('SELECT create_id FROM events WHERE id = ?').get<{ create_id: string }>(id)!.create_id
+  }
+
+  /**
+   * A pull came on the provider's copy of an event created here whose create
+   * answer never came back: the row it was made from takes the provider's id
+   * and etag, so the copy is not read in as a second event and the row's edits
+   * go out as an update. The row keeps what it holds - it is still to be
+   * pushed. Returns whether such a row was there.
+   */
+  bindPendingCreate(calendarId: string, createId: string, providerEventId: string, etag: string | null): boolean {
+    return (
+      this.db
+        .prepare(
+          `UPDATE events SET provider_event_id = ?, etag = ?, create_id = NULL
+           WHERE calendar_id = ? AND create_id = ? AND provider_event_id IS NULL`
+        )
+        .run(providerEventId, etag, calendarId, createId).changes > 0
+    )
   }
 
   /**

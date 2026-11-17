@@ -646,6 +646,19 @@ WHERE calendar_id IN (
 );
 `
 
+/**
+ * The id a new event's create goes out with, kept from before the first try
+ * until the provider has the event: Google's event `id`, Outlook's
+ * `transactionId`. A create that reached the provider but whose answer was lost
+ * was made twice - the pull read the provider's copy in as a second event, and
+ * the next push created it again. With this the pull knows the copy as this
+ * row's, and a retry is the same create.
+ */
+const MIGRATION_028_SQL = `
+ALTER TABLE events ADD COLUMN create_id TEXT;
+CREATE INDEX idx_events_create_id ON events(calendar_id, create_id) WHERE create_id IS NOT NULL;
+`
+
 /** Every migration in order: the one at index i is version i + 1. */
 const MIGRATIONS: readonly string[] = [
   MIGRATION_001_SQL,
@@ -674,7 +687,8 @@ const MIGRATIONS: readonly string[] = [
   MIGRATION_024_SQL,
   MIGRATION_025_SQL,
   MIGRATION_026_SQL,
-  MIGRATION_027_SQL
+  MIGRATION_027_SQL,
+  MIGRATION_028_SQL
 ]
 
 /** The newest migration this build knows: a restore refuses a backup made by

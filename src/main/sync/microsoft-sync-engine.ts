@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { fetchWithTimeout, describeError, describeHttpFailure, isRetryableStatus } from './http'
 import type { ISqliteDatabase } from '../db/sqlite-driver'
 import { MicrosoftOAuthManager } from '../oauth/microsoft-oauth'
@@ -446,6 +447,11 @@ export class MicrosoftSyncEngine {
         } else if (mapped.event) {
           const evt = mapped.event
           const now = new Date().toISOString()
+          // An event created here whose create answer was lost: Outlook keeps
+          // the transactionId the create went out with (see pushDirtyEvents).
+          if (gEvent.transactionId) {
+            this.eventsRepo.bindPendingCreate(calendarId, gEvent.transactionId, evt.id, evt.etag || null)
+          }
           const localId = localIdFor(evt.id)
           listedIds.push(localId)
 
@@ -652,14 +658,18 @@ export class MicrosoftSyncEngine {
               body: JSON.stringify(payload)
             })
           } else {
-            // POST new event to calendar
+            // POST new event to calendar. Graph picks the id, so the create
+            // carries a transactionId of ours, the same on every try: Outlook
+            // answers a retry with the event an earlier try made, and the pull
+            // knows that event as this row's.
+            const transactionId = this.eventsRepo.assignCreateId(row.id, () => randomUUID())
             res = await fetchWithTimeout(`${GRAPH_BASE}/me/calendars/${encodeURIComponent(calendarId)}/events`, {
               method: 'POST',
               headers: {
                 Authorization: `Bearer ${accessToken}`,
                 'Content-Type': 'application/json'
               },
-              body: JSON.stringify(payload)
+              body: JSON.stringify({ ...payload, transactionId })
             })
           }
 

@@ -59,6 +59,8 @@ export interface MicrosoftGraphApiEvent {
   originalStart?: string
   /** `OID.<series id>.<yyyy-mm-dd>`: which occurrence of its series this is. */
   occurrenceId?: string
+  /** The client's own id for the create that made the event (see EventsRepo.assignCreateId). */
+  transactionId?: string
 }
 
 /**
