@@ -8,6 +8,7 @@ import {
 } from '@shared/theme-mode'
 import { DEFAULT_ACCENT_COLOR } from '@shared/mini-calendar-grid'
 import { useSettings } from '../context/SettingsContext'
+import { wallpaperUrl } from '../lib/wallpapers'
 
 function getSystemPrefersDark(): boolean {
   if (typeof window === 'undefined' || !window.matchMedia) return false
@@ -24,7 +25,7 @@ export function useTheme() {
     () => ({
       mode: settings.theme,
       accentColor: settings.themeAccent || DEFAULT_ACCENT_COLOR,
-      customBgUrl: settings.themeCustomBg || '',
+      customBgUrl: wallpaperUrl(settings.themeCustomBg),
       bgOverlayOpacity: settings.themeOverlayOpacity ?? 0.8,
       bgBlur: settings.themeBlur ?? 8
     }),
