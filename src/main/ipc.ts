@@ -16,6 +16,7 @@ import { restoreDatabaseFromBackup } from './restore-database'
 import { refreshTrayMenu } from './tray'
 import { logDirectory, logFilePath } from './log'
 import { describeError } from './sync/http'
+import { backgroundImageDataUrl } from './background-image'
 
 let currentLocale: AppLocale = 'en'
 
@@ -73,10 +74,8 @@ export function registerIpcHandlers(): void {
       return null
     }
     const filePath = result.filePaths[0]
-    const buffer = await readFile(filePath)
-    const ext = extname(filePath).slice(1).toLowerCase()
-    const mime = ext === 'jpg' ? 'jpeg' : ext || 'png'
-    return { dataUrl: `data:image/${mime};base64,${buffer.toString('base64')}` }
+    // Capped (and a large photo scaled down): it is kept inside the settings.
+    return backgroundImageDataUrl(await readFile(filePath), extname(filePath).slice(1))
   })
 
   ipcMain.handle(IPC_CHANNELS.APP.BACKUP_DATABASE, async (): Promise<BackupResult> => {

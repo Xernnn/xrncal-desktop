@@ -4,6 +4,7 @@ import { Image as ImageIcon, Sliders, Check, RotateCcw } from 'lucide-react'
 import type { ThemeMode } from '@shared/theme-mode'
 import { DEFAULT_ACCENT_COLOR } from '@shared/mini-calendar-grid'
 import { useSettings } from '../context/SettingsContext'
+import { toast } from './ui'
 import { WALLPAPER_PRESETS, presetSetting, wallpaperPreset, wallpaperUrl } from '../lib/wallpapers'
 
 /**
@@ -125,7 +126,8 @@ export const AppearanceSettings: React.FC = () => {
             onClick={async () => {
               if (!window.xrncal?.app?.pickBackgroundImage) return
               const result = await window.xrncal.app.pickBackgroundImage()
-              if (result?.dataUrl) setBackground(result.dataUrl)
+              if (result && 'dataUrl' in result) setBackground(result.dataUrl)
+              else if (result?.tooLarge) toast.error(t('theme.imageTooLarge'))
             }}
           >
             <ImageIcon className="h-3.5 w-3.5" />

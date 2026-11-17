@@ -222,7 +222,8 @@ export interface XrncalAPI {
     getLocale: () => Promise<AppLocale>
     setLocale: (locale: AppLocale) => Promise<boolean>
     getPlatform: () => Promise<string>
-    pickBackgroundImage: () => Promise<{ dataUrl: string } | null>
+    /** null when cancelled; `tooLarge` for a picture that cannot be brought under the cap. */
+    pickBackgroundImage: () => Promise<{ dataUrl: string } | { tooLarge: true } | null>
     /** Write a consistent snapshot of the whole database to a file the user picks. */
     backupDatabase: () => Promise<BackupResult>
     /** Replace the database with a backup the user picks, then restart. The
