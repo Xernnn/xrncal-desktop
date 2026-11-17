@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest'
 import {
   normalizeCalDavUrl,
   extractXmlTagValue,
-  parseCalDavMultistatus
+  parseCalDavMultistatus,
+  sendsPasswordInClear
 } from '../src/main/sync/caldav-discover'
 
 describe('CalDAV URL Normalization & Discovery Parser', () => {
@@ -110,5 +111,39 @@ describe('a multistatus with elements that are never closed', () => {
       '<d:displayname>Home</d:displayname></d:prop><d:responsedescription>ok</d:responsedescription></d:propstat></d:response>'
     const calendars = parseCalDavMultistatus(`<d:multistatus>${whole}<d:response><d:href>/cut/</d:href>`, 'https://dav.example.com/')
     expect(calendars.map((c) => [c.href, c.displayName])).toEqual([['https://dav.example.com/cal/', 'Home']])
+  })
+})
+
+/**
+ * An http:// CalDAV address connected without a word, and every request then
+ * carried the Basic password in clear. One that would cross the internet that
+ * way is refused at connect; this computer, a private network, a tailnet and
+ * local names still work over http://.
+ */
+describe('sendsPasswordInClear', () => {
+  it('is true for http:// to a host on the internet', () => {
+    for (const url of ['http://cloud.example.com/remote.php/dav', 'http://203.0.113.7:5232/', 'http://[2001:db8::1]/dav']) {
+      expect(sendsPasswordInClear(url)).toBe(true)
+    }
+  })
+
+  it('is false for https://, and for http:// at home or on a tailnet', () => {
+    for (const url of [
+      'https://cloud.example.com/remote.php/dav',
+      'http://localhost:5232/',
+      'http://127.0.0.1:5232/',
+      'http://192.168.1.20:5232/',
+      'http://10.0.0.5/',
+      'http://172.20.0.2/',
+      'http://100.101.102.103:5232/',
+      'http://nas.local:5000/caldav',
+      'http://radicale/',
+      'http://calendar.home.arpa/',
+      'http://server.tailnet-name.ts.net/',
+      'http://[::1]:5232/',
+      'http://[fd12:3456::1]/'
+    ]) {
+      expect(sendsPasswordInClear(url)).toBe(false)
+    }
   })
 })
