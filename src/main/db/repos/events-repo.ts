@@ -325,6 +325,40 @@ export class EventsRepo {
     }
   }
 
+  /** The guest lists of several events, by event id. */
+  private getAttendeesForEvents(eventIds: string[]): Map<string, Attendee[]> {
+    const byEvent = new Map<string, Attendee[]>()
+    for (const ids of EventsRepo.chunk(eventIds)) {
+      const rows = this.db
+        .prepare(
+          `SELECT event_id, email, display_name, response_status, is_organizer, is_self, role
+           FROM attendees WHERE event_id IN (${ids.map(() => '?').join(',')})`
+        )
+        .all<{
+          event_id: string
+          email: string
+          display_name: string | null
+          response_status: Attendee['responseStatus']
+          is_organizer: number
+          is_self: number
+          role: Attendee['role'] | null
+        }>(...ids)
+      for (const r of rows) {
+        const list = byEvent.get(r.event_id) ?? []
+        list.push({
+          email: r.email,
+          displayName: r.display_name || undefined,
+          responseStatus: r.response_status,
+          isOrganizer: r.is_organizer === 1,
+          isSelf: r.is_self === 1,
+          role: r.role || undefined
+        })
+        byEvent.set(r.event_id, list)
+      }
+    }
+    return byEvent
+  }
+
   /** Replace an event's guest list. Also how the sync engines store the list
    *  a provider sent. */
   replaceAttendees(eventId: string, attendees?: Attendee[]): void {
@@ -1956,7 +1990,9 @@ export class EventsRepo {
     const trimmed = query.trim()
     if (!trimmed) return []
 
-    const pattern = `%${trimmed}%`
+    // `%` and `_` typed are themselves: "30%" used to match every text with a
+    // "30" in it, and "a_b" any "a", one character, "b".
+    const pattern = `%${trimmed.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
     const ftsQuery = trimmed
       .replace(/[^\w\sÀ-ỹ]/g, ' ')
       .trim()
@@ -1973,7 +2009,7 @@ export class EventsRepo {
               `SELECT * FROM events
                WHERE is_deleted = 0 AND ${kind}
                  AND (rowid IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)
-                      OR title LIKE ? OR notes LIKE ? OR location LIKE ?)
+                      OR title LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\' OR location LIKE ? ESCAPE '\\')
                ORDER BY dtstart_utc DESC LIMIT ?`
             )
             .all<EventRow>(ftsQuery, pattern, pattern, pattern, limit)
@@ -1984,7 +2020,8 @@ export class EventsRepo {
       return this.db
         .prepare(
           `SELECT * FROM events
-           WHERE is_deleted = 0 AND ${kind} AND (title LIKE ? OR notes LIKE ? OR location LIKE ?)
+           WHERE is_deleted = 0 AND ${kind}
+             AND (title LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\' OR location LIKE ? ESCAPE '\\')
            ORDER BY dtstart_utc DESC LIMIT ?`
         )
         .all<EventRow>(pattern, pattern, pattern, limit)
@@ -2008,13 +2045,14 @@ export class EventsRepo {
       found.push({ result, when: occurrence?.startUtc ?? r.dtstart_utc })
     }
 
-    return found
+    const results = found
       .sort((a, b) => b.when.localeCompare(a.when))
       .slice(0, limit)
-      .map(({ result }) => {
-        result.attendees = this.getAttendeesForEvent(result.id)
-        return result
-      })
+      .map(({ result }) => result)
+    // In one query, not one per result.
+    const attendees = this.getAttendeesForEvents(results.map((r) => r.id))
+    for (const result of results) result.attendees = attendees.get(result.id) ?? []
+    return results
   }
 
   /**

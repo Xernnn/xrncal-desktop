@@ -175,7 +175,9 @@ export const SearchPaletteModal: React.FC<SearchPaletteModalProps> = ({
 
         {/* Results List */}
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
-          {isLoading && (
+          {/* The last results stay up while the next search runs: hiding them
+              behind this made the list flicker on every keystroke. */}
+          {isLoading && results.length === 0 && (
             <div className="p-8 text-center text-xs text-slate-400">{t('search.searching')}</div>
           )}
 
@@ -192,73 +194,72 @@ export const SearchPaletteModal: React.FC<SearchPaletteModalProps> = ({
             </div>
           )}
 
-          {!isLoading &&
-            results.map((evt, idx) => {
-              const cal = calendarMap.get(evt.calendarId)
-              const calColor = evt.color || cal?.color || '#6366f1'
-              const isSelected = idx === selectedIndex
+          {results.map((evt, idx) => {
+            const cal = calendarMap.get(evt.calendarId)
+            const calColor = evt.color || cal?.color || '#6366f1'
+            const isSelected = idx === selectedIndex
 
-              return (
-                <div
-                  key={evt.id}
-                  onClick={() => handleSelect(evt)}
-                  onMouseEnter={() => setSelectedIndex(idx)}
-                  className={`p-3 rounded-xl cursor-pointer transition-all flex items-start justify-between gap-3 ${
-                    isSelected
-                      ? 'bg-indigo-50 dark:bg-indigo-600/20 border border-indigo-200 dark:border-indigo-500/40 text-slate-900 dark:text-slate-100'
-                      : 'hover:bg-slate-100/70 dark:hover:bg-slate-800/40 border border-transparent text-slate-700 dark:text-slate-300'
-                  }`}
-                >
-                  <div className="min-w-0 space-y-1 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="h-2.5 w-2.5 rounded-full shrink-0"
-                        style={{ backgroundColor: calColor }}
-                      />
-                      <span className="font-semibold text-sm text-slate-800 dark:text-slate-100 truncate">
-                        {evt.title || t('common.untitled')}
+            return (
+              <div
+                key={evt.id}
+                onClick={() => handleSelect(evt)}
+                onMouseEnter={() => setSelectedIndex(idx)}
+                className={`p-3 rounded-xl cursor-pointer transition-all flex items-start justify-between gap-3 ${
+                  isSelected
+                    ? 'bg-indigo-50 dark:bg-indigo-600/20 border border-indigo-200 dark:border-indigo-500/40 text-slate-900 dark:text-slate-100'
+                    : 'hover:bg-slate-100/70 dark:hover:bg-slate-800/40 border border-transparent text-slate-700 dark:text-slate-300'
+                }`}
+              >
+                <div className="min-w-0 space-y-1 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="h-2.5 w-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: calColor }}
+                    />
+                    <span className="font-semibold text-sm text-slate-800 dark:text-slate-100 truncate">
+                      {evt.title || t('common.untitled')}
+                    </span>
+                    {cal && (
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800/80 font-medium">
+                        {cal.name}
                       </span>
-                      {cal && (
-                        <span className="text-[10px] text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800/80 font-medium">
-                          {cal.name}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-                      <span className="flex items-center gap-1">
-                        <Clock className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
-                        {resultWhen(evt, timeFormat, t('search.allDaySuffix'))}
-                      </span>
-
-                      {evt.location && (
-                        <span className="flex items-center gap-1 truncate max-w-xs">
-                          <MapPin className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
-                          <span className="truncate">{evt.location}</span>
-                        </span>
-                      )}
-
-                      {evt.attendees && evt.attendees.length > 0 && (
-                        <span className="flex items-center gap-1">
-                          <Users className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
-                          <span>{t('search.attendees', { count: evt.attendees.length })}</span>
-                        </span>
-                      )}
-                    </div>
+                    )}
                   </div>
 
-                  <div className="shrink-0 flex items-center self-center text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200">
-                    <div
-                      className={`p-1.5 rounded-lg ${
-                        isSelected ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-400'
-                      }`}
-                    >
-                      <ArrowRight className="h-4 w-4" />
-                    </div>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                    <span className="flex items-center gap-1">
+                      <Clock className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
+                      {resultWhen(evt, timeFormat, t('search.allDaySuffix'))}
+                    </span>
+
+                    {evt.location && (
+                      <span className="flex items-center gap-1 truncate max-w-xs">
+                        <MapPin className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
+                        <span className="truncate">{evt.location}</span>
+                      </span>
+                    )}
+
+                    {evt.attendees && evt.attendees.length > 0 && (
+                      <span className="flex items-center gap-1">
+                        <Users className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
+                        <span>{t('search.attendees', { count: evt.attendees.length })}</span>
+                      </span>
+                    )}
                   </div>
                 </div>
-              )
-            })}
+
+                <div className="shrink-0 flex items-center self-center text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200">
+                  <div
+                    className={`p-1.5 rounded-lg ${
+                      isSelected ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-400'
+                    }`}
+                  >
+                    <ArrowRight className="h-4 w-4" />
+                  </div>
+                </div>
+              </div>
+            )
+          })}
         </div>
       </div>
     </div>

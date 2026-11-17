@@ -104,3 +104,36 @@ describe('searching for a recurring series', () => {
     expect(results[1].occurrence).toBeUndefined()
   })
 })
+
+/**
+ * `%` and `_` in a search went into LIKE as wildcards: "0%" matched every
+ * title with a 0 anywhere in it, "Room 101" included.
+ */
+describe('search text with % and _', () => {
+  let repo: EventsRepo
+
+  beforeEach(() => {
+    repo = new EventsRepo(initDatabase(':memory:'))
+    for (const [title, day] of [['Room 101', 1], ['Discount 30%', 2], ['plan_b review', 3], ['planXb review', 4]] as const) {
+      repo.createEvent({
+        calendarId: CAL,
+        title,
+        dtStartUtc: `2026-06-0${day}T09:00:00.000Z`,
+        dtEndUtc: `2026-06-0${day}T10:00:00.000Z`,
+        tzid: 'UTC'
+      })
+    }
+  })
+
+  afterEach(() => closeDatabase())
+
+  it('are the characters typed, not wildcards', () => {
+    expect(repo.searchEvents('0%').map((r) => r.title)).toEqual(['Discount 30%'])
+    expect(repo.searchEvents('n_b').map((r) => r.title)).toEqual(['plan_b review'])
+  })
+
+  it('still finds a match inside a word, with its guests', () => {
+    expect(repo.searchEvents('oom 1').map((r) => r.title)).toEqual(['Room 101'])
+    expect(repo.searchEvents('oom 1')[0].attendees).toEqual([])
+  })
+})
