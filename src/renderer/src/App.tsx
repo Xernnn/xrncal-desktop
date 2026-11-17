@@ -251,8 +251,8 @@ const CalendarApp: React.FC = () => {
   })
 
   const restoreFromBackup = async (): Promise<void> => {
+    // Settings has asked first (its own confirm row; a native dialog matched nothing else).
     if (!window.xrncal?.app?.restoreDatabase) return
-    if (!window.confirm(t('settings.restoreConfirm'))) return
     try {
       const result = await window.xrncal.app.restoreDatabase()
       // On success the app restarts and nothing comes back.

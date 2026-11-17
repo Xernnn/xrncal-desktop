@@ -139,6 +139,7 @@ export const resources = {
         launchAtLoginHint: 'Opens quietly in the tray, so reminders ring after a restart',
         restore: 'Restore from backup…',
         restoreConfirm: 'Replace everything in xrncal with a backup? What is here now is saved next to your data first, and xrncal restarts.',
+        restoreAction: 'Choose backup…',
         restoreFailed: 'Could not restore the backup',
         restoreProblem: {
           notDatabase: 'That file is not a database.',
@@ -695,7 +696,6 @@ export const resources = {
         moveFailed: 'Failed to move event',
         copyFailed: 'Failed to copy event',
         recurringUpdateFailed: 'Failed to update recurring event',
-        confirmDelete: 'Are you sure you want to delete this event?',
         readOnlyTitle: 'Read-only calendar',
         readOnlyMove:
           'This event belongs to a read-only calendar (such as a Holiday calendar) and cannot be moved or edited.',
@@ -854,6 +854,7 @@ export const resources = {
         launchAtLoginHint: 'Mở sẵn ở khay hệ thống để nhắc nhở vẫn kêu sau khi khởi động lại máy',
         restore: 'Khôi phục từ bản sao lưu…',
         restoreConfirm: 'Thay toàn bộ dữ liệu trong xrncal bằng bản sao lưu? Dữ liệu hiện tại sẽ được lưu lại bên cạnh trước, rồi xrncal khởi động lại.',
+        restoreAction: 'Chọn bản sao lưu…',
         restoreFailed: 'Không khôi phục được bản sao lưu',
         restoreProblem: {
           notDatabase: 'Tệp này không phải cơ sở dữ liệu.',
@@ -1410,7 +1411,6 @@ export const resources = {
         moveFailed: 'Chuyển sự kiện thất bại',
         copyFailed: 'Sao chép sự kiện thất bại',
         recurringUpdateFailed: 'Cập nhật sự kiện lặp thất bại',
-        confirmDelete: 'Bạn có chắc chắn muốn xóa sự kiện này?',
         readOnlyTitle: 'Lịch chỉ đọc',
         readOnlyMove:
           'Sự kiện này thuộc lịch chỉ đọc (như Lịch ngày lễ) nên không thể chuyển hoặc chỉnh sửa.',

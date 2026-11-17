@@ -88,6 +88,49 @@ const Toggle: React.FC<{ on: boolean; onChange: (next: boolean) => void }> = ({ 
   )
 }
 
+/** "Restore from backup", asked here first: it replaces everything. In the
+ *  panel's own style - a native confirm matched nothing else in the app. */
+export const RestoreBackupRow: React.FC<{ onRestore: () => void; initiallyAsking?: boolean }> = ({
+  onRestore,
+  initiallyAsking = false
+}) => {
+  const { t } = useTranslation()
+  const [asking, setAsking] = React.useState(initiallyAsking)
+  return (
+    <>
+      <button
+        type="button"
+        className="flex w-full items-center gap-2.5 rounded-[3px] px-2.5 py-2.5 text-left text-sm text-primary transition-colors hover:bg-hover"
+        onClick={() => setAsking(true)}
+      >
+        <HardDriveUpload className="h-4 w-4 shrink-0 text-muted" />
+        <span className="flex-1 truncate">{t('settings.restore')}</span>
+      </button>
+      {asking && (
+        <div
+          className="mx-2 mb-2 flex items-center gap-2 border border-today/40 px-3 py-2 text-xs"
+          style={{ borderRadius: 'var(--radius-control)' }}
+        >
+          <span className="flex-1 text-primary">{t('settings.restoreConfirm')}</span>
+          <button type="button" className="gc-btn" onClick={() => setAsking(false)}>
+            {t('common.cancel')}
+          </button>
+          <button
+            type="button"
+            className="gc-btn text-today"
+            onClick={() => {
+              setAsking(false)
+              onRestore()
+            }}
+          >
+            {t('settings.restoreAction')}
+          </button>
+        </div>
+      )}
+    </>
+  )
+}
+
 export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
   const { t, i18n } = useTranslation()
   const { settings, setSetting, setLanguage } = useSettings()
@@ -244,14 +287,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
                 <span className="flex-1 truncate">{t('settings.backup')}</span>
               </button>
 
-              <button
-                type="button"
-                className="flex w-full items-center gap-2.5 rounded-[3px] px-2.5 py-2.5 text-left text-sm text-primary transition-colors hover:bg-hover"
-                onClick={props.onRestoreBackup}
-              >
-                <HardDriveUpload className="h-4 w-4 shrink-0 text-muted" />
-                <span className="flex-1 truncate">{t('settings.restore')}</span>
-              </button>
+              <RestoreBackupRow onRestore={props.onRestoreBackup} />
 
               <button
                 type="button"

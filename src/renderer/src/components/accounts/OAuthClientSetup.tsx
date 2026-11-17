@@ -73,6 +73,8 @@ export const OAuthClientSetup: React.FC<OAuthClientSetupProps> = ({ provider, pr
   const [problem, setProblem] = useState<OAuthClientProblem | null>(null)
   const [failure, setFailure] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // Remove with accounts connected stops them syncing: asked first, in place.
+  const [confirmingRemove, setConfirmingRemove] = useState(false)
 
   const auth = window.xrncal?.auth
   const usesSecret = provider === 'google'
@@ -107,7 +109,11 @@ export const OAuthClientSetup: React.FC<OAuthClientSetupProps> = ({ provider, pr
 
   const remove = () => {
     if (!auth) return
-    if (connected > 0 && !window.confirm(t('addAccount.clientSetup.removeConfirm', { provider: providerName }))) return
+    if (connected > 0 && !confirmingRemove) {
+      setConfirmingRemove(true)
+      return
+    }
+    setConfirmingRemove(false)
     void act(() => auth.clearOAuthClient(provider))
   }
 
@@ -181,6 +187,21 @@ export const OAuthClientSetup: React.FC<OAuthClientSetupProps> = ({ provider, pr
       </p>
 
       {failure && <ProblemPanel problem={classifyConnectError(failure)} raw={failure} provider={providerName} />}
+
+      {confirmingRemove && (
+        <div
+          className="flex items-center gap-2 border border-today/40 px-3 py-2 text-xs"
+          style={{ borderRadius: 'var(--radius-control)' }}
+        >
+          <span className="flex-1 text-primary">{t('addAccount.clientSetup.removeConfirm', { provider: providerName })}</span>
+          <button type="button" className="gc-btn" onClick={() => setConfirmingRemove(false)}>
+            {t('common.cancel')}
+          </button>
+          <button type="button" className="gc-btn text-today" disabled={busy} onClick={remove}>
+            {t('addAccount.clientSetup.remove')}
+          </button>
+        </div>
+      )}
 
       <div className="flex items-center justify-between gap-2">
         <div>
