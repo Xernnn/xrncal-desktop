@@ -2,6 +2,7 @@ import type { ISqliteDatabase } from '../sqlite-driver'
 import type {
   CalendarEvent,
   EventException,
+  EventSearchResult,
   ExpandedOccurrence,
   Attendee,
   CreateEventInput,
@@ -23,6 +24,7 @@ import type { LocationSample } from '@shared/location-suggestions'
 import { parseRemindersJson, serializeReminders, type EventReminder } from '@shared/reminders'
 import { resolveLunarOccurrence } from '@shared/lunar-vietnam'
 import { expandOccurrences } from '@shared/expand-occurrences'
+import { nearestOccurrence } from '@shared/nearest-occurrence'
 import { CALENDAR_MAX_OCCURRENCES, calendarExpansionBudget, type ExpansionBudget } from '@shared/bounded-rrule'
 import { namedDays, occurrenceShift, ruleForMovedStart, seriesZone, wallTime } from '@shared/series-update'
 import { DateTime } from 'luxon'
@@ -1938,49 +1940,75 @@ export class EventsRepo {
    * Events whose title, notes or location match, newest first. The full-text
    * index finds words by how they start, with diacritics folded ("gio" finds
    * "Giỗ"); LIKE adds matches inside a word ("ntist"), which the index cannot.
+   *
+   * A series is dated by its date nearest to now (`occurrence`), which the
+   * result shows and opens: by its first date, a weekly meeting begun in 2023
+   * opened in 2023 and ranked below every newer one-off, past the limit and
+   * out of the list. Series are fetched apart from one-off events for that.
    */
-  searchEvents(query: string, limit = 50): CalendarEvent[] {
+  searchEvents(query: string, limit = 50, now = new Date()): EventSearchResult[] {
     const trimmed = query.trim()
     if (!trimmed) return []
 
     const pattern = `%${trimmed}%`
     const ftsQuery = trimmed
-      .replace(/[^\w\s\u00C0-\u1EF9]/g, ' ')
+      .replace(/[^\w\sÀ-ỹ]/g, ' ')
       .trim()
       .split(/\s+/)
       .filter(Boolean)
       .map((w) => `"${w}"*`)
       .join(' ')
 
-    let rows: EventRow[] | undefined
-    if (ftsQuery) {
-      try {
-        rows = this.db
-          .prepare(
-            `SELECT * FROM events
-             WHERE is_deleted = 0
-               AND (rowid IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)
-                    OR title LIKE ? OR notes LIKE ? OR location LIKE ?)
-             ORDER BY dtstart_utc DESC LIMIT ?`
-          )
-          .all<EventRow>(ftsQuery, pattern, pattern, pattern, limit)
-      } catch {
-        // A query the index will not parse still gets the plain match below.
+    const find = (kind: string): EventRow[] => {
+      if (ftsQuery) {
+        try {
+          return this.db
+            .prepare(
+              `SELECT * FROM events
+               WHERE is_deleted = 0 AND ${kind}
+                 AND (rowid IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)
+                      OR title LIKE ? OR notes LIKE ? OR location LIKE ?)
+               ORDER BY dtstart_utc DESC LIMIT ?`
+            )
+            .all<EventRow>(ftsQuery, pattern, pattern, pattern, limit)
+        } catch {
+          // A query the index will not parse still gets the plain match below.
+        }
       }
+      return this.db
+        .prepare(
+          `SELECT * FROM events
+           WHERE is_deleted = 0 AND ${kind} AND (title LIKE ? OR notes LIKE ? OR location LIKE ?)
+           ORDER BY dtstart_utc DESC LIMIT ?`
+        )
+        .all<EventRow>(pattern, pattern, pattern, limit)
     }
-    rows ??= this.db
-      .prepare(
-        `SELECT * FROM events
-         WHERE is_deleted = 0 AND (title LIKE ? OR notes LIKE ? OR location LIKE ?)
-         ORDER BY dtstart_utc DESC LIMIT ?`
-      )
-      .all<EventRow>(pattern, pattern, pattern, limit)
 
-    return rows.map((r) => {
-      const event = mapRowToEvent(r)
-      event.attendees = this.getAttendeesForEvent(r.id)
-      return event
-    })
+    const oneOffs = find('rrule IS NULL AND lunar_rule IS NULL')
+    const series = find('(rrule IS NOT NULL OR lunar_rule IS NOT NULL)')
+    const exceptionsByMaster = this.getExceptionsForEvents(series.map((r) => r.id))
+    const coveredYearsByMaster = this.getMaterializedYearsFor(
+      series.filter((r) => r.lunar_rule !== null).map((r) => r.id)
+    )
+
+    const found: { result: EventSearchResult; when: string }[] = oneOffs.map((r) => ({
+      result: mapRowToEvent(r),
+      when: r.dtstart_utc
+    }))
+    for (const r of series) {
+      const result: EventSearchResult = mapRowToEvent(r)
+      const occurrence = nearestOccurrence(result, exceptionsByMaster.get(r.id) ?? [], now.getTime(), coveredYearsByMaster.get(r.id))
+      if (occurrence) result.occurrence = occurrence
+      found.push({ result, when: occurrence?.startUtc ?? r.dtstart_utc })
+    }
+
+    return found
+      .sort((a, b) => b.when.localeCompare(a.when))
+      .slice(0, limit)
+      .map(({ result }) => {
+        result.attendees = this.getAttendeesForEvent(result.id)
+        return result
+      })
   }
 
   /**

@@ -7,6 +7,7 @@ import type {
   CalendarAccount,
   CalendarEvent,
   EventException,
+  EventSearchResult,
   RsvpResponse,
   ExpandedOccurrence,
   CreateEventInput,
@@ -288,7 +289,7 @@ export interface XrncalAPI {
     upsertException: (exception: Omit<EventException, 'id' | 'createdAt' | 'updatedAt'>) => Promise<EventException>
     materializeLunar: (input: MaterializeLunarInput) => Promise<{ count: number }>
     detachLunar: (input: DetachLunarInput) => Promise<{ count: number }>
-    search: (query: string, limit?: number) => Promise<CalendarEvent[]>
+    search: (query: string, limit?: number) => Promise<EventSearchResult[]>
     /** Ranked title autocomplete for the event editor, with the calendar each
      *  title normally lives on. */
     suggestTitles: (options: SuggestTitlesOptions) => Promise<TitleSuggestion[]>

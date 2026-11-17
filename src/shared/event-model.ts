@@ -203,6 +203,12 @@ export interface ExpandedOccurrence {
   originalStartUtc: string // Original recurrence start in UTC ISO
 }
 
+/** An event search found. A series carries its date nearest to now, which the
+ *  result shows and opens; its own start is its first-ever date. */
+export interface EventSearchResult extends CalendarEvent {
+  occurrence?: ExpandedOccurrence
+}
+
 export interface CreateEventInput {
   calendarId: string
   title: string

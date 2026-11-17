@@ -660,7 +660,8 @@ const CalendarApp: React.FC = () => {
         calendars={calendars}
         onSelectEvent={(event, targetDate) => {
           setAnchorDate(DateTime.fromISO(targetDate))
-          openEditor({ event })
+          // A series opens on the date shown, as a click on it in the calendar does.
+          openEditor(event.occurrence ? { occurrence: event.occurrence } : { event })
         }}
       />
 

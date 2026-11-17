@@ -10,29 +10,46 @@ import {
   Sparkles
 } from 'lucide-react'
 import { DateTime } from 'luxon'
-import type { CalendarEvent, Calendar } from '@shared/event-model'
+import type { Calendar, EventSearchResult } from '@shared/event-model'
 import { formatClockTime, type TimeFormatPref } from '@shared/time-format'
 import { useDisplayPreferences } from '../context/DisplayPreferencesContext'
+
+/** The dates a search result stands for: a series' date nearest to now, else its own. */
+function resultSpan(event: EventSearchResult): { startUtc: string; endUtc: string; allDay: boolean } {
+  const occ = event.occurrence
+  return occ
+    ? { startUtc: occ.startUtc, endUtc: occ.endUtc, allDay: occ.allDay }
+    : { startUtc: event.dtStartUtc, endUtc: event.dtEndUtc, allDay: event.allDay }
+}
 
 /**
  * When a search result is, as the list shows it. An all-day event is a
  * floating date parked at UTC midnight, so its date is read in UTC: in this
  * computer's zone it was the day before west of GMT.
  */
-export function resultWhen(event: CalendarEvent, timeFormat: TimeFormatPref, allDaySuffix: string): string {
-  if (event.allDay) {
-    return `${DateTime.fromISO(event.dtStartUtc, { zone: 'utc' }).toFormat('dd/MM/yyyy')} (${allDaySuffix})`
+export function resultWhen(event: EventSearchResult, timeFormat: TimeFormatPref, allDaySuffix: string): string {
+  const span = resultSpan(event)
+  if (span.allDay) {
+    return `${DateTime.fromISO(span.startUtc, { zone: 'utc' }).toFormat('dd/MM/yyyy')} (${allDaySuffix})`
   }
-  const dt = DateTime.fromISO(event.dtStartUtc)
-  const endDt = DateTime.fromISO(event.dtEndUtc)
+  const dt = DateTime.fromISO(span.startUtc)
+  const endDt = DateTime.fromISO(span.endUtc)
   return `${dt.toFormat('dd/MM/yyyy')} ${formatClockTime(dt, timeFormat)} – ${formatClockTime(endDt, timeFormat)}`
+}
+
+/** The day the calendar goes to for a result: the date it shows (see resultWhen). */
+export function resultDate(event: EventSearchResult): string {
+  const span = resultSpan(event)
+  return span.allDay
+    ? span.startUtc.slice(0, 10)
+    : DateTime.fromISO(span.startUtc).toISODate() || span.startUtc.slice(0, 10)
 }
 
 interface SearchPaletteModalProps {
   isOpen: boolean
   onClose: () => void
   calendars: Calendar[]
-  onSelectEvent: (event: CalendarEvent, targetDate: string) => void
+  onSelectEvent: (event: EventSearchResult, targetDate: string) => void
 }
 
 export const SearchPaletteModal: React.FC<SearchPaletteModalProps> = ({
@@ -44,7 +61,7 @@ export const SearchPaletteModal: React.FC<SearchPaletteModalProps> = ({
   const { t } = useTranslation()
   const { timeFormat } = useDisplayPreferences()
   const [query, setQuery] = useState('')
-  const [results, setResults] = useState<CalendarEvent[]>([])
+  const [results, setResults] = useState<EventSearchResult[]>([])
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -119,12 +136,8 @@ export const SearchPaletteModal: React.FC<SearchPaletteModalProps> = ({
     }
   }
 
-  const handleSelect = (event: CalendarEvent) => {
-    const targetDate = event.allDay
-      ? event.dtStartUtc.slice(0, 10)
-      : DateTime.fromISO(event.dtStartUtc).toISODate() || event.dtStartUtc.slice(0, 10)
-
-    onSelectEvent(event, targetDate)
+  const handleSelect = (event: EventSearchResult) => {
+    onSelectEvent(event, resultDate(event))
     onClose()
   }
 
