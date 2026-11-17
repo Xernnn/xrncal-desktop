@@ -1119,6 +1119,12 @@ export class EventsRepo {
       .run(sentUpdatedAt, providerInstanceId ?? null, etag ?? null, id)
   }
 
+  /** An override's provider instance id that no longer names anything: the
+   *  next push looks the instance up again. */
+  forgetExceptionInstance(id: string): void {
+    this.db.prepare('UPDATE event_exceptions SET provider_instance_id = NULL WHERE id = ?').run(id)
+  }
+
   /** Clear the dirty flag on the exceptions a series push carried (CalDAV pushes
    *  the whole series as one resource, so they land together) - each only if
    *  it is unchanged since then, so one edited mid-push still goes next time. */
