@@ -6,8 +6,7 @@ import {
   Clock,
   Users,
   X,
-  ArrowRight,
-  Sparkles
+  ArrowRight
 } from 'lucide-react'
 import { DateTime } from 'luxon'
 import type { Calendar, EventSearchResult } from '@shared/event-model'
@@ -193,14 +192,7 @@ export const SearchPaletteModal: React.FC<SearchPaletteModalProps> = ({
 
           {!isLoading && query.trim() && results.length === 0 && (
             <div className="p-8 text-center text-xs text-slate-500">
-              {t('search.noResults', { q: query })}
-            </div>
-          )}
-
-          {!isLoading && !query.trim() && (
-            <div className="p-8 text-center text-xs text-slate-400 dark:text-slate-500 flex flex-col items-center gap-2">
-              <Sparkles className="h-5 w-5 text-indigo-500 dark:text-indigo-400" />
-              <span>{t('search.empty')}</span>
+              {t('search.noResults')}
             </div>
           )}
 

@@ -81,14 +81,13 @@ export const resources = {
         themeModeDark: 'Dark',
         lunar: 'Lunar & solar terms',
         weekNumbers: 'Week numbers',
-        showMiniCalendar: 'Show sidebar (mini calendar and calendar list)',
+        showMiniCalendar: 'Show sidebar',
         autoHideHeader: 'Auto-hide header bar',
         dragSnap: 'Snap drag and resize to',
         dragSnapMin: '{{count}} min',
         dragSnapHour: '1 hour',
         timePickerStep: 'Times listed in the event editor',
         defaultEventLength: 'Length of a new event',
-        defaultEventLengthHint: 'For a click on an empty time, Create or N. A range you drag keeps its own length.',
         eventLengthOption: {
           '15': '15 min',
           '30': '30 min',
@@ -107,16 +106,11 @@ export const resources = {
         hourBlockSizeMedium: 'Medium',
         hourBlockSizeLarge: 'Large',
         secondaryTimezone: 'Second timezone',
-        dayStartHourHint: 'Hour the day and week grids scroll to on open',
-        secondaryTimezoneHint: 'Shown under each hour in the day and week grids',
         secondaryTimezoneNone: 'None',
         preferredTimeZones: 'Preferred time zones',
-        preferredTimeZonesHint: 'Listed first when you pick an event\'s time zone',
         preferredTimeZonesAdd: 'Add a time zone…',
         preferredTimeZonesRemove: 'Remove {{zone}}',
         zoneHistory: 'Where you were',
-        zoneHistoryHint:
-          'Events saved without a time zone (as Google\'s export writes them) open in the zone you were in on their date. When this computer\'s time zone changes, the move is added here.',
         zoneHistoryFirst: 'At first',
         zoneHistoryStart: 'Add where you were at first…',
         zoneHistoryAdd: 'Add a move…',
@@ -125,20 +119,15 @@ export const resources = {
         backupDone: 'Backup saved',
         backupFailed: 'Backup failed',
         checkForUpdates: 'Check for updates',
-        checkForUpdatesHint: 'Looks for new releases on GitHub and installs them when you quit',
         autoBackup: 'Back up automatically',
-        autoBackupHint:
-          'Once a week, a copy of your data goes into xrncal\'s own folder, and the last four are kept. "Restore from backup" opens there.',
         showLog: 'Show log file',
         showLogFailed: 'The log file could not be opened',
         weekStart: 'Week starts on',
         weekStartDay: { '0': 'Sunday', '1': 'Monday', '6': 'Saturday' },
         closeToTray: 'Keep running when the window is closed',
-        closeToTrayHint: 'Reminders and sync carry on from the tray icon. Quit from its menu, or with Ctrl+Q.',
         launchAtLogin: 'Start when I sign in',
-        launchAtLoginHint: 'Opens quietly in the tray, so reminders ring after a restart',
         restore: 'Restore from backup…',
-        restoreConfirm: 'Replace everything in xrncal with a backup? What is here now is saved next to your data first, and xrncal restarts.',
+        restoreConfirm: 'Replace everything with a backup? xrncal restarts.',
         restoreAction: 'Choose backup…',
         restoreFailed: 'Could not restore the backup',
         restoreProblem: {
@@ -191,9 +180,7 @@ export const resources = {
         whenTomorrow: 'Tomorrow',
         whenOnDate: '{{date}}',
         settingsTimed: 'Default reminder',
-        settingsTimedHint: 'For timed events in calendars you can edit, when they set none of their own',
-        settingsAllDay: 'Default reminder for all-day events',
-        settingsAllDayHint: 'Lunar anniversaries start with a day\'s notice when this is off'
+        settingsAllDay: 'Default reminder for all-day events'
       },
       status: {
       },
@@ -291,8 +278,6 @@ export const resources = {
         lunarPickDate: 'Pick a start date above',
         lunarLeapCheckbox: 'Anniversary falls in a leap month (tháng nhuận)',
         lunarNext: 'Next: {{dates}}',
-        lunarHelp:
-          'Repeats every year on this lunar date. Kept locally — use “Add to calendar” below to also push a run of years to a synced calendar (Google, Outlook…).',
         lunarDescribe: 'Day {{day}}, month {{month}} (tháng {{name}}){{leap}}',
         lunarLeapSuffix: ' — leap month',
         addToCalendar: 'Add to calendar',
@@ -317,22 +302,15 @@ export const resources = {
       recurring: {
         editTitle: 'Edit recurring event',
         deleteTitle: 'Delete recurring event',
-        askEdit: 'Apply this change to just this occurrence or the whole series?',
-        askDelete: 'Delete just this occurrence or the whole series?',
         thisLabel: 'This event only',
-        thisHint: 'Other events in the series are not affected',
         futureLabel: 'This and following events',
-        futureHint: 'Applies to this occurrence and every one after it',
-        allLabel: 'All events in the series',
-        allHint: 'Applies to the entire series'
+        allLabel: 'All events in the series'
       },
       drop: {
         moveHere: 'Move here',
         copyHere: 'Copy here',
         copyThisOnly: 'Copy this occurrence only',
-        copyWholeSeries: 'Copy the whole series',
-        copyWholeSeriesHint: 'Duplicates every occurrence in the recurrence',
-        copyStandalone: 'Create a standalone event'
+        copyWholeSeries: 'Copy the whole series'
       },
       holidays: {
         title: 'Holiday calendars',
@@ -343,23 +321,21 @@ export const resources = {
       accounts: {
         title: 'Calendars & accounts',
         account: 'Account',
-        localDetail: 'Never synced anywhere',
         calendarCount_one: '{{count}} calendar',
         calendarCount_other: '{{count}} calendars',
         notSyncing: 'Not syncing',
-        notSyncingDetail: 'This account is no longer syncing. Remove it, or add it again to reconnect.',
-        noCalendarsYet: 'No calendars yet. They appear after the first sync.',
-        nothingToSync: 'Only calendars on this computer - nothing to sync',
+        noCalendarsYet: 'No calendars',
+        nothingToSync: 'Nothing to sync',
         lastSynced: 'Synced {{when}}',
         neverSynced: 'Not synced yet',
         lastSyncFailed: 'The last sync ran into a problem',
         syncProblems: {
-          auth: 'The server no longer accepts the sign-in. Remove the account and add it again.',
-          notFound: 'Can\'t find the server. Its address may have changed.',
-          unreachable: 'Can\'t reach the server. It may be off, or you may be offline.',
-          certificate: 'The server\'s security certificate isn\'t trusted.',
-          keyring: 'The saved password can\'t be read: the system keyring is locked or unavailable.',
-          server: 'The server ran into an error. xrncal will keep trying.',
+          auth: 'Sign-in refused: remove the account and add it again',
+          notFound: 'Server not found',
+          unreachable: 'Server unreachable',
+          certificate: 'Certificate not trusted',
+          keyring: 'Keyring locked or unavailable',
+          server: 'Server error',
           unknown: 'Sync failed. xrncal will keep trying.'
         },
         waiting_one: '{{count}} change waiting to sync',
@@ -371,17 +347,14 @@ export const resources = {
         removeTitle: 'Remove account',
         removeQuestion: 'What should happen to the calendars from {{name}}?',
         removeKeep: 'Keep them on this computer',
-        removeKeepDetail: 'Its calendars and events stay here and stop syncing.',
         removeAll: 'Remove them from xrncal',
-        removeAllDetail: 'Its calendars and events disappear from this app.',
-        removeProviderUntouched: 'Nothing is changed or deleted on {{provider}} itself.',
         removeConfirm: 'Remove account',
         removed: '{{name}} removed',
         removedKept: '{{calendars}} calendars and {{events}} events kept on this computer',
         removedAll: 'Its calendars were removed from xrncal',
         removeFailed: 'Could not remove the account',
         deleteCalendar: 'Delete calendar',
-        deleteCalendarConfirm: 'Delete "{{name}}" and all its events? This cannot be undone.',
+        deleteCalendarConfirm: 'Delete "{{name}}" and all its events?',
         calendarDeleted: 'Calendar deleted',
         calendarDeleteFailed: 'Could not delete the calendar',
         calendarCreated: 'Calendar created',
@@ -389,26 +362,23 @@ export const resources = {
       },
       addAccount: {
         title: 'Add account',
-        needsSetup: 'Set up once, then sign in',
+        needsSetup: 'Needs setup',
         clientSetup: {
           open: 'Open',
           clientId: 'Client ID',
           clientSecret: 'Client secret',
           applicationId: 'Application (client) ID',
           secretKept: 'Saved. Leave empty to keep it',
-          privacy: 'Saved encrypted on this computer, and sent only to {{provider}}.',
-          reconnect: '{{provider}} accounts already connected will have to sign in again if these change.',
           save: 'Save and continue',
           change: 'Change your {{provider}} sign-in details',
           remove: 'Remove',
-          removeConfirm: 'Remove these sign-in details? {{provider}} accounts already connected will stop syncing until they are set up again.',
+          removeConfirm: 'Remove? Connected {{provider}} accounts stop syncing.',
           problems: {
             idMissing: 'Paste the ID here.',
             secretMissing: 'Paste the Client secret here.',
             secretFormat: 'That is not a Client secret. Check that it is not the Client ID.'
           },
           google: {
-            intro: 'Google asks for sign-in details made for this copy of xrncal. You make them once in your Google account. It is free and takes about ten minutes.',
             project: 'Create a project. Any name is fine.',
             calendarApi: 'Turn on the Google Calendar API for that project.',
             branding: 'Press Get started, enter any app name and your email, and choose External.',
@@ -418,7 +388,6 @@ export const resources = {
             idFormat: 'A Client ID ends in .apps.googleusercontent.com.'
           },
           microsoft: {
-            intro: 'Microsoft asks for sign-in details made for this copy of xrncal. You make them once in Azure. It takes about ten minutes, and a personal Microsoft account needs a free Azure account first.',
             register: 'Open App registrations and press New registration. Any name is fine.',
             audience: 'Under supported account types, choose the option that includes personal Microsoft accounts.',
             redirect: 'Under Redirect URI, choose Public client/native and enter',
@@ -430,31 +399,26 @@ export const resources = {
         },
         allSet: 'Account added',
         providers: {
-          google: { title: 'Google', detail: 'Gmail and Google Workspace calendars' },
-          graph: { title: 'Microsoft', detail: 'Outlook.com, Hotmail and Microsoft 365' },
-          icloud: { title: 'iCloud', detail: 'Apple iCloud calendars' },
-          caldav: { title: 'CalDAV', detail: 'Nextcloud, Synology, Fastmail or your own server' },
-          subscription: { title: 'Subscribe by link', detail: 'A calendar published as an .ics or webcal:// link' },
-          holidays: { title: 'Public holidays', detail: 'Vietnamese and international holidays' },
+          google: { title: 'Google' },
+          graph: { title: 'Microsoft' },
+          icloud: { title: 'iCloud' },
+          caldav: { title: 'CalDAV' },
+          subscription: { title: 'Subscribe by link' },
+          holidays: { title: 'Public holidays' },
           local: {
             title: 'On this computer',
-            detail: 'A calendar that stays on this computer and is never synced.',
             action: 'New calendar'
           }
         },
         browser: {
-          body: 'Your browser will open so you can sign in to {{provider}} and allow xrncal to use your calendars.',
-          privacy: 'You sign in on the provider\'s own page - xrncal never sees your password.',
           open: 'Continue in browser',
           waiting: 'Waiting for you to finish signing in…'
         },
         caldav: {
           server: 'Server address',
-          serverHint: 'The address of your calendar server. xrncal finds your calendars on it.',
           username: 'Username',
           password: 'Password',
-          name: 'Name in xrncal (optional)',
-          namePlaceholder: 'Shown in your calendar list'
+          name: 'Name in xrncal (optional)'
         },
         icloud: {
           hint: 'iCloud needs an app-specific password, not your Apple ID password. Create one under Sign-In and Security → App-Specific Passwords.',
@@ -472,37 +436,34 @@ export const resources = {
         tryAgain: 'Try again',
         details: 'Details: {{msg}}',
         problems: {
-          auth: 'The username or password was not accepted.',
-          notFound: 'Could not find that server. Check the address.',
-          unreachable: 'The server did not answer. Check the address and your internet connection.',
-          certificate: 'The server\'s security certificate is not trusted.',
-          noCalendars: 'Signed in, but no calendars were found at that address.',
-          keyring: 'Your system keyring is unavailable, so the password could not be stored safely.',
+          auth: 'Wrong username or password',
+          notFound: 'Server not found',
+          unreachable: 'Server unreachable',
+          certificate: 'Certificate not trusted',
+          noCalendars: 'No calendars at that address',
+          keyring: 'Keyring unavailable',
           notConfigured: '{{provider}} sign-in is not set up yet.',
-          clientRejected: '{{provider}} did not accept these sign-in details. Check that they were copied in full.',
+          clientRejected: '{{provider}} refused these sign-in details',
           cancelled: 'Sign-in was cancelled.',
           unknown: 'Could not connect.'
         },
         connected: '{{name}} is connected',
-        choose: 'Choose which calendars to show. You can change this any time in the sidebar.',
+        choose: 'Calendars to show',
         fetching: 'Fetching your calendars…',
         addAnother: 'Add another account'
       },
       subscriptions: {
         title: 'Subscriptions',
-        intro:
-          'Paste the link to a published calendar - a school timetable, a team\'s fixtures, or a calendar someone shared as an .ics or webcal:// address. It stays read-only and refreshes every few hours.',
         url: 'Calendar link',
         urlPlaceholder: 'webcal://… or https://….ics',
         name: 'Name (optional)',
-        namePlaceholder: 'Taken from the calendar when left empty',
         subscribe: 'Subscribe',
         subscribing: 'Subscribing…',
         refresh: 'Refresh now',
         refreshed: 'updated {{when}}',
         neverRefreshed: 'not fetched yet',
         unsubscribe: 'Unsubscribe',
-        unsubscribeConfirm: 'Unsubscribe from "{{name}}"? Its events are removed from xrncal.',
+        unsubscribeConfirm: 'Unsubscribe from "{{name}}"?',
         manage: 'Manage subscriptions',
         failed: 'Could not subscribe',
         refreshFailed: 'Could not refresh the calendar',
@@ -582,16 +543,14 @@ export const resources = {
         hintSave: 'Ctrl + Enter',
         hintDelete: 'Ctrl + Backspace',
         orKey: 'or',
-        quit: 'Quit xrncal (closing the window keeps it in the tray)'
+        quit: 'Quit xrncal'
       },
       sync: {
         conflictsMenuItem: 'Sync conflicts ({{count}})',
         conflictsTitle: 'Sync conflicts',
-        conflictsExplain:
-          'These events changed on the server before your edit here could be sent. Pick which version to keep.',
-        conflictsNone: 'No conflicts to resolve.',
+        conflictsNone: 'No conflicts',
         conflictsUpdated: 'Last edited here: {{when}}',
-        conflictDeletedHere: 'You deleted this here, but it was changed on the server first.',
+        conflictDeletedHere: 'Deleted here, changed on the server',
         keepMine: 'Keep mine',
         keepTheirs: 'Keep theirs',
         keepDeleted: 'Delete it there too',
@@ -609,7 +568,6 @@ export const resources = {
         importMenu: 'Import .ics file…',
         importTitle: 'Import events',
         importInto: 'Add them to',
-        importHint: 'The events are copied in. Guest lists are left out, so nobody is invited again.',
         import: 'Import',
         imported_one: '{{count}} event added to {{calendar}}',
         imported_other: '{{count}} events added to {{calendar}}',
@@ -623,20 +581,15 @@ export const resources = {
       },
       welcome: {
         title: 'Welcome to xrncal',
-        subtitle: 'Your Google, Outlook and iCloud calendars in one place - with Vietnamese lunar dates, and anniversaries that follow the lunar calendar.',
-        lunarHint: 'The lunar date under each day; mùng 1 and rằm are marked',
         basicsTitle: 'A few basics',
-        basicsSubtitle: 'You can change any of these later in Settings.',
         connectTitle: 'Add your calendars',
-        connectSubtitle: 'Sign in once and xrncal keeps them in sync. Or start with a calendar on this computer.',
         next: 'Next',
         notNow: 'Not now'
       },
       search: {
-        placeholder: 'Search events by title, location, notes… (Ctrl+K)',
+        placeholder: 'Search (Ctrl+K)',
         searching: 'Searching…',
-        empty: 'Type a keyword to search across your whole calendar',
-        noResults: 'No matching events for "{{q}}"',
+        noResults: 'No results',
         attendees: '{{count}} guest(s)',
         allDaySuffix: 'All day'
       },
@@ -645,7 +598,7 @@ export const resources = {
         moreCount_other: '+{{count}} more'
       },
       list: {
-        empty: 'No events in this period.',
+        empty: 'No events',
         addEvent: 'Create event',
         allDay: 'All day'
       },
@@ -662,8 +615,7 @@ export const resources = {
         allDay: 'All day',
         more_one: '+{{count}} more',
         more_other: '+{{count}} more',
-        preview: 'Preview of the printed page',
-        hint: 'One A4 page, landscape. Only the calendars shown in the sidebar are printed.'
+        preview: 'Preview of the printed page'
       },
       mini: {
         events: 'Events',
@@ -679,14 +631,14 @@ export const resources = {
       },
       friendly: {
         staleTitle: 'This event just changed',
-        staleBody: 'A sync updated it. The calendar has been refreshed — try again.',
+        staleBody: 'Refreshed. Try again.',
         fallback: 'Something went wrong',
         tryAgain: 'Please try again later.',
         readOnlyTitle: 'Read-only calendar',
-        readOnlyMove: 'This event belongs to a read-only calendar (such as a Holiday or shared calendar) and cannot be moved or edited.',
-        readOnlyDelete: 'Events in a read-only calendar (such as a Holiday calendar) cannot be deleted.',
+        readOnlyMove: 'Can\'t be moved or edited',
+        readOnlyDelete: 'Can\'t be deleted',
         rruleTitle: 'Invalid recurrence rule',
-        rruleBody: 'The recurrence rule (RRULE) is not valid RFC 5545 syntax.'
+        rruleBody: 'Not valid RFC 5545'
       },
       toast: {
         readFailed: 'Could not read the calendar',
@@ -698,12 +650,10 @@ export const resources = {
         copyFailed: 'Failed to copy event',
         recurringUpdateFailed: 'Failed to update recurring event',
         readOnlyTitle: 'Read-only calendar',
-        readOnlyMove:
-          'This event belongs to a read-only calendar (such as a Holiday calendar) and cannot be moved or edited.',
-        readOnlyDelete:
-          'This event belongs to a read-only calendar (such as a Holiday calendar) and cannot be deleted.',
+        readOnlyMove: 'Can\'t be moved or edited',
+        readOnlyDelete: 'Can\'t be deleted',
         lunarAdded: 'Added {{count}} year(s) to the calendar',
-        lunarAddedDetail: 'Through {{year}}. These sync to the provider as ordinary events.',
+        lunarAddedDetail: 'Through {{year}}',
         lunarUpToDate: 'Already up to date — nothing new to add',
         lunarAddFailed: 'Failed to add anniversary to calendar',
         lunarRemoved: 'Removed {{count}} synced copy/copies',
@@ -797,14 +747,13 @@ export const resources = {
         themeModeDark: 'Tối',
         lunar: 'Lịch âm & Tiết khí',
         weekNumbers: 'Số thứ tự tuần',
-        showMiniCalendar: 'Hiện thanh bên (lịch nhỏ và danh sách lịch)',
+        showMiniCalendar: 'Hiện thanh bên',
         autoHideHeader: 'Tự ẩn thanh tiêu đề',
         dragSnap: 'Kéo và đổi kích thước theo bước',
         dragSnapMin: '{{count}} phút',
         dragSnapHour: '1 giờ',
         timePickerStep: 'Các mốc giờ trong cửa sổ sự kiện',
         defaultEventLength: 'Độ dài của sự kiện mới',
-        defaultEventLengthHint: 'Khi bấm vào một ô giờ trống, bấm Tạo hoặc phím N. Khoảng giờ bạn kéo chọn thì giữ nguyên độ dài.',
         eventLengthOption: {
           '15': '15 phút',
           '30': '30 phút',
@@ -823,16 +772,11 @@ export const resources = {
         hourBlockSizeMedium: 'Vừa',
         hourBlockSizeLarge: 'Lớn',
         secondaryTimezone: 'Múi giờ thứ hai',
-        dayStartHourHint: 'Giờ mà lưới ngày và tuần cuộn tới khi mở',
-        secondaryTimezoneHint: 'Hiển thị dưới mỗi giờ trong lưới ngày và tuần',
         secondaryTimezoneNone: 'Không có',
         preferredTimeZones: 'Múi giờ hay dùng',
-        preferredTimeZonesHint: 'Hiện đầu danh sách khi chọn múi giờ cho sự kiện',
         preferredTimeZonesAdd: 'Thêm múi giờ…',
         preferredTimeZonesRemove: 'Bỏ {{zone}}',
         zoneHistory: 'Nơi bạn đã ở',
-        zoneHistoryHint:
-          'Sự kiện lưu không kèm múi giờ (như bản xuất của Google) mở theo múi giờ nơi bạn ở vào ngày đó. Khi múi giờ của máy thay đổi, nơi mới được tự thêm vào đây.',
         zoneHistoryFirst: 'Ban đầu',
         zoneHistoryStart: 'Thêm nơi bạn ở ban đầu…',
         zoneHistoryAdd: 'Thêm nơi chuyển đến…',
@@ -841,20 +785,15 @@ export const resources = {
         backupDone: 'Đã lưu bản sao',
         backupFailed: 'Sao lưu thất bại',
         checkForUpdates: 'Kiểm tra bản cập nhật',
-        checkForUpdatesHint: 'Tìm bản phát hành mới trên GitHub và cài khi bạn thoát ứng dụng',
         autoBackup: 'Tự động sao lưu',
-        autoBackupHint:
-          'Mỗi tuần một lần, xrncal lưu một bản sao dữ liệu vào thư mục riêng của ứng dụng và giữ lại bốn bản gần nhất. "Khôi phục từ bản sao lưu" sẽ mở thư mục đó.',
         showLog: 'Mở tệp nhật ký',
         showLogFailed: 'Không mở được tệp nhật ký',
         weekStart: 'Tuần bắt đầu từ',
         weekStartDay: { '0': 'Chủ nhật', '1': 'Thứ hai', '6': 'Thứ bảy' },
         closeToTray: 'Vẫn chạy khi đóng cửa sổ',
-        closeToTrayHint: 'Nhắc nhở và đồng bộ vẫn chạy từ biểu tượng ở khay hệ thống. Thoát từ menu của biểu tượng, hoặc bằng Ctrl+Q.',
         launchAtLogin: 'Khởi động cùng máy tính',
-        launchAtLoginHint: 'Mở sẵn ở khay hệ thống để nhắc nhở vẫn kêu sau khi khởi động lại máy',
         restore: 'Khôi phục từ bản sao lưu…',
-        restoreConfirm: 'Thay toàn bộ dữ liệu trong xrncal bằng bản sao lưu? Dữ liệu hiện tại sẽ được lưu lại bên cạnh trước, rồi xrncal khởi động lại.',
+        restoreConfirm: 'Thay toàn bộ dữ liệu bằng bản sao lưu? xrncal sẽ khởi động lại.',
         restoreAction: 'Chọn bản sao lưu…',
         restoreFailed: 'Không khôi phục được bản sao lưu',
         restoreProblem: {
@@ -907,9 +846,7 @@ export const resources = {
         whenTomorrow: 'Ngày mai',
         whenOnDate: '{{date}}',
         settingsTimed: 'Nhắc nhở mặc định',
-        settingsTimedHint: 'Cho sự kiện có giờ trong lịch bạn sửa được, khi sự kiện không tự đặt nhắc nhở',
-        settingsAllDay: 'Nhắc nhở mặc định cho sự kiện cả ngày',
-        settingsAllDayHint: 'Khi tắt, ngày giỗ âm lịch mới vẫn được nhắc trước một ngày'
+        settingsAllDay: 'Nhắc nhở mặc định cho sự kiện cả ngày'
       },
       status: {
       },
@@ -1007,8 +944,6 @@ export const resources = {
         lunarPickDate: 'Chọn ngày bắt đầu ở trên',
         lunarLeapCheckbox: 'Ngày giỗ rơi vào tháng nhuận',
         lunarNext: 'Kế tiếp: {{dates}}',
-        lunarHelp:
-          'Lặp lại mỗi năm theo ngày âm lịch này. Chỉ lưu cục bộ — dùng “Thêm vào lịch” bên dưới để đẩy một loạt năm sang lịch đã đồng bộ (Google, Outlook…).',
         lunarDescribe: 'Ngày {{day}}, tháng {{month}} (tháng {{name}}){{leap}}',
         lunarLeapSuffix: ' — tháng nhuận',
         addToCalendar: 'Thêm vào lịch',
@@ -1033,22 +968,15 @@ export const resources = {
       recurring: {
         editTitle: 'Chỉnh sửa sự kiện lặp lại',
         deleteTitle: 'Xóa sự kiện lặp lại',
-        askEdit: 'Bạn muốn áp dụng thay đổi cho lần lặp này hay tất cả các lần lặp trong chuỗi?',
-        askDelete: 'Bạn muốn xóa chỉ lần lặp này hay tất cả các lần lặp trong chuỗi?',
         thisLabel: 'Chỉ sự kiện này',
-        thisHint: 'Các sự kiện khác trong chuỗi lặp sẽ không bị ảnh hưởng',
         futureLabel: 'Sự kiện này và các sự kiện sau',
-        futureHint: 'Áp dụng cho lần lặp này và tất cả các lần lặp tiếp theo',
-        allLabel: 'Tất cả sự kiện trong chuỗi',
-        allHint: 'Áp dụng cho toàn bộ chuỗi lặp từ trước đến nay'
+        allLabel: 'Tất cả sự kiện trong chuỗi'
       },
       drop: {
         moveHere: 'Chuyển tới đây',
         copyHere: 'Sao chép tới đây',
         copyThisOnly: 'Chỉ sao chép lần này',
-        copyWholeSeries: 'Sao chép cả chuỗi lặp lại',
-        copyWholeSeriesHint: 'Nhân bản mọi lần lặp trong chuỗi',
-        copyStandalone: 'Tạo sự kiện đơn độc lập'
+        copyWholeSeries: 'Sao chép cả chuỗi lặp lại'
       },
       holidays: {
         title: 'Lịch ngày lễ',
@@ -1059,23 +987,21 @@ export const resources = {
       accounts: {
         title: 'Lịch & tài khoản',
         account: 'Tài khoản',
-        localDetail: 'Không đồng bộ ở đâu cả',
         calendarCount_one: '{{count}} lịch',
         calendarCount_other: '{{count}} lịch',
         notSyncing: 'Không còn đồng bộ',
-        notSyncingDetail: 'Tài khoản này không còn đồng bộ. Hãy gỡ nó, hoặc thêm lại để kết nối lại.',
-        noCalendarsYet: 'Chưa có lịch nào. Lịch sẽ hiện sau lần đồng bộ đầu tiên.',
-        nothingToSync: 'Chỉ có lịch trên máy này - không có gì để đồng bộ',
+        noCalendarsYet: 'Chưa có lịch',
+        nothingToSync: 'Không có gì để đồng bộ',
         lastSynced: 'Đã đồng bộ {{when}}',
         neverSynced: 'Chưa đồng bộ lần nào',
         lastSyncFailed: 'Lần đồng bộ gần nhất gặp lỗi',
         syncProblems: {
-          auth: 'Máy chủ không còn chấp nhận đăng nhập. Hãy gỡ tài khoản và thêm lại.',
-          notFound: 'Không tìm thấy máy chủ. Có thể địa chỉ đã thay đổi.',
-          unreachable: 'Không kết nối được máy chủ. Có thể máy chủ đang tắt, hoặc bạn đang mất mạng.',
-          certificate: 'Chứng chỉ bảo mật của máy chủ không đáng tin cậy.',
-          keyring: 'Không đọc được mật khẩu đã lưu: kho khóa của hệ thống đang khóa hoặc không khả dụng.',
-          server: 'Máy chủ gặp lỗi. xrncal sẽ tiếp tục thử lại.',
+          auth: 'Đăng nhập bị từ chối: gỡ tài khoản rồi thêm lại',
+          notFound: 'Không tìm thấy máy chủ',
+          unreachable: 'Không kết nối được máy chủ',
+          certificate: 'Chứng chỉ không đáng tin cậy',
+          keyring: 'Kho khóa đang khóa hoặc không khả dụng',
+          server: 'Máy chủ gặp lỗi',
           unknown: 'Đồng bộ thất bại. xrncal sẽ tiếp tục thử lại.'
         },
         waiting_one: '{{count}} thay đổi đang chờ đồng bộ',
@@ -1087,17 +1013,14 @@ export const resources = {
         removeTitle: 'Gỡ tài khoản',
         removeQuestion: 'Các lịch từ {{name}} sẽ được xử lý thế nào?',
         removeKeep: 'Giữ lại trên máy này',
-        removeKeepDetail: 'Lịch và sự kiện vẫn ở đây và ngừng đồng bộ.',
         removeAll: 'Xóa khỏi xrncal',
-        removeAllDetail: 'Lịch và sự kiện của tài khoản biến mất khỏi ứng dụng.',
-        removeProviderUntouched: 'Không có gì bị thay đổi hay xóa trên chính {{provider}}.',
         removeConfirm: 'Gỡ tài khoản',
         removed: 'Đã gỡ {{name}}',
         removedKept: 'Đã giữ {{calendars}} lịch và {{events}} sự kiện trên máy này',
         removedAll: 'Đã xóa các lịch của tài khoản khỏi xrncal',
         removeFailed: 'Không gỡ được tài khoản',
         deleteCalendar: 'Xóa lịch',
-        deleteCalendarConfirm: 'Xóa "{{name}}" cùng mọi sự kiện của nó? Không thể hoàn tác.',
+        deleteCalendarConfirm: 'Xóa "{{name}}" cùng mọi sự kiện của nó?',
         calendarDeleted: 'Đã xóa lịch',
         calendarDeleteFailed: 'Không xóa được lịch',
         calendarCreated: 'Đã tạo lịch',
@@ -1105,26 +1028,23 @@ export const resources = {
       },
       addAccount: {
         title: 'Thêm tài khoản',
-        needsSetup: 'Thiết lập một lần rồi đăng nhập',
+        needsSetup: 'Cần thiết lập',
         clientSetup: {
           open: 'Mở',
           clientId: 'Client ID',
           clientSecret: 'Client secret',
           applicationId: 'Application (client) ID',
           secretKept: 'Đã lưu. Để trống để giữ nguyên',
-          privacy: 'Được mã hóa và lưu trên máy này, chỉ gửi cho {{provider}}.',
-          reconnect: 'Nếu đổi thông tin này, các tài khoản {{provider}} đã kết nối sẽ phải đăng nhập lại.',
           save: 'Lưu và tiếp tục',
           change: 'Đổi thông tin đăng nhập {{provider}}',
           remove: 'Xóa',
-          removeConfirm: 'Xóa thông tin đăng nhập này? Các tài khoản {{provider}} đã kết nối sẽ ngừng đồng bộ cho đến khi được thiết lập lại.',
+          removeConfirm: 'Xóa? Các tài khoản {{provider}} đã kết nối sẽ ngừng đồng bộ.',
           problems: {
             idMissing: 'Hãy dán ID vào đây.',
             secretMissing: 'Hãy dán Client secret vào đây.',
             secretFormat: 'Đây không phải Client secret. Hãy kiểm tra xem có nhầm với Client ID không.'
           },
           google: {
-            intro: 'Google yêu cầu thông tin đăng nhập tạo riêng cho bản xrncal này. Bạn chỉ cần tạo một lần trong tài khoản Google. Việc này miễn phí và mất khoảng mười phút.',
             project: 'Tạo một project, đặt tên gì cũng được.',
             calendarApi: 'Bật Google Calendar API cho project đó.',
             branding: 'Bấm Get started, nhập tên ứng dụng tùy ý và email của bạn, rồi chọn External.',
@@ -1134,7 +1054,6 @@ export const resources = {
             idFormat: 'Client ID kết thúc bằng .apps.googleusercontent.com.'
           },
           microsoft: {
-            intro: 'Microsoft yêu cầu thông tin đăng nhập tạo riêng cho bản xrncal này. Bạn chỉ cần tạo một lần trong Azure, mất khoảng mười phút. Tài khoản Microsoft cá nhân cần có tài khoản Azure miễn phí trước.',
             register: 'Mở App registrations rồi bấm New registration, đặt tên gì cũng được.',
             audience: 'Ở phần supported account types, chọn mục có bao gồm tài khoản Microsoft cá nhân.',
             redirect: 'Ở phần Redirect URI, chọn Public client/native rồi nhập',
@@ -1146,31 +1065,26 @@ export const resources = {
         },
         allSet: 'Đã thêm tài khoản',
         providers: {
-          google: { title: 'Google', detail: 'Lịch Gmail và Google Workspace' },
-          graph: { title: 'Microsoft', detail: 'Outlook.com, Hotmail và Microsoft 365' },
-          icloud: { title: 'iCloud', detail: 'Lịch Apple iCloud' },
-          caldav: { title: 'CalDAV', detail: 'Nextcloud, Synology, Fastmail hoặc máy chủ của bạn' },
-          subscription: { title: 'Đăng ký bằng liên kết', detail: 'Lịch được chia sẻ dưới dạng liên kết .ics hoặc webcal://' },
-          holidays: { title: 'Ngày lễ', detail: 'Ngày lễ Việt Nam và quốc tế' },
+          google: { title: 'Google' },
+          graph: { title: 'Microsoft' },
+          icloud: { title: 'iCloud' },
+          caldav: { title: 'CalDAV' },
+          subscription: { title: 'Đăng ký bằng liên kết' },
+          holidays: { title: 'Ngày lễ' },
           local: {
             title: 'Trên máy này',
-            detail: 'Một lịch chỉ nằm trên máy này và không bao giờ đồng bộ.',
             action: 'Lịch mới'
           }
         },
         browser: {
-          body: 'Trình duyệt sẽ mở để bạn đăng nhập {{provider}} và cho phép xrncal dùng lịch của bạn.',
-          privacy: 'Bạn đăng nhập trên trang của chính nhà cung cấp - xrncal không bao giờ thấy mật khẩu của bạn.',
           open: 'Tiếp tục trong trình duyệt',
           waiting: 'Đang chờ bạn đăng nhập xong…'
         },
         caldav: {
           server: 'Địa chỉ máy chủ',
-          serverHint: 'Địa chỉ máy chủ lịch của bạn. xrncal sẽ tự tìm các lịch trên đó.',
           username: 'Tên đăng nhập',
           password: 'Mật khẩu',
-          name: 'Tên trong xrncal (không bắt buộc)',
-          namePlaceholder: 'Hiện trong danh sách lịch'
+          name: 'Tên trong xrncal (không bắt buộc)'
         },
         icloud: {
           hint: 'iCloud cần mật khẩu dành riêng cho ứng dụng, không phải mật khẩu Apple ID. Tạo trong Đăng nhập và Bảo mật → Mật khẩu dành riêng cho ứng dụng.',
@@ -1188,37 +1102,34 @@ export const resources = {
         tryAgain: 'Thử lại',
         details: 'Chi tiết: {{msg}}',
         problems: {
-          auth: 'Tên đăng nhập hoặc mật khẩu không đúng.',
-          notFound: 'Không tìm thấy máy chủ đó. Hãy kiểm tra địa chỉ.',
-          unreachable: 'Máy chủ không phản hồi. Hãy kiểm tra địa chỉ và kết nối mạng.',
-          certificate: 'Chứng chỉ bảo mật của máy chủ không đáng tin cậy.',
-          noCalendars: 'Đã đăng nhập, nhưng không tìm thấy lịch nào ở địa chỉ đó.',
-          keyring: 'Kho khóa của hệ thống không khả dụng nên không thể lưu mật khẩu an toàn.',
+          auth: 'Sai tên đăng nhập hoặc mật khẩu',
+          notFound: 'Không tìm thấy máy chủ',
+          unreachable: 'Máy chủ không phản hồi',
+          certificate: 'Chứng chỉ không đáng tin cậy',
+          noCalendars: 'Không có lịch nào ở địa chỉ đó',
+          keyring: 'Kho khóa không khả dụng',
           notConfigured: 'Chưa thiết lập đăng nhập {{provider}}.',
-          clientRejected: '{{provider}} không chấp nhận thông tin đăng nhập này. Hãy kiểm tra xem đã chép đủ chưa.',
+          clientRejected: '{{provider}} từ chối thông tin đăng nhập này',
           cancelled: 'Đã hủy đăng nhập.',
           unknown: 'Không kết nối được.'
         },
         connected: 'Đã kết nối {{name}}',
-        choose: 'Chọn lịch muốn hiển thị. Bạn có thể đổi lại bất cứ lúc nào ở thanh bên.',
+        choose: 'Lịch hiển thị',
         fetching: 'Đang tải danh sách lịch…',
         addAnother: 'Thêm tài khoản khác'
       },
       subscriptions: {
         title: 'Lịch đăng ký',
-        intro:
-          'Dán liên kết tới một lịch được công khai - thời khoá biểu, lịch thi đấu, hoặc lịch ai đó chia sẻ dưới dạng địa chỉ .ics hay webcal://. Lịch chỉ đọc và tự làm mới vài giờ một lần.',
         url: 'Liên kết lịch',
         urlPlaceholder: 'webcal://… hoặc https://….ics',
         name: 'Tên (không bắt buộc)',
-        namePlaceholder: 'Để trống sẽ lấy tên của lịch',
         subscribe: 'Đăng ký',
         subscribing: 'Đang đăng ký…',
         refresh: 'Làm mới ngay',
         refreshed: 'cập nhật {{when}}',
         neverRefreshed: 'chưa tải lần nào',
         unsubscribe: 'Huỷ đăng ký',
-        unsubscribeConfirm: 'Huỷ đăng ký "{{name}}"? Các sự kiện của lịch này sẽ bị xoá khỏi xrncal.',
+        unsubscribeConfirm: 'Huỷ đăng ký "{{name}}"?',
         manage: 'Quản lý lịch đăng ký',
         failed: 'Không đăng ký được',
         refreshFailed: 'Không làm mới được lịch',
@@ -1298,16 +1209,14 @@ export const resources = {
         hintSave: 'Ctrl + Enter',
         hintDelete: 'Ctrl + Backspace',
         orKey: 'hoặc',
-        quit: 'Thoát xrncal (đóng cửa sổ thì ứng dụng vẫn chạy ở khay hệ thống)'
+        quit: 'Thoát xrncal'
       },
       sync: {
         conflictsMenuItem: 'Xung đột đồng bộ ({{count}})',
         conflictsTitle: 'Xung đột đồng bộ',
-        conflictsExplain:
-          'Các sự kiện này đã thay đổi trên máy chủ trước khi chỉnh sửa của bạn kịp gửi lên. Chọn phiên bản muốn giữ.',
-        conflictsNone: 'Không có xung đột nào cần xử lý.',
+        conflictsNone: 'Không có xung đột',
         conflictsUpdated: 'Chỉnh sửa ở đây lần cuối: {{when}}',
-        conflictDeletedHere: 'Bạn đã xóa sự kiện này ở đây, nhưng nó đã được sửa trên máy chủ trước đó.',
+        conflictDeletedHere: 'Đã xóa ở đây, đã sửa trên máy chủ',
         keepMine: 'Giữ bản của tôi',
         keepTheirs: 'Giữ bản trên máy chủ',
         keepDeleted: 'Xóa cả trên máy chủ',
@@ -1325,7 +1234,6 @@ export const resources = {
         importMenu: 'Nhập tệp .ics…',
         importTitle: 'Nhập sự kiện',
         importInto: 'Thêm vào',
-        importHint: 'Sự kiện được chép vào. Danh sách khách mời được bỏ qua để không ai bị mời lại.',
         import: 'Nhập',
         imported_one: 'Đã thêm {{count}} sự kiện vào {{calendar}}',
         imported_other: 'Đã thêm {{count}} sự kiện vào {{calendar}}',
@@ -1339,20 +1247,15 @@ export const resources = {
       },
       welcome: {
         title: 'Chào mừng đến với xrncal',
-        subtitle: 'Lịch Google, Outlook và iCloud ở cùng một nơi - có ngày âm lịch, và ngày giỗ tính theo âm lịch.',
-        lunarHint: 'Ngày âm lịch dưới mỗi ngày; mùng 1 và rằm được đánh dấu',
         basicsTitle: 'Vài thiết lập cơ bản',
-        basicsSubtitle: 'Bạn có thể đổi lại bất cứ lúc nào trong Cài đặt.',
         connectTitle: 'Thêm lịch của bạn',
-        connectSubtitle: 'Đăng nhập một lần, xrncal sẽ tự đồng bộ. Hoặc bắt đầu với một lịch trên máy này.',
         next: 'Tiếp',
         notNow: 'Để sau'
       },
       search: {
-        placeholder: 'Tìm sự kiện theo tiêu đề, địa điểm, ghi chú… (Ctrl+K)',
+        placeholder: 'Tìm kiếm (Ctrl+K)',
         searching: 'Đang tìm kiếm…',
-        empty: 'Gõ từ khóa để tìm kiếm nhanh trong toàn bộ lịch',
-        noResults: 'Không tìm thấy sự kiện nào khớp với "{{q}}"',
+        noResults: 'Không có kết quả',
         attendees: '{{count}} người tham gia',
         allDaySuffix: 'Cả ngày'
       },
@@ -1361,7 +1264,7 @@ export const resources = {
         moreCount_other: 'thêm {{count}}'
       },
       list: {
-        empty: 'Không có sự kiện nào trong khoảng thời gian này.',
+        empty: 'Không có sự kiện',
         addEvent: 'Tạo sự kiện',
         allDay: 'Cả ngày'
       },
@@ -1378,8 +1281,7 @@ export const resources = {
         allDay: 'Cả ngày',
         more_one: '+{{count}} nữa',
         more_other: '+{{count}} nữa',
-        preview: 'Bản xem trước trang in',
-        hint: 'Một trang A4 khổ ngang. Chỉ in các lịch đang hiện ở thanh bên.'
+        preview: 'Bản xem trước trang in'
       },
       mini: {
         events: 'Sự kiện',
@@ -1395,14 +1297,14 @@ export const resources = {
       },
       friendly: {
         staleTitle: 'Sự kiện vừa thay đổi',
-        staleBody: 'Đồng bộ đã cập nhật nó. Lịch đã được làm mới — hãy thử lại.',
+        staleBody: 'Đã làm mới. Hãy thử lại.',
         fallback: 'Có lỗi xảy ra',
         tryAgain: 'Vui lòng thử lại sau.',
         readOnlyTitle: 'Lịch chỉ đọc',
-        readOnlyMove: 'Sự kiện này thuộc lịch chỉ đọc (như Lịch ngày lễ hoặc lịch được chia sẻ), không thể di chuyển hoặc chỉnh sửa.',
-        readOnlyDelete: 'Không thể xóa sự kiện thuộc lịch chỉ đọc (như Lịch ngày lễ).',
+        readOnlyMove: 'Không thể di chuyển hoặc chỉnh sửa',
+        readOnlyDelete: 'Không thể xóa',
         rruleTitle: 'Quy tắc lặp không hợp lệ',
-        rruleBody: 'Cú pháp quy tắc lặp lại (RRULE) không đúng định dạng RFC 5545.'
+        rruleBody: 'Không đúng RFC 5545'
       },
       toast: {
         readFailed: 'Không đọc được lịch',
@@ -1414,12 +1316,10 @@ export const resources = {
         copyFailed: 'Sao chép sự kiện thất bại',
         recurringUpdateFailed: 'Cập nhật sự kiện lặp thất bại',
         readOnlyTitle: 'Lịch chỉ đọc',
-        readOnlyMove:
-          'Sự kiện này thuộc lịch chỉ đọc (như Lịch ngày lễ) nên không thể chuyển hoặc chỉnh sửa.',
-        readOnlyDelete:
-          'Sự kiện này thuộc lịch chỉ đọc (như Lịch ngày lễ) nên không thể xóa.',
+        readOnlyMove: 'Không thể di chuyển hoặc chỉnh sửa',
+        readOnlyDelete: 'Không thể xóa',
         lunarAdded: 'Đã thêm {{count}} năm vào lịch',
-        lunarAddedDetail: 'Đến năm {{year}}. Các bản này đồng bộ sang nhà cung cấp như sự kiện thường.',
+        lunarAddedDetail: 'Đến năm {{year}}',
         lunarUpToDate: 'Đã cập nhật — không có gì mới để thêm',
         lunarAddFailed: 'Thêm ngày giỗ vào lịch thất bại',
         lunarRemoved: 'Đã xóa {{count}} bản đã đồng bộ',

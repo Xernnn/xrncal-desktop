@@ -127,7 +127,6 @@ export const OAuthClientSetup: React.FC<OAuthClientSetupProps> = ({ provider, pr
   return (
     // noValidate: the checks are ours, in words, not the browser's bubbles.
     <form className="flex flex-col gap-3" onSubmit={submit} noValidate>
-      <p className="text-sm text-primary">{t(`addAccount.clientSetup.${provider}.intro`)}</p>
 
       <ol
         className="space-y-2 border border-hairline bg-hover/40 px-3 py-2.5 text-xs"
@@ -180,11 +179,6 @@ export const OAuthClientSetup: React.FC<OAuthClientSetupProps> = ({ provider, pr
           disabled={!info.canSave}
         />
       )}
-
-      <p className="text-xs text-muted">
-        {t('addAccount.clientSetup.privacy', { provider: providerName })}
-        {connected > 0 && <> {t('addAccount.clientSetup.reconnect', { provider: providerName })}</>}
-      </p>
 
       {failure && <ProblemPanel problem={classifyConnectError(failure)} raw={failure} provider={providerName} />}
 

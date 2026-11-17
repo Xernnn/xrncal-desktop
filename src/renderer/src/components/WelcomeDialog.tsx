@@ -75,7 +75,6 @@ export const WelcomeDialog: React.FC<WelcomeDialogProps> = ({
           <>
             <div>
               <h2 className="text-xl font-semibold text-primary">{t('welcome.title')}</h2>
-              <p className="mt-1.5 text-sm leading-relaxed text-muted">{t('welcome.subtitle')}</p>
             </div>
             <div>
               <div className="mb-2 text-xs font-medium text-muted">{t('settings.language')}</div>
@@ -101,7 +100,6 @@ export const WelcomeDialog: React.FC<WelcomeDialogProps> = ({
               checked={showLunar}
               onChange={onToggleLunar}
               label={t('settings.lunar')}
-              description={t('welcome.lunarHint')}
             />
           </>
         )}
@@ -110,7 +108,6 @@ export const WelcomeDialog: React.FC<WelcomeDialogProps> = ({
           <>
             <div>
               <h2 className="text-lg font-semibold text-primary">{t('welcome.basicsTitle')}</h2>
-              <p className="mt-1 text-sm text-muted">{t('welcome.basicsSubtitle')}</p>
             </div>
             <div>
               <div className="mb-2 text-xs font-medium text-muted">{t('holidays.title')}</div>
@@ -120,7 +117,6 @@ export const WelcomeDialog: React.FC<WelcomeDialogProps> = ({
               checked={launchAtLogin}
               onChange={setLaunchAtLogin}
               label={t('settings.launchAtLogin')}
-              description={t('settings.launchAtLoginHint')}
             />
           </>
         )}
@@ -129,7 +125,6 @@ export const WelcomeDialog: React.FC<WelcomeDialogProps> = ({
           <>
             <div>
               <h2 className="text-lg font-semibold text-primary">{t('welcome.connectTitle')}</h2>
-              <p className="mt-1 text-sm text-muted">{t('welcome.connectSubtitle')}</p>
             </div>
             <div className="-mx-2 flex flex-col gap-0.5">
               {CONNECTABLE.map((provider) => (
@@ -137,11 +132,7 @@ export const WelcomeDialog: React.FC<WelcomeDialogProps> = ({
                   key={provider}
                   icon={<ProviderMark kind={provider} />}
                   title={t(`addAccount.providers.${provider}.title`)}
-                  subtitle={
-                    needsSetup(provider)
-                      ? t('addAccount.needsSetup')
-                      : t(`addAccount.providers.${provider}.detail`)
-                  }
+                  subtitle={needsSetup(provider) ? t('addAccount.needsSetup') : undefined}
                   onClick={() => onFinish(provider, launchAtLogin)}
                 />
               ))}

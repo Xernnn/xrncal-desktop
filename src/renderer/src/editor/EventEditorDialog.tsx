@@ -1455,7 +1455,6 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
                       {t('editor.lunarNext', { dates: lunarPreview.join(' · ') })}
                     </div>
                   )}
-                  <p className="text-[11px] text-muted leading-relaxed">{t('editor.lunarHelp')}</p>
                 </div>
               </FormRow>
             )}

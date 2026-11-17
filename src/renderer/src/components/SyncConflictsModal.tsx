@@ -54,8 +54,6 @@ export const SyncConflictsModal: React.FC<SyncConflictsModalProps> = ({
         </div>
 
         <div className="p-5 space-y-3 overflow-y-auto max-h-[65vh]">
-          <p className="text-xs text-muted">{t('sync.conflictsExplain')}</p>
-
           {conflicts.length === 0 ? (
             <p className="py-8 text-center text-xs text-muted">{t('sync.conflictsNone')}</p>
           ) : (

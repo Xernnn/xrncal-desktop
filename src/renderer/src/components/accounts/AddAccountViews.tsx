@@ -53,11 +53,7 @@ export const ProviderPickView: React.FC<AccountsPageProps> = (props) => {
           key={provider}
           icon={<ProviderMark kind={provider} />}
           title={t(`addAccount.providers.${provider}.title`)}
-          subtitle={
-            needsSetup(provider)
-              ? t('addAccount.needsSetup')
-              : t(`addAccount.providers.${provider}.detail`)
-          }
+          subtitle={needsSetup(provider) ? t('addAccount.needsSetup') : undefined}
           onClick={() =>
             props.push(
               provider === 'holidays'
@@ -174,8 +170,6 @@ export const ConnectView: React.FC<AccountsPageProps & { provider: 'google' | 'g
     }
     return (
       <div className="flex flex-col gap-3">
-        <p className="text-sm text-primary">{t('addAccount.browser.body', { provider: providerName })}</p>
-        <p className="text-xs text-muted">{t('addAccount.browser.privacy')}</p>
         {client?.source === 'saved' && (
           <button
             type="button"
@@ -247,17 +241,14 @@ export const ConnectView: React.FC<AccountsPageProps & { provider: 'google' | 'g
           </a>
         </div>
       ) : (
-        <div className="space-y-1">
-          <TextInput
-            variant="boxed"
-            label={t('addAccount.caldav.server')}
-            placeholder="cloud.example.com"
-            value={server}
-            onChange={edit(setServer)}
-            autoFocus
-          />
-          <p className="px-0.5 text-[11px] text-muted">{t('addAccount.caldav.serverHint')}</p>
-        </div>
+        <TextInput
+          variant="boxed"
+          label={t('addAccount.caldav.server')}
+          placeholder="cloud.example.com"
+          value={server}
+          onChange={edit(setServer)}
+          autoFocus
+        />
       )}
 
       <TextInput
@@ -279,7 +270,7 @@ export const ConnectView: React.FC<AccountsPageProps & { provider: 'google' | 'g
       <TextInput
         variant="boxed"
         label={t('addAccount.caldav.name')}
-        placeholder={isICloud ? 'iCloud' : hostOf(server) || t('addAccount.caldav.namePlaceholder')}
+        placeholder={isICloud ? 'iCloud' : hostOf(server) || undefined}
         value={name}
         onChange={setName}
       />
@@ -302,7 +293,6 @@ export const HolidaysView: React.FC<AccountsPageProps> = (props) => {
   const { t } = useTranslation()
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-xs text-muted">{t('addAccount.providers.holidays.detail')}</p>
       <HolidayCalendarToggle calendars={props.calendars} onCalendarsChanged={() => void props.refresh()} />
       <div className="flex justify-end">
         {/* Done finishes, wherever this page was opened from - after the add flow,
@@ -435,7 +425,6 @@ export const SubscriptionsView: React.FC<AccountsPageProps> = (props) => {
       )}
 
       <form className="flex flex-col gap-3" onSubmit={submit} noValidate>
-        <p className="text-xs text-muted">{t('subscriptions.intro')}</p>
         <TextInput
           variant="boxed"
           label={t('subscriptions.url')}
@@ -447,7 +436,6 @@ export const SubscriptionsView: React.FC<AccountsPageProps> = (props) => {
         <TextInput
           variant="boxed"
           label={t('subscriptions.name')}
-          placeholder={t('subscriptions.namePlaceholder')}
           value={name}
           onChange={setName}
         />

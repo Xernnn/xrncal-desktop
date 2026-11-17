@@ -40,7 +40,7 @@ async function openProvider(name: string): Promise<void> {
   await page.getByRole('button', { name: 'Settings', exact: true }).click()
   await page.getByRole('button', { name: /Calendars & accounts/ }).click()
   await page.locator('.gc-dialog').getByRole('button', { name: /Add account/ }).click()
-  await expect(page.getByRole('button', { name: new RegExp(`^${name}`) })).toContainText('Set up once, then sign in')
+  await expect(page.getByRole('button', { name: new RegExp(`^${name}`) })).toContainText('Needs setup')
   await page.getByRole('button', { name: new RegExp(`^${name}`) }).click()
 }
 
@@ -154,7 +154,7 @@ test('the first-run welcome leads to the form rather than a dead end', async () 
     const welcome = page.getByRole('dialog', { name: 'Welcome to xrncal' })
     await welcome.getByRole('button', { name: 'Next', exact: true }).click()
     await welcome.getByRole('button', { name: 'Next', exact: true }).click()
-    await expect(welcome.getByRole('button', { name: /^Google/ })).toContainText('Set up once, then sign in')
+    await expect(welcome.getByRole('button', { name: /^Google/ })).toContainText('Needs setup')
     await welcome.getByRole('button', { name: /^Google/ }).click()
     await expect(page.locator('.gc-dialog').getByLabel('Client ID')).toBeVisible()
   } finally {
@@ -168,7 +168,7 @@ test('without a keyring it says so and stores nothing', async () => {
     safeStorage.isEncryptionAvailable = () => false
   })
   await openProvider('Google')
-  await expect(page.getByText(/keyring is unavailable/)).toBeVisible()
+  await expect(page.getByText('Keyring unavailable')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Save and continue' })).toBeDisabled()
   await expect(page.getByLabel('Client ID')).toBeDisabled()
 })

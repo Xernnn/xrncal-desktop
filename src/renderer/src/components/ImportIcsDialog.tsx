@@ -107,7 +107,6 @@ export const ImportIcsDialog: React.FC<ImportIcsDialogProps> = ({ files, calenda
           options={writable.map((c) => ({ value: c.id, label: c.name, color: c.color }))}
           placeholder={t('editor.chooseCalendar')}
         />
-        <p className="mt-2 text-[11px] leading-snug text-muted">{t('ics.importHint')}</p>
 
         <div className="mt-5 flex justify-end gap-2">
           <button type="button" className="gc-btn" onClick={onClose}>

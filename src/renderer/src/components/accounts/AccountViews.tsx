@@ -104,7 +104,7 @@ export const AccountListView: React.FC<AccountsPageProps> = (props) => {
                     {t(`accounts.syncProblems.${classifySyncError(syncError)}`)}
                   </span>
                 ) : group.kind === 'local' ? (
-                  `${t('accounts.localDetail')} · ${count}`
+                  count
                 ) : (
                   [label(group.kind), account?.email, count].filter(Boolean).join(' · ')
                 )
@@ -227,9 +227,9 @@ export const AccountDetailView: React.FC<AccountsPageProps & { accountId: string
           <div className="truncate text-sm font-medium text-primary">
             {isLocal ? t('calendarList.thisComputer') : account?.name}
           </div>
-          <div className="truncate text-xs text-muted">
-            {isLocal ? t('accounts.localDetail') : [label(kind), account?.email].filter(Boolean).join(' · ')}
-          </div>
+          {!isLocal && (
+            <div className="truncate text-xs text-muted">{[label(kind), account?.email].filter(Boolean).join(' · ')}</div>
+          )}
         </div>
       </div>
 
@@ -239,7 +239,7 @@ export const AccountDetailView: React.FC<AccountsPageProps & { accountId: string
           style={{ borderRadius: 'var(--radius-control)' }}
         >
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-today" />
-          <span>{t('accounts.notSyncingDetail')}</span>
+          <span>{t('accounts.notSyncing')}</span>
         </div>
       )}
 
@@ -355,15 +355,10 @@ export const AccountDetailView: React.FC<AccountsPageProps & { accountId: string
  */
 export const RemoveAccountView: React.FC<AccountsPageProps & { accountId: string }> = (props) => {
   const { t } = useTranslation()
-  const label = useProviderLabel()
   const [keep, setKeep] = useState(true)
   const [busy, setBusy] = useState(false)
   const account = props.accounts.find((a) => a.id === props.accountId)
   if (!account) return null
-  // "on Google itself", but "on homeserver.example.net itself" - a CalDAV
-  // account is a particular server, and "on CalDAV itself" meant nothing.
-  const kind = providerKind(account)
-  const provider = kind === 'caldav' ? account.name : label(kind)
 
   const remove = async () => {
     if (!window.xrncal?.auth || !window.xrncal?.calendars) return
@@ -391,7 +386,7 @@ export const RemoveAccountView: React.FC<AccountsPageProps & { accountId: string
     }
   }
 
-  const option = (value: boolean, title: string, detail: string) => (
+  const option = (value: boolean, title: string) => (
     <label
       className={`flex cursor-pointer gap-3 border px-3 py-2.5 transition-colors ${
         keep === value ? 'border-accent/60 bg-accent/5' : 'border-hairline hover:bg-hover'
@@ -405,19 +400,15 @@ export const RemoveAccountView: React.FC<AccountsPageProps & { accountId: string
         checked={keep === value}
         onChange={() => setKeep(value)}
       />
-      <span>
-        <span className="block text-sm text-primary">{title}</span>
-        <span className="block text-xs text-muted">{detail}</span>
-      </span>
+      <span className="block text-sm text-primary">{title}</span>
     </label>
   )
 
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-primary">{t('accounts.removeQuestion', { name: account.name })}</p>
-      {option(true, t('accounts.removeKeep'), t('accounts.removeKeepDetail'))}
-      {option(false, t('accounts.removeAll'), t('accounts.removeAllDetail'))}
-      <p className="text-xs text-muted">{t('accounts.removeProviderUntouched', { provider })}</p>
+      {option(true, t('accounts.removeKeep'))}
+      {option(false, t('accounts.removeAll'))}
       <div className="flex justify-end gap-2 pt-1">
         <button type="button" className="gc-btn" onClick={props.back} disabled={busy}>
           {t('common.cancel')}
@@ -471,7 +462,6 @@ export const NewLocalCalendarView: React.FC<AccountsPageProps> = (props) => {
 
   return (
     <form className="flex flex-col gap-3" onSubmit={create}>
-      <p className="text-xs text-muted">{t('addAccount.providers.local.detail')}</p>
       <TextInput
         variant="boxed"
         label={t('addAccount.local.name')}
