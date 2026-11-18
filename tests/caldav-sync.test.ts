@@ -18,8 +18,8 @@ import { SyncStateRepo } from '../src/main/db/repos/sync-state-repo'
  * whole calendar on every 20-second poll even when its ctag said nothing changed.
  */
 
-const CAL = 'https://dav.example/sonn/personal/'
-const CREDS: CalDavCredentials = { url: 'https://dav.example/sonn/', username: 'sonn', password: 'pw' }
+const CAL = 'https://dav.example/alex/personal/'
+const CREDS: CalDavCredentials = { url: 'https://dav.example/alex/', username: 'alex', password: 'pw' }
 
 interface ServerItem {
   name: string
@@ -53,7 +53,7 @@ function xmlEscape(text: string): string {
 function multistatus(items: ServerItem[], withData = true): string {
   const responses = items
     .map(
-      (i) => `<D:response><D:href>/sonn/personal/${i.name}</D:href><D:propstat><D:prop>` +
+      (i) => `<D:response><D:href>/alex/personal/${i.name}</D:href><D:propstat><D:prop>` +
         `<D:getetag>${xmlEscape(i.etag)}</D:getetag>` +
         (withData ? `<C:calendar-data>${xmlEscape(i.ics ?? vevent(i.uid, i.title))}</C:calendar-data>` : '') +
         `</D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response>`
@@ -75,7 +75,7 @@ function response(status: number, body = '', headers: Record<string, string> = {
 
 function calendarListing(ctag: string): string {
   return `<?xml version="1.0"?><D:multistatus xmlns:D="DAV:" xmlns:CS="http://calendarserver.org/ns/">` +
-    `<D:response><D:href>/sonn/personal/</D:href><D:propstat><D:prop>` +
+    `<D:response><D:href>/alex/personal/</D:href><D:propstat><D:prop>` +
     `<D:resourcetype><D:collection/><C:calendar xmlns:C="urn:ietf:params:xml:ns:caldav"/></D:resourcetype>` +
     `<D:displayname>Personal</D:displayname><CS:getctag>${ctag}</CS:getctag>` +
     `<D:current-user-privilege-set><D:privilege><D:write/></D:privilege></D:current-user-privilege-set>` +
@@ -110,7 +110,7 @@ function stubServer(
         const body = String(init.body)
         if (body.includes('calendar-multiget')) {
           if (options.multiget === false) return response(405)
-          const names = [...body.matchAll(/<D:href>\/sonn\/personal\/([^<]+)<\/D:href>/g)].map((m) => m[1])
+          const names = [...body.matchAll(/<D:href>\/alex\/personal\/([^<]+)<\/D:href>/g)].map((m) => m[1])
           reports.push(names.join(','))
           return response(207, multistatus(items.filter((i) => names.includes(i.name) && !options.gone?.includes(i.name))))
         }
@@ -208,7 +208,7 @@ describe('CalDAV sync', () => {
         id: created.id,
         uid: created.uid,
         title: 'Edited on the phone',
-        provider_event_id: `https://dav.example/sonn/personal/${created.uid}.ics`
+        provider_event_id: `https://dav.example/alex/personal/${created.uid}.ics`
       }
     ])
   })
@@ -271,7 +271,7 @@ describe('CalDAV sync', () => {
   it('edits and deletes a server-made event at the address the server listed it under', async () => {
     stubServer([{ name: 'onecal-1234.ics', uid: 'uid-from-phone', title: 'Made on the phone', etag: '"p1"' }])
     await engine.pullCalendarEvents(CAL, CREDS)
-    const href = 'https://dav.example/sonn/personal/onecal-1234.ics'
+    const href = 'https://dav.example/alex/personal/onecal-1234.ics'
     const id = rows()[0].id
 
     repo.updateEvent(id, { title: 'Edited here' })
@@ -293,7 +293,7 @@ describe('CalDAV sync', () => {
   })
 
   it('keeps the same UID in two calendars as two events', async () => {
-    const other = 'https://dav.example/sonn/work/'
+    const other = 'https://dav.example/alex/work/'
     const now = new Date().toISOString()
     db.prepare(
       `INSERT INTO calendars (id, account_id, name, color, is_visible, is_read_only, is_default, created_at, updated_at)
@@ -362,7 +362,7 @@ describe('CalDAV sync', () => {
     const now = new Date().toISOString()
     db.prepare(
       `INSERT INTO accounts (id, type, name, email, is_active, created_at, updated_at)
-       VALUES ('acc_caldav_test', 'caldav', 'Home server', 'sonn', 1, ?, ?)`
+       VALUES ('acc_caldav_test', 'caldav', 'Home server', 'alex', 1, ?, ?)`
     ).run(now, now)
     vi.spyOn(SecureStore.prototype, 'getToken').mockReturnValue(CREDS as never)
     const reportCount = (calls: { method: string }[]) => calls.filter((c) => c.method === 'REPORT').length
@@ -384,6 +384,153 @@ describe('CalDAV sync', () => {
     expect(rows().map((r) => r.title).sort()).toEqual(['A', 'B'])
   })
 
+  /**
+   * A REPORT answered 2xx with something that is not a multistatus (a captive
+   * portal's page, a proxy's, an empty body on a server fault) listed no
+   * events, and the pull deleted every synced event of the calendar here.
+   */
+  it('removes nothing when the listing is not a multistatus', async () => {
+    stubServer([
+      { name: 'a.ics', uid: 'uid-a', title: 'A', etag: '"a"' },
+      { name: 'b.ics', uid: 'uid-b', title: 'B', etag: '"b"' }
+    ])
+    await engine.pullCalendarEvents(CAL, CREDS)
+
+    for (const body of ['<html><body>Sign in to continue</body></html>', '']) {
+      vi.stubGlobal('fetch', vi.fn(async () => response(200, body)))
+      await expect(engine.pullCalendarEvents(CAL, CREDS)).rejects.toThrow(/multistatus/)
+      new SyncStateRepo(db).saveSyncToken(CAL, 'ctag-1')
+      await expect(engine.pullCalendarEvents(CAL, CREDS)).rejects.toThrow(/multistatus/)
+      expect(rows().map((r) => r.title).sort()).toEqual(['A', 'B'])
+    }
+  })
+
+  it('still reads an empty calendar as empty', async () => {
+    stubServer([{ name: 'a.ics', uid: 'uid-a', title: 'A', etag: '"a"' }])
+    await engine.pullCalendarEvents(CAL, CREDS)
+    stubServer([])
+    await engine.pullCalendarEvents(CAL, CREDS)
+    expect(rows()).toEqual([])
+  })
+
+  /** Requests with their If-Match, answered by `answer` (204 by default). */
+  function stubWrites(answer: (method: string) => Response = () => response(204)): { method: string; ifMatch?: string }[] {
+    const sent: { method: string; ifMatch?: string }[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init: RequestInit) => {
+        const method = init.method ?? 'GET'
+        sent.push({ method, ifMatch: (init.headers as Record<string, string>)['If-Match'] })
+        return answer(method)
+      })
+    )
+    return sent
+  }
+
+  /**
+   * DELETE went without If-Match, so an event deleted here after another
+   * device had edited it was removed with that edit, unseen. Google and
+   * Outlook already send the etag and raise a conflict on 412.
+   */
+  it('deletes only the version read here, and makes a newer one on the server a conflict', async () => {
+    stubServer([{ name: 'p.ics', uid: 'uid-p', title: 'Made on the phone', etag: '"p1"' }])
+    await engine.pullCalendarEvents(CAL, CREDS)
+    const id = rows()[0].id
+    repo.deleteEvent(id)
+
+    const sent = stubWrites(() => response(412))
+    await engine.pushDirtyEvents(CAL, CREDS)
+
+    expect(sent).toEqual([{ method: 'DELETE', ifMatch: '"p1"' }])
+    expect(db.prepare('SELECT is_deleted, has_conflict FROM events WHERE id = ?').get(id)).toEqual({
+      is_deleted: 1,
+      has_conflict: 1
+    })
+  })
+
+  it('deletes without a precondition once the user has kept their version', async () => {
+    stubServer([{ name: 'p.ics', uid: 'uid-p', title: 'Made on the phone', etag: '"p1"' }])
+    await engine.pullCalendarEvents(CAL, CREDS)
+    const id = rows()[0].id
+    repo.deleteEvent(id)
+    db.prepare('UPDATE events SET keep_mine = 1 WHERE id = ?').run(id)
+
+    const sent = stubWrites()
+    await engine.pushDirtyEvents(CAL, CREDS)
+
+    expect(sent).toEqual([{ method: 'DELETE', ifMatch: undefined }])
+    expect(rows()).toEqual([])
+  })
+
+  /**
+   * A PUT answered with no ETag kept the version read before it, so the next
+   * edit (or delete) went out against a version the server no longer had, and
+   * failed as a conflict nobody had caused.
+   */
+  it('does not send a version the server has replaced after a PUT that named none', async () => {
+    stubServer([{ name: 'p.ics', uid: 'uid-p', title: 'Made on the phone', etag: '"p1"' }])
+    await engine.pullCalendarEvents(CAL, CREDS)
+    const id = rows()[0].id
+
+    repo.updateEvent(id, { title: 'Edited here' })
+    stubWrites()
+    await engine.pushDirtyEvents(CAL, CREDS)
+    repo.updateEvent(id, { title: 'Edited here again' })
+    const sent = stubWrites()
+    await engine.pushDirtyEvents(CAL, CREDS)
+
+    expect(sent).toEqual([{ method: 'PUT', ifMatch: undefined }])
+  })
+
+  /**
+   * The ctag stored after a pass was the one read before its push, which the
+   * push itself had changed: every poll after a push listed the whole
+   * calendar's etags again for nothing.
+   */
+  it('stores the ctag the push left, so the next poll does not list the calendar again', async () => {
+    const now = new Date().toISOString()
+    db.prepare(
+      `INSERT INTO accounts (id, type, name, email, is_active, created_at, updated_at)
+       VALUES ('acc_caldav_test', 'caldav', 'Home server', 'alex', 1, ?, ?)`
+    ).run(now, now)
+    vi.spyOn(SecureStore.prototype, 'getToken').mockReturnValue(CREDS as never)
+    const a = { name: 'a.ics', uid: 'uid-a', title: 'A', etag: '"a"' }
+    stubServer([a], 'ctag-1')
+    await engine.syncAll()
+
+    const created = repo.createEvent({
+      calendarId: CAL,
+      title: 'Made here',
+      dtStartUtc: '2026-10-10T01:00:00.000Z',
+      dtEndUtc: '2026-10-10T01:30:00.000Z'
+    })
+    const made = { name: `${created.uid}.ics`, uid: created.uid, title: 'Made here', etag: '"etag-after-put"' }
+    // The server's ctag moves on with the PUT.
+    let pushed = false
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init: RequestInit) => {
+        const method = init.method ?? 'GET'
+        if (method === 'PUT') {
+          pushed = true
+          return response(201, '', { etag: '"etag-after-put"' })
+        }
+        if (method === 'PROPFIND') return response(207, calendarListing(pushed ? 'ctag-2' : 'ctag-1'))
+        if (method === 'REPORT') {
+          const body = String(init.body)
+          if (body.includes('calendar-multiget')) return response(207, multistatus([made]))
+          return response(207, multistatus([a, made], body.includes('calendar-data')))
+        }
+        return response(204)
+      })
+    )
+    await engine.syncAll()
+
+    const calls = stubServer([a, made], 'ctag-2')
+    await engine.syncAll()
+    expect(calls.filter((c) => c.method === 'REPORT')).toEqual([])
+  })
+
   it('keeps what another app stored on an event when it is edited here', async () => {
     const ics = [
       'BEGIN:VCALENDAR',
@@ -403,7 +550,7 @@ describe('CalDAV sync', () => {
       'TRIGGER:-P1D',
       'SUMMARY:Dentist',
       'DESCRIPTION:Tomorrow',
-      'ATTENDEE:mailto:sonn@example.com',
+      'ATTENDEE:mailto:alex@example.com',
       'END:VALARM',
       'END:VEVENT',
       'END:VCALENDAR'
@@ -435,7 +582,7 @@ describe('CalDAV sync', () => {
     for (const id of ['acc_caldav_holder', 'acc_caldav_twin']) {
       db.prepare(
         `INSERT INTO accounts (id, type, name, email, is_active, created_at, updated_at)
-         VALUES (?, 'caldav', 'Home server', 'sonn', 1, ?, ?)`
+         VALUES (?, 'caldav', 'Home server', 'alex', 1, ?, ?)`
       ).run(id, now, now)
     }
     db.prepare("UPDATE calendars SET account_id = 'acc_caldav_holder' WHERE id = ?").run(CAL)
@@ -453,7 +600,7 @@ describe('CalDAV sync', () => {
     const now = new Date().toISOString()
     db.prepare(
       `INSERT INTO accounts (id, type, name, email, is_active, created_at, updated_at)
-       VALUES ('acc_google', 'google', 'Google', 'me@gmail.com', 1, ?, ?), ('acc_dav', 'caldav', 'Server', 'sonn', 1, ?, ?)`
+       VALUES ('acc_google', 'google', 'Google', 'me@gmail.com', 1, ?, ?), ('acc_dav', 'caldav', 'Server', 'alex', 1, ?, ?)`
     ).run(now, now, now, now)
     db.prepare(
       `INSERT INTO calendars (id, account_id, name, color, is_visible, is_read_only, is_default, created_at, updated_at)
@@ -470,19 +617,19 @@ describe('CalDAV sync', () => {
       calendar('me@gmail.com', 'Taken over') +
       calendar('calendar-local-default', 'Taken over') +
       calendar('https://elsewhere.example/cal/', 'Elsewhere') +
-      calendar('/sonn/work/', 'Work') +
+      calendar('/alex/work/', 'Work') +
       `</D:multistatus>`
     vi.stubGlobal('fetch', vi.fn(async () => response(207, listing)))
 
     const synced = await engine.syncCalendarList('acc_dav', CREDS)
 
-    expect(synced.map((c) => c.id)).toEqual(['https://dav.example/sonn/work/'])
+    expect(synced.map((c) => c.id)).toEqual(['https://dav.example/alex/work/'])
     const cal = (id: string) =>
       db.prepare('SELECT name, account_id, is_read_only FROM calendars WHERE id = ?').get<Record<string, unknown>>(id)
     expect(cal('me@gmail.com')).toEqual({ name: 'Gmail', account_id: 'acc_google', is_read_only: 0 })
     expect(cal('calendar-local-default')).toEqual({ name: 'Personal Calendar', account_id: 'account-local-primary', is_read_only: 0 })
     expect(cal('https://elsewhere.example/cal/')).toBeUndefined()
-    expect(cal('https://dav.example/sonn/work/')).toMatchObject({ name: 'Work', account_id: 'acc_dav' })
+    expect(cal('https://dav.example/alex/work/')).toMatchObject({ name: 'Work', account_id: 'acc_dav' })
   })
 
   describe('when the account cannot sync', () => {
@@ -490,7 +637,7 @@ describe('CalDAV sync', () => {
       const now = new Date().toISOString()
       db.prepare(
         `INSERT INTO accounts (id, type, name, email, is_active, created_at, updated_at)
-         VALUES ('acc_caldav_test', 'caldav', 'Home server', 'sonn', 1, ?, ?)`
+         VALUES ('acc_caldav_test', 'caldav', 'Home server', 'alex', 1, ?, ?)`
       ).run(now, now)
     })
 

@@ -44,7 +44,7 @@ describe('groupCalendars', () => {
     const groups = groupCalendars(
       [google, server, local],
       [
-        cal('Ngày lễ Việt Nam', LOCAL_ACCOUNT_ID),
+        cal('Ngày lễ Việt Nam', LOCAL_ACCOUNT_ID, { isReadOnly: true, holidayType: 'vietnam' }),
         cal('Work', 'acc_google'),
         cal('Personal', 'acc_caldav'),
         cal('Notes', LOCAL_ACCOUNT_ID)
@@ -62,7 +62,7 @@ describe('groupCalendars', () => {
     const groups = groupCalendars(
       [local],
       [
-        cal('Ngày lễ Việt Nam', LOCAL_ACCOUNT_ID),
+        cal('Ngày lễ Việt Nam', LOCAL_ACCOUNT_ID, { isReadOnly: true, holidayType: 'vietnam' }),
         cal('Fixtures', LOCAL_ACCOUNT_ID, { isReadOnly: true, subscriptionUrl: 'https://example.com/f.ics' }),
         cal('Notes', LOCAL_ACCOUNT_ID)
       ]
@@ -71,6 +71,17 @@ describe('groupCalendars', () => {
       [LOCAL_ACCOUNT_ID, 'local', ['Notes']],
       ['subscriptions', 'subscription', ['Fixtures']],
       ['holidays', 'holidays', ['Ngày lễ Việt Nam']]
+    ])
+  })
+
+  it('keeps a calendar that is only named like a holiday calendar in its own account', () => {
+    const groups = groupCalendars(
+      [local, google],
+      [cal('International Holidays', LOCAL_ACCOUNT_ID), cal('Ngày lễ Việt Nam', 'acc_google', { isReadOnly: true })]
+    )
+    expect(groups.map((g) => [g.key, g.calendars.map((c) => c.name)])).toEqual([
+      [LOCAL_ACCOUNT_ID, ['International Holidays']],
+      ['acc_google', ['Ngày lễ Việt Nam']]
     ])
   })
 

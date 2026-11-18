@@ -3,6 +3,7 @@
  */
 
 import type { EventReminder } from './reminders'
+import type { HolidayCalendarType } from './holiday-calendars'
 
 export type { EventReminder }
 
@@ -35,6 +36,8 @@ export interface Calendar {
   /** The .ics feed a subscribed calendar is refreshed from (read-only, local). */
   subscriptionUrl?: string
   subscriptionRefreshedAt?: string
+  /** Which holiday subscription fills this calendar; what finds it, never its name. */
+  holidayType?: HolidayCalendarType
   syncToken?: string
   createdAt: string
   updatedAt: string
@@ -198,6 +201,12 @@ export interface ExpandedOccurrence {
   isException: boolean
   isLunar?: boolean        // True when produced by a yearly lunar-date master
   originalStartUtc: string // Original recurrence start in UTC ISO
+}
+
+/** An event search found. A series carries its date nearest to now, which the
+ *  result shows and opens; its own start is its first-ever date. */
+export interface EventSearchResult extends CalendarEvent {
+  occurrence?: ExpandedOccurrence
 }
 
 export interface CreateEventInput {

@@ -227,6 +227,10 @@ ${refs.join('\n')}
         throw new Error(`CalDAV multiget failed with HTTP ${res.status}: ${await failureText(res)}`)
       }
       const xml = await readTextWithin(res, calendarUrl, MAX_REPORT_BYTES, REPORT_BODY_TIMEOUT_MS)
+      // As in eventQuery: no multistatus, no word on any resource asked for.
+      if (!isMultistatus(xml)) {
+        throw new Error(`CalDAV multiget got HTTP ${res.status} without a multistatus answer`)
+      }
       items.push(...parseCalendarItems(xml, res.url || calendarUrl).filter((item) => item.ics))
     }
 
@@ -258,6 +262,12 @@ ${refs.join('\n')}
     // The request's deadline ends with the headers, and a server on a flaky link
     // can stall mid-body; that would hold SyncWorker.isSyncing for good.
     const xml = await readTextWithin(res, calendarUrl, MAX_REPORT_BYTES, REPORT_BODY_TIMEOUT_MS)
+    // A 2xx that is not a multistatus - a captive portal's page, a proxy's, a
+    // server answering empty on a fault - listed no events, and the pull took
+    // that as every event deleted on the server and removed them all here.
+    if (!isMultistatus(xml)) {
+      throw new Error(`CalDAV event query got HTTP ${res.status} without a multistatus answer`)
+    }
     return parseCalendarItems(xml, res.url || calendarUrl)
   }
 
@@ -325,10 +335,26 @@ ${refs.join('\n')}
   /**
    * Delete an event from CalDAV collection via DELETE. `href` is where the
    * server keeps it; without one the UID-named address xrncal itself uses.
+   * With `etag`, only that version is deleted: 'conflict' when the server has
+   * another - edited on another device since it was read here.
    */
-  async deleteEvent(calendarUrl: string, eventUid: string, href?: string): Promise<boolean> {
-    const res = await this.request(href || eventUrlFor(calendarUrl, eventUid), 'DELETE')
+  async deleteEvent(calendarUrl: string, eventUid: string, href?: string, etag?: string): Promise<boolean | 'conflict'> {
+    const res = await this.request(
+      href || eventUrlFor(calendarUrl, eventUid),
+      'DELETE',
+      undefined,
+      etag ? { 'If-Match': etag } : {}
+    )
+    if (res.status === 412) return 'conflict'
     return res.ok || res.status === 404
+  }
+
+  /** The calendar's ctag as the server has it now (a Depth-0 PROPFIND), if it keeps one. */
+  async readCtag(calendarUrl: string): Promise<string | undefined> {
+    const res = await this.propfind(calendarUrl, '0', '<D:resourcetype/>\n    <CS:getctag/>')
+    if (!res) return undefined
+    const xml = await readTextWithin(res, res.url || calendarUrl, MAX_DISCOVERY_BYTES)
+    return parseCalDavMultistatus(xml, res.url || calendarUrl)[0]?.ctag
   }
 }
 
@@ -373,6 +399,11 @@ function resourceNameFor(uid: string): string {
 }
 
 /** The `response` elements of a REPORT multistatus, with absolute hrefs so they can be stored and PUT or DELETEd as-is. */
+/** Whether a REPORT body is a WebDAV multistatus at all (an empty one included). */
+function isMultistatus(xml: string): boolean {
+  return /<(?:[a-zA-Z0-9_-]+:)?multistatus[\s/>]/.test(xml)
+}
+
 function parseCalendarItems(xml: string, baseUrl: string): CalDavItem[] {
   const items: CalDavItem[] = []
   for (const resp of multistatusResponses(xml)) {

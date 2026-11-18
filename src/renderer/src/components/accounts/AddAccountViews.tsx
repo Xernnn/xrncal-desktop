@@ -53,11 +53,7 @@ export const ProviderPickView: React.FC<AccountsPageProps> = (props) => {
           key={provider}
           icon={<ProviderMark kind={provider} />}
           title={t(`addAccount.providers.${provider}.title`)}
-          subtitle={
-            needsSetup(provider)
-              ? t('addAccount.needsSetup')
-              : t(`addAccount.providers.${provider}.detail`)
-          }
+          subtitle={needsSetup(provider) ? t('addAccount.needsSetup') : undefined}
           onClick={() =>
             props.push(
               provider === 'holidays'
@@ -174,8 +170,6 @@ export const ConnectView: React.FC<AccountsPageProps & { provider: 'google' | 'g
     }
     return (
       <div className="flex flex-col gap-3">
-        <p className="text-sm text-primary">{t('addAccount.browser.body', { provider: providerName })}</p>
-        <p className="text-xs text-muted">{t('addAccount.browser.privacy')}</p>
         {client?.source === 'saved' && (
           <button
             type="button"
@@ -247,17 +241,14 @@ export const ConnectView: React.FC<AccountsPageProps & { provider: 'google' | 'g
           </a>
         </div>
       ) : (
-        <div className="space-y-1">
-          <TextInput
-            variant="boxed"
-            label={t('addAccount.caldav.server')}
-            placeholder="cloud.example.com"
-            value={server}
-            onChange={edit(setServer)}
-            autoFocus
-          />
-          <p className="px-0.5 text-[11px] text-muted">{t('addAccount.caldav.serverHint')}</p>
-        </div>
+        <TextInput
+          variant="boxed"
+          label={t('addAccount.caldav.server')}
+          placeholder="cloud.example.com"
+          value={server}
+          onChange={edit(setServer)}
+          autoFocus
+        />
       )}
 
       <TextInput
@@ -279,7 +270,7 @@ export const ConnectView: React.FC<AccountsPageProps & { provider: 'google' | 'g
       <TextInput
         variant="boxed"
         label={t('addAccount.caldav.name')}
-        placeholder={isICloud ? 'iCloud' : hostOf(server) || t('addAccount.caldav.namePlaceholder')}
+        placeholder={isICloud ? 'iCloud' : hostOf(server) || undefined}
         value={name}
         onChange={setName}
       />
@@ -302,7 +293,6 @@ export const HolidaysView: React.FC<AccountsPageProps> = (props) => {
   const { t } = useTranslation()
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-xs text-muted">{t('addAccount.providers.holidays.detail')}</p>
       <HolidayCalendarToggle calendars={props.calendars} onCalendarsChanged={() => void props.refresh()} />
       <div className="flex justify-end">
         {/* Done finishes, wherever this page was opened from - after the add flow,
@@ -329,6 +319,8 @@ export const SubscriptionsView: React.FC<AccountsPageProps> = (props) => {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState<string | null>(null)
+  // The feed whose Unsubscribe is waiting for a yes, asked in the row itself.
+  const [unsubscribing, setUnsubscribing] = useState<string | null>(null)
   const subscribed = props.calendars.filter((c) => c.subscriptionUrl)
   const api = window.xrncal?.subscriptions
 
@@ -364,7 +356,8 @@ export const SubscriptionsView: React.FC<AccountsPageProps> = (props) => {
   }
 
   const unsubscribe = async (cal: Calendar) => {
-    if (!window.xrncal?.calendars || !confirm(t('subscriptions.unsubscribeConfirm', { name: cal.name }))) return
+    setUnsubscribing(null)
+    if (!window.xrncal?.calendars) return
     try {
       await window.xrncal.calendars.delete(cal.id)
       await props.refresh()
@@ -378,45 +371,60 @@ export const SubscriptionsView: React.FC<AccountsPageProps> = (props) => {
       {subscribed.length > 0 && (
         <div className="flex flex-col gap-0.5">
           {subscribed.map((cal) => (
-            <div key={cal.id} className="flex items-center gap-2.5 px-2 py-1.5">
-              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: cal.color }} />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm text-primary">{cal.name}</span>
-                <span className="block truncate text-xs text-muted">
-                  {hostOf(cal.subscriptionUrl!)} ·{' '}
-                  {cal.subscriptionRefreshedAt
-                    ? t('subscriptions.refreshed', {
-                        when: DateTime.fromISO(cal.subscriptionRefreshedAt).setLocale(i18n.language).toRelative()
-                      })
-                    : t('subscriptions.neverRefreshed')}
+            <React.Fragment key={cal.id}>
+              <div className="flex items-center gap-2.5 px-2 py-1.5">
+                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: cal.color }} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm text-primary">{cal.name}</span>
+                  <span className="block truncate text-xs text-muted">
+                    {hostOf(cal.subscriptionUrl!)} ·{' '}
+                    {cal.subscriptionRefreshedAt
+                      ? t('subscriptions.refreshed', {
+                          when: DateTime.fromISO(cal.subscriptionRefreshedAt).setLocale(i18n.language).toRelative()
+                        })
+                      : t('subscriptions.neverRefreshed')}
+                  </span>
                 </span>
-              </span>
-              <button
-                type="button"
-                className="gc-icon-btn h-7 w-7"
-                title={t('subscriptions.refresh')}
-                aria-label={t('subscriptions.refresh')}
-                disabled={refreshing === cal.id}
-                onClick={() => void refreshOne(cal)}
-              >
-                <RefreshCw className={`h-3.5 w-3.5 ${refreshing === cal.id ? 'animate-spin' : ''}`} />
-              </button>
-              <button
-                type="button"
-                className="gc-icon-btn h-7 w-7 hover:text-today"
-                title={t('subscriptions.unsubscribe')}
-                aria-label={t('subscriptions.unsubscribe')}
-                onClick={() => void unsubscribe(cal)}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-            </div>
+                <button
+                  type="button"
+                  className="gc-icon-btn h-7 w-7"
+                  title={t('subscriptions.refresh')}
+                  aria-label={t('subscriptions.refresh')}
+                  disabled={refreshing === cal.id}
+                  onClick={() => void refreshOne(cal)}
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${refreshing === cal.id ? 'animate-spin' : ''}`} />
+                </button>
+                <button
+                  type="button"
+                  className="gc-icon-btn h-7 w-7 hover:text-today"
+                  title={t('subscriptions.unsubscribe')}
+                  aria-label={t('subscriptions.unsubscribe')}
+                  onClick={() => setUnsubscribing(cal.id)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              {unsubscribing === cal.id && (
+                <div
+                  className="mx-2 mb-2 flex items-center gap-2 border border-today/40 px-3 py-2 text-xs"
+                  style={{ borderRadius: 'var(--radius-control)' }}
+                >
+                  <span className="flex-1 text-primary">{t('subscriptions.unsubscribeConfirm', { name: cal.name })}</span>
+                  <button type="button" className="gc-btn" onClick={() => setUnsubscribing(null)}>
+                    {t('common.cancel')}
+                  </button>
+                  <button type="button" className="gc-btn text-today" onClick={() => void unsubscribe(cal)}>
+                    {t('subscriptions.unsubscribe')}
+                  </button>
+                </div>
+              )}
+            </React.Fragment>
           ))}
         </div>
       )}
 
       <form className="flex flex-col gap-3" onSubmit={submit} noValidate>
-        <p className="text-xs text-muted">{t('subscriptions.intro')}</p>
         <TextInput
           variant="boxed"
           label={t('subscriptions.url')}
@@ -428,7 +436,6 @@ export const SubscriptionsView: React.FC<AccountsPageProps> = (props) => {
         <TextInput
           variant="boxed"
           label={t('subscriptions.name')}
-          placeholder={t('subscriptions.namePlaceholder')}
           value={name}
           onChange={setName}
         />

@@ -261,8 +261,7 @@ export function useEventCommands(deps: EventCommandDeps) {
         return
       }
 
-      if (shouldPrompt && !window.confirm(t('toast.confirmDelete'))) return
-
+      // No prompt: the Undo toast and Ctrl+Z bring it back, as for every other delete.
       try {
         // Taken before the delete: a synced deletion is pushed within seconds, and
         // after that only the snapshot can bring the event back.

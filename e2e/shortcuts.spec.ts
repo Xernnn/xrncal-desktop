@@ -63,10 +63,9 @@ test('the keyboard walks to an event, moves it, deletes it, and Ctrl+Z undoes ea
     await page.keyboard.press('Control+z')
     await expect.poll(() => startOf(page, 'Dentist')).toBe('10:00')
 
-    // Delete asks first, then takes it off the grid with an Undo on the toast;
+    // Delete takes it off the grid at once, with an Undo on the toast;
     // Ctrl+Z works too.
     await expect(page.locator('.is-key-selected', { hasText: 'Dentist' })).toBeVisible()
-    page.once('dialog', (dialog) => void dialog.accept())
     await page.keyboard.press('Delete')
     await expect(block).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeVisible()

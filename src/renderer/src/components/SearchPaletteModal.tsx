@@ -6,33 +6,50 @@ import {
   Clock,
   Users,
   X,
-  ArrowRight,
-  Sparkles
+  ArrowRight
 } from 'lucide-react'
 import { DateTime } from 'luxon'
-import type { CalendarEvent, Calendar } from '@shared/event-model'
+import type { Calendar, EventSearchResult } from '@shared/event-model'
 import { formatClockTime, type TimeFormatPref } from '@shared/time-format'
 import { useDisplayPreferences } from '../context/DisplayPreferencesContext'
+import { useDialogFocus } from '../hooks/use-dialog-focus'
+
+/** The dates a search result stands for: a series' date nearest to now, else its own. */
+function resultSpan(event: EventSearchResult): { startUtc: string; endUtc: string; allDay: boolean } {
+  const occ = event.occurrence
+  return occ
+    ? { startUtc: occ.startUtc, endUtc: occ.endUtc, allDay: occ.allDay }
+    : { startUtc: event.dtStartUtc, endUtc: event.dtEndUtc, allDay: event.allDay }
+}
 
 /**
  * When a search result is, as the list shows it. An all-day event is a
  * floating date parked at UTC midnight, so its date is read in UTC: in this
  * computer's zone it was the day before west of GMT.
  */
-export function resultWhen(event: CalendarEvent, timeFormat: TimeFormatPref, allDaySuffix: string): string {
-  if (event.allDay) {
-    return `${DateTime.fromISO(event.dtStartUtc, { zone: 'utc' }).toFormat('dd/MM/yyyy')} (${allDaySuffix})`
+export function resultWhen(event: EventSearchResult, timeFormat: TimeFormatPref, allDaySuffix: string): string {
+  const span = resultSpan(event)
+  if (span.allDay) {
+    return `${DateTime.fromISO(span.startUtc, { zone: 'utc' }).toFormat('dd/MM/yyyy')} (${allDaySuffix})`
   }
-  const dt = DateTime.fromISO(event.dtStartUtc)
-  const endDt = DateTime.fromISO(event.dtEndUtc)
+  const dt = DateTime.fromISO(span.startUtc)
+  const endDt = DateTime.fromISO(span.endUtc)
   return `${dt.toFormat('dd/MM/yyyy')} ${formatClockTime(dt, timeFormat)} – ${formatClockTime(endDt, timeFormat)}`
+}
+
+/** The day the calendar goes to for a result: the date it shows (see resultWhen). */
+export function resultDate(event: EventSearchResult): string {
+  const span = resultSpan(event)
+  return span.allDay
+    ? span.startUtc.slice(0, 10)
+    : DateTime.fromISO(span.startUtc).toISODate() || span.startUtc.slice(0, 10)
 }
 
 interface SearchPaletteModalProps {
   isOpen: boolean
   onClose: () => void
   calendars: Calendar[]
-  onSelectEvent: (event: CalendarEvent, targetDate: string) => void
+  onSelectEvent: (event: EventSearchResult, targetDate: string) => void
 }
 
 export const SearchPaletteModal: React.FC<SearchPaletteModalProps> = ({
@@ -44,10 +61,11 @@ export const SearchPaletteModal: React.FC<SearchPaletteModalProps> = ({
   const { t } = useTranslation()
   const { timeFormat } = useDisplayPreferences()
   const [query, setQuery] = useState('')
-  const [results, setResults] = useState<CalendarEvent[]>([])
+  const [results, setResults] = useState<EventSearchResult[]>([])
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const { ref: dialogRef, onKeyDown: onDialogKeyDown } = useDialogFocus<HTMLDivElement>(isOpen)
 
   const calendarMap = new Map(calendars.map((c) => [c.id, c]))
 
@@ -119,12 +137,8 @@ export const SearchPaletteModal: React.FC<SearchPaletteModalProps> = ({
     }
   }
 
-  const handleSelect = (event: CalendarEvent) => {
-    const targetDate = event.allDay
-      ? event.dtStartUtc.slice(0, 10)
-      : DateTime.fromISO(event.dtStartUtc).toISODate() || event.dtStartUtc.slice(0, 10)
-
-    onSelectEvent(event, targetDate)
+  const handleSelect = (event: EventSearchResult) => {
+    onSelectEvent(event, resultDate(event))
     onClose()
   }
 
@@ -137,7 +151,15 @@ export const SearchPaletteModal: React.FC<SearchPaletteModalProps> = ({
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div className="gc-dialog w-full max-w-2xl max-h-[80vh]">
+      <div
+        ref={dialogRef}
+        className="gc-dialog w-full max-w-2xl max-h-[80vh]"
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('search.placeholder')}
+        tabIndex={-1}
+        onKeyDown={onDialogKeyDown}
+      >
         {/* Search Header Input */}
         <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-3 bg-slate-50 dark:bg-slate-950/60">
           <Search className="h-5 w-5 text-slate-400 shrink-0" />
@@ -162,90 +184,84 @@ export const SearchPaletteModal: React.FC<SearchPaletteModalProps> = ({
 
         {/* Results List */}
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
-          {isLoading && (
+          {/* The last results stay up while the next search runs: hiding them
+              behind this made the list flicker on every keystroke. */}
+          {isLoading && results.length === 0 && (
             <div className="p-8 text-center text-xs text-slate-400">{t('search.searching')}</div>
           )}
 
           {!isLoading && query.trim() && results.length === 0 && (
             <div className="p-8 text-center text-xs text-slate-500">
-              {t('search.noResults', { q: query })}
+              {t('search.noResults')}
             </div>
           )}
 
-          {!isLoading && !query.trim() && (
-            <div className="p-8 text-center text-xs text-slate-400 dark:text-slate-500 flex flex-col items-center gap-2">
-              <Sparkles className="h-5 w-5 text-indigo-500 dark:text-indigo-400" />
-              <span>{t('search.empty')}</span>
-            </div>
-          )}
+          {results.map((evt, idx) => {
+            const cal = calendarMap.get(evt.calendarId)
+            const calColor = evt.color || cal?.color || '#6366f1'
+            const isSelected = idx === selectedIndex
 
-          {!isLoading &&
-            results.map((evt, idx) => {
-              const cal = calendarMap.get(evt.calendarId)
-              const calColor = evt.color || cal?.color || '#6366f1'
-              const isSelected = idx === selectedIndex
-
-              return (
-                <div
-                  key={evt.id}
-                  onClick={() => handleSelect(evt)}
-                  onMouseEnter={() => setSelectedIndex(idx)}
-                  className={`p-3 rounded-xl cursor-pointer transition-all flex items-start justify-between gap-3 ${
-                    isSelected
-                      ? 'bg-indigo-50 dark:bg-indigo-600/20 border border-indigo-200 dark:border-indigo-500/40 text-slate-900 dark:text-slate-100'
-                      : 'hover:bg-slate-100/70 dark:hover:bg-slate-800/40 border border-transparent text-slate-700 dark:text-slate-300'
-                  }`}
-                >
-                  <div className="min-w-0 space-y-1 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="h-2.5 w-2.5 rounded-full shrink-0"
-                        style={{ backgroundColor: calColor }}
-                      />
-                      <span className="font-semibold text-sm text-slate-800 dark:text-slate-100 truncate">
-                        {evt.title || t('common.untitled')}
+            return (
+              <div
+                key={evt.id}
+                onClick={() => handleSelect(evt)}
+                onMouseEnter={() => setSelectedIndex(idx)}
+                className={`p-3 rounded-xl cursor-pointer transition-all flex items-start justify-between gap-3 ${
+                  isSelected
+                    ? 'bg-indigo-50 dark:bg-indigo-600/20 border border-indigo-200 dark:border-indigo-500/40 text-slate-900 dark:text-slate-100'
+                    : 'hover:bg-slate-100/70 dark:hover:bg-slate-800/40 border border-transparent text-slate-700 dark:text-slate-300'
+                }`}
+              >
+                <div className="min-w-0 space-y-1 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="h-2.5 w-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: calColor }}
+                    />
+                    <span className="font-semibold text-sm text-slate-800 dark:text-slate-100 truncate">
+                      {evt.title || t('common.untitled')}
+                    </span>
+                    {cal && (
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800/80 font-medium">
+                        {cal.name}
                       </span>
-                      {cal && (
-                        <span className="text-[10px] text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800/80 font-medium">
-                          {cal.name}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-                      <span className="flex items-center gap-1">
-                        <Clock className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
-                        {resultWhen(evt, timeFormat, t('search.allDaySuffix'))}
-                      </span>
-
-                      {evt.location && (
-                        <span className="flex items-center gap-1 truncate max-w-xs">
-                          <MapPin className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
-                          <span className="truncate">{evt.location}</span>
-                        </span>
-                      )}
-
-                      {evt.attendees && evt.attendees.length > 0 && (
-                        <span className="flex items-center gap-1">
-                          <Users className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
-                          <span>{t('search.attendees', { count: evt.attendees.length })}</span>
-                        </span>
-                      )}
-                    </div>
+                    )}
                   </div>
 
-                  <div className="shrink-0 flex items-center self-center text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200">
-                    <div
-                      className={`p-1.5 rounded-lg ${
-                        isSelected ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-400'
-                      }`}
-                    >
-                      <ArrowRight className="h-4 w-4" />
-                    </div>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                    <span className="flex items-center gap-1">
+                      <Clock className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
+                      {resultWhen(evt, timeFormat, t('search.allDaySuffix'))}
+                    </span>
+
+                    {evt.location && (
+                      <span className="flex items-center gap-1 truncate max-w-xs">
+                        <MapPin className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
+                        <span className="truncate">{evt.location}</span>
+                      </span>
+                    )}
+
+                    {evt.attendees && evt.attendees.length > 0 && (
+                      <span className="flex items-center gap-1">
+                        <Users className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
+                        <span>{t('search.attendees', { count: evt.attendees.length })}</span>
+                      </span>
+                    )}
                   </div>
                 </div>
-              )
-            })}
+
+                <div className="shrink-0 flex items-center self-center text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200">
+                  <div
+                    className={`p-1.5 rounded-lg ${
+                      isSelected ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-400'
+                    }`}
+                  >
+                    <ArrowRight className="h-4 w-4" />
+                  </div>
+                </div>
+              </div>
+            )
+          })}
         </div>
       </div>
     </div>

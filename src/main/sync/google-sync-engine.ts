@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { fetchWithTimeout, describeError, describeHttpFailure, isRetryableStatus } from './http'
 import type { ISqliteDatabase } from '../db/sqlite-driver'
 import { GoogleOAuthManager } from '../oauth/google-oauth'
@@ -316,6 +317,9 @@ export class GoogleSyncEngine {
       const applyEvent = (gEvent: GoogleCalendarApiEvent): boolean => {
         const evt = mapGoogleEventToDomain(gEvent, calendarId).event!
         const now = new Date().toISOString()
+        // An event created here whose create answer was lost: Google has it
+        // under the id the create went out with (see pushDirtyEvents).
+        this.eventsRepo.bindPendingCreate(calendarId, evt.id, evt.id, evt.etag || null)
         const found = findLocalId(evt.id)
         // A cancellation of an event this calendar never had is nothing to
         // store (an event moved out, or taken off a calendar shared with us).
@@ -455,8 +459,9 @@ export class GoogleSyncEngine {
         const isDeleted = row.is_deleted === 1
         // Ours is `evt_...` until the first push; the provider's is what every
         // URL below needs. They are the same string only for rows that synced
-        // before the two were separated.
-        const googleEventId = row.provider_event_id || row.id
+        // before the two were separated. A create still unanswered went out
+        // with an id of its own, which Google may have.
+        let googleEventId = row.provider_event_id || row.create_id || row.id
         let etag = row.etag
         // The precondition every write carries - none once the user has chosen
         // this version over the server's ("keep mine" on a conflict).
@@ -537,7 +542,7 @@ export class GoogleSyncEngine {
             : undefined
 
           // INSERT or UPDATE
-          const payload = mapDomainEventToGoogle({
+          const toGoogle = (mode: 'insert' | 'patch') => mapDomainEventToGoogle({
             id: row.id,
             calendarId: row.calendar_id,
             uid: row.uid,
@@ -555,15 +560,14 @@ export class GoogleSyncEngine {
             meetingUrl: row.meeting_url ?? undefined,
             reminders: parseRemindersJson(row.reminders),
             attendees
-          }, etag ? 'patch' : 'insert')
+          }, mode)
 
-          let putRes: Response
-          if (etag) {
-            // Existing event update. A PATCH, not a PUT: Google's update
-            // replaces the whole resource, so a PUT of the fields the app
-            // models reset every other one - visibility, free/busy,
-            // attachments, other apps' extended properties - on each edit here.
-            putRes = await fetchWithTimeout(
+          // Existing event update. A PATCH, not a PUT: Google's update
+          // replaces the whole resource, so a PUT of the fields the app
+          // models reset every other one - visibility, free/busy,
+          // attachments, other apps' extended properties - on each edit here.
+          const patch = (): Promise<Response> =>
+            fetchWithTimeout(
               `${GOOGLE_API_BASE}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(googleEventId)}`,
               {
                 method: 'PATCH',
@@ -575,11 +579,18 @@ export class GoogleSyncEngine {
                   // so without this the 412 branch below is unreachable.
                   ...(ifMatch ? { 'If-Match': ifMatch } : {})
                 },
-                body: JSON.stringify(payload)
+                body: JSON.stringify(toGoogle('patch'))
               }
             )
+
+          let putRes: Response
+          if (etag) {
+            putRes = await patch()
           } else {
-            // New event insertion
+            // New event insertion, under an id of our own made before the
+            // first try (base32hex, as Google wants), so a create whose answer
+            // is lost is the same create when it goes again.
+            googleEventId = this.eventsRepo.assignCreateId(row.id, () => randomUUID().replace(/-/g, ''))
             putRes = await fetchWithTimeout(
               `${GOOGLE_API_BASE}/calendars/${encodeURIComponent(calendarId)}/events`,
               {
@@ -588,9 +599,24 @@ export class GoogleSyncEngine {
                   Authorization: `Bearer ${accessToken}`,
                   'Content-Type': 'application/json'
                 },
-                body: JSON.stringify(payload)
+                body: JSON.stringify({ id: googleEventId, ...toGoogle('insert') })
               }
             )
+            if (putRes.status === 409) {
+              // Google has an event with that id: an earlier try of this
+              // create got there and its answer did not come back. It is made;
+              // what the row holds now goes over it, against its etag.
+              const heldRes = await fetchWithTimeout(
+                `${GOOGLE_API_BASE}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(googleEventId)}`,
+                { headers: { Authorization: `Bearer ${accessToken}` } }
+              )
+              const held = heldRes.ok ? ((await heldRes.json().catch(() => null)) as { etag?: string } | null) : null
+              if (held?.etag) {
+                etag = held.etag
+                if (row.keep_mine !== 1) ifMatch = etag
+                putRes = await patch()
+              }
+            }
           }
 
           if (putRes.ok) {
@@ -633,7 +659,7 @@ export class GoogleSyncEngine {
     return {
       pushedCount: pushedCount + excRes.pushedCount,
       errorCount: errorCount + excRes.errorCount,
-      lastError
+      lastError: lastError ?? excRes.lastError
     }
   }
 
@@ -649,10 +675,13 @@ export class GoogleSyncEngine {
   private async pushDirtyExceptions(
     calendarId: string,
     accessToken: string
-  ): Promise<{ pushedCount: number; errorCount: number }> {
+  ): Promise<{ pushedCount: number; errorCount: number; lastError: string | null }> {
     const pending = this.eventsRepo.listDirtyExceptions(calendarId)
     let pushedCount = 0
     let errorCount = 0
+    // Why the last one failed: without it the calendar showed an unknown push
+    // error, retried on every poll.
+    let lastError: string | null = null
 
     for (const { exception, master, providerInstanceId } of pending) {
       try {
@@ -669,6 +698,7 @@ export class GoogleSyncEngine {
         }
         if (!instanceId) {
           // The series may not have propagated yet; leave it dirty and retry.
+          lastError = `Google has no occurrence of "${master.title}" on ${exception.originalStartUtc.slice(0, 10)}`
           errorCount++
           continue
         }
@@ -702,14 +732,21 @@ export class GoogleSyncEngine {
           this.eventsRepo.markExceptionSynced(exception.id, instanceId, json?.etag ?? null, exception.updatedAt)
           pushedCount++
         } else {
+          if ((res.status === 404 || res.status === 410) && providerInstanceId) {
+            // The instance id kept from an earlier push is gone (the series
+            // changed on Google): look it up again next time.
+            this.eventsRepo.forgetExceptionInstance(exception.id)
+          }
+          lastError = await describeHttpFailure(res)
           errorCount++
         }
-      } catch {
+      } catch (err) {
+        lastError = describeError(err)
         errorCount++
       }
     }
 
-    return { pushedCount, errorCount }
+    return { pushedCount, errorCount, lastError }
   }
 
   /**
@@ -782,35 +819,48 @@ export class GoogleSyncEngine {
   }
 
   /** Resolve a master + original start time to Google's own id for that instance. */
+  /**
+   * The instance of a series that was at `originalStartUtc` before any move,
+   * or null. Asked for by its original start; then, for a server that ignores
+   * that, among the instances at that time now. Only an instance whose
+   * originalStartTime is that date counts: the first one listed used to be
+   * taken when none matched, and when the wanted occurrence had been moved
+   * away and another moved into its slot, the override or cancellation went
+   * onto that other date.
+   */
   private async findInstanceId(
     calendarId: string,
     masterEventId: string,
     originalStartUtc: string,
     accessToken: string
   ): Promise<string | null> {
-    // A one-second window either side is enough to isolate the occurrence while
-    // tolerating sub-second representation differences.
     const origin = new Date(originalStartUtc)
-    const timeMin = new Date(origin.getTime() - 1000).toISOString()
-    const timeMax = new Date(origin.getTime() + 1000).toISOString()
-
-    const res = await fetchWithTimeout(
-      `${GOOGLE_API_BASE}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(masterEventId)}/instances` +
-        `?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&showDeleted=true&maxResults=10`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    )
-    if (!res.ok) return null
-
-    const data = await res.json()
-    const items: GoogleCalendarApiEvent[] = data.items || []
     const targetMs = origin.getTime()
-
-    for (const item of items) {
-      const raw = item.originalStartTime?.dateTime || item.originalStartTime?.date
-      if (!raw) continue
-      if (Math.abs(new Date(raw).getTime() - targetMs) < 1000) return item.id
+    const instancesUrl =
+      `${GOOGLE_API_BASE}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(masterEventId)}/instances`
+    const matching = async (query: string): Promise<string | null> => {
+      const res = await fetchWithTimeout(`${instancesUrl}?${query}&showDeleted=true&maxResults=10`, {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      })
+      if (!res.ok) return null
+      const data = await res.json()
+      const items: GoogleCalendarApiEvent[] = data.items || []
+      for (const item of items) {
+        const raw = item.originalStartTime?.dateTime || item.originalStartTime?.date
+        if (!raw) continue
+        // Within a second: sub-second representation differences.
+        if (Math.abs(new Date(raw).getTime() - targetMs) < 1000) return item.id
+      }
+      return null
     }
-    return items[0]?.id ?? null
+
+    // A one-second window either side of the time it is at now.
+    const timeMin = new Date(targetMs - 1000).toISOString()
+    const timeMax = new Date(targetMs + 1000).toISOString()
+    return (
+      (await matching(`originalStart=${encodeURIComponent(origin.toISOString())}`)) ??
+      (await matching(`timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}`))
+    )
   }
 
   /**

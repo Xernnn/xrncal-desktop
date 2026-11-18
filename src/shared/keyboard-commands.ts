@@ -57,6 +57,33 @@ export type KeyCommand =
   | { type: 'openSettings' }
   | { type: 'sync' }
 
+/** Input types a person types text into; a checkbox or a button is not one. */
+const TEXT_INPUT_TYPES = new Set(['', 'text', 'search', 'email', 'url', 'tel', 'password', 'number'])
+
+/** Whether a keydown's target is a field that edits text, so that keys such as
+ *  Ctrl+Backspace (delete a word) are its own. */
+export function isTextField(target: { tagName?: string; type?: string; isContentEditable?: boolean } | null): boolean {
+  if (!target) return false
+  if (target.isContentEditable || target.tagName === 'TEXTAREA') return true
+  return target.tagName === 'INPUT' && TEXT_INPUT_TYPES.has((target.type ?? '').toLowerCase())
+}
+
+/**
+ * What the event editor does with a Ctrl/Cmd key: Ctrl+Enter saves from
+ * anywhere, Ctrl+Backspace and Ctrl+Delete delete the event - except inside a
+ * text field, where they delete a word as in any other field. Nothing while
+ * the discard prompt is up.
+ */
+export function editorCommandForKey(
+  input: Pick<KeyInput, 'key' | 'ctrl' | 'inTextField'>,
+  discardPromptOpen: boolean
+): 'save' | 'delete' | null {
+  if (!input.ctrl || discardPromptOpen) return null
+  if (input.key === 'Enter') return 'save'
+  if ((input.key === 'Backspace' || input.key === 'Delete') && !input.inTextField) return 'delete'
+  return null
+}
+
 const VIEW_KEYS: Record<string, CalendarViewType> = {
   '1': 'day',
   d: 'day',

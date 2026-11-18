@@ -197,7 +197,7 @@ test('an event saved without a zone opens in the zone the user was in on its dat
 
     const open = async (title: string): Promise<void> => {
       await page.keyboard.press('Control+k')
-      await page.getByPlaceholder(/Search events by title/).fill(title)
+      await page.getByPlaceholder('Search (Ctrl+K)').fill(title)
       await page.getByText(title).last().click()
       await expect(page.getByPlaceholder('Event title…')).toHaveValue(title)
     }

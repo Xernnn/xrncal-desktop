@@ -6,7 +6,7 @@ import { GoogleOAuthManager } from '../oauth/google-oauth'
 import { MicrosoftOAuthManager } from '../oauth/microsoft-oauth'
 import { activeOAuthClient, oauthClientInfo, saveOAuthClient } from '../oauth/oauth-clients'
 import { SecureStore } from '../secure-store'
-import { normalizeCalDavUrl, defaultCalDavName } from '../sync/caldav-discover'
+import { normalizeCalDavUrl, defaultCalDavName, sendsPasswordInClear } from '../sync/caldav-discover'
 import { CalDavAdapter, type CalDavCredentials } from '../sync/caldav-adapter'
 import { resolveCalDavAccount } from '../sync/caldav-account-id'
 import { SyncWorker, type SyncOAuthClients } from '../sync/sync-worker'
@@ -137,6 +137,9 @@ export function registerAuthSyncIpcHandlers(): void {
       }
 
       const normalizedUrl = normalizeCalDavUrl(input.provider, input.serverUrl, input.username)
+      if (sendsPasswordInClear(normalizedUrl)) {
+        throw new Error('Use https:// for this server: on http:// the password would cross the internet unencrypted')
+      }
       const adapter = new CalDavAdapter({
         url: normalizedUrl,
         username: input.username,

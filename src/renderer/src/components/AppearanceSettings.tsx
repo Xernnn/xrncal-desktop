@@ -3,8 +3,9 @@ import { useTranslation } from 'react-i18next'
 import { Image as ImageIcon, Sliders, Check, RotateCcw } from 'lucide-react'
 import type { ThemeMode } from '@shared/theme-mode'
 import { DEFAULT_ACCENT_COLOR } from '@shared/mini-calendar-grid'
-import { TextInput } from './ui'
 import { useSettings } from '../context/SettingsContext'
+import { toast } from './ui'
+import { WALLPAPER_PRESETS, presetSetting, wallpaperPreset, wallpaperUrl } from '../lib/wallpapers'
 
 /**
  * Everything that changes how the app looks, in one panel.
@@ -24,26 +25,6 @@ const ACCENT_COLORS = [
   { hex: '#868E96', name: 'Slate Gray' }
 ]
 
-const PRESET_WALLPAPERS = [
-  { key: 'noImage', url: '' },
-  {
-    key: 'cosmicNight',
-    url: 'https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?q=80&w=1200&auto=format&fit=crop'
-  },
-  {
-    key: 'mistyForest',
-    url: 'https://images.unsplash.com/photo-1448375240586-882707db888b?q=80&w=1200&auto=format&fit=crop'
-  },
-  {
-    key: 'purpleSunset',
-    url: 'https://images.unsplash.com/photo-1518495973542-4542c06a5843?q=80&w=1200&auto=format&fit=crop'
-  },
-  {
-    key: 'cyberCity',
-    url: 'https://images.unsplash.com/photo-1519501025264-65ba15a82390?q=80&w=1200&auto=format&fit=crop'
-  }
-]
-
 const THEME_MODES: ThemeMode[] = ['system', 'light', 'dark']
 
 export const AppearanceSettings: React.FC = () => {
@@ -52,6 +33,12 @@ export const AppearanceSettings: React.FC = () => {
   const mode = settings.theme
   const accentColor = settings.themeAccent || DEFAULT_ACCENT_COLOR
   const customBgUrl = settings.themeCustomBg || ''
+  const preset = wallpaperPreset(customBgUrl)
+  const hasBackground = Boolean(wallpaperUrl(customBgUrl))
+  const wallpapers = [
+    { key: 'noImage', setting: '', isSelected: !hasBackground },
+    ...WALLPAPER_PRESETS.map((p) => ({ key: p.key, setting: presetSetting(p.key), isSelected: preset === p.key }))
+  ]
   const bgOverlayOpacity = settings.themeOverlayOpacity ?? 0.8
   const bgBlur = settings.themeBlur ?? 8
 
@@ -112,13 +99,12 @@ export const AppearanceSettings: React.FC = () => {
         </span>
 
         <div className="grid grid-cols-2 gap-1.5">
-          {PRESET_WALLPAPERS.map((wp) => {
-            const isSelected = customBgUrl === wp.url
+          {wallpapers.map(({ key, setting, isSelected }) => {
             return (
               <button
-                key={wp.key}
+                key={key}
                 type="button"
-                onClick={() => setBackground(wp.url)}
+                onClick={() => setBackground(setting)}
                 className={`flex cursor-pointer items-center justify-between gap-2 border p-2.5 text-left text-xs transition-colors ${
                   isSelected
                     ? 'border-accent bg-hover font-semibold text-primary'
@@ -126,7 +112,7 @@ export const AppearanceSettings: React.FC = () => {
                 }`}
                 style={{ borderRadius: 'var(--radius-control)' }}
               >
-                <span className="truncate">{t(`theme.${wp.key}`)}</span>
+                <span className="truncate">{t(`theme.${key}`)}</span>
                 {isSelected && <Check className="h-3.5 w-3.5 shrink-0 text-accent" />}
               </button>
             )
@@ -134,23 +120,14 @@ export const AppearanceSettings: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-1.5 pt-1">
-          <TextInput
-            type="url"
-            placeholder={t('theme.customUrl')}
-            value={customBgUrl.startsWith('data:') ? '' : customBgUrl}
-            clearable
-            variant="boxed"
-            onChange={(val) => setBackground(val)}
-            inputClassName="font-mono text-xs"
-            className="flex-1"
-          />
           <button
             type="button"
             className="gc-btn shrink-0"
             onClick={async () => {
               if (!window.xrncal?.app?.pickBackgroundImage) return
               const result = await window.xrncal.app.pickBackgroundImage()
-              if (result?.dataUrl) setBackground(result.dataUrl)
+              if (result && 'dataUrl' in result) setBackground(result.dataUrl)
+              else if (result?.tooLarge) toast.error(t('theme.imageTooLarge'))
             }}
           >
             <ImageIcon className="h-3.5 w-3.5" />
@@ -158,12 +135,9 @@ export const AppearanceSettings: React.FC = () => {
           </button>
         </div>
 
-        {customBgUrl.startsWith('data:') && (
-          <p className="text-xs text-muted">{t('theme.usingImportedImage')}</p>
-        )}
       </div>
 
-      {customBgUrl && (
+      {hasBackground && (
         <div
           className="space-y-4 border border-hairline p-4"
           style={{ borderRadius: 'var(--radius-control)' }}

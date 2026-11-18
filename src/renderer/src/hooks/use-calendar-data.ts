@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { Calendar, CalendarAccount, ExpandedOccurrence, SyncConflict } from '@shared/event-model'
-import { showFriendlyError } from '../components/ui'
+import { showFriendlyError, toast } from '../components/ui'
 
 export interface CalendarData {
   calendars: Calendar[]
@@ -20,11 +20,13 @@ export interface CalendarData {
 
 /** What one read found; a part that could not be read is left out, and what
  *  is on screen for it stays. */
-interface CalendarDataRead {
+export interface CalendarDataRead {
   calendars?: Calendar[]
   accounts?: CalendarAccount[]
   occurrences?: ExpandedOccurrence[]
   conflicts?: SyncConflict[]
+  /** The calendars or their events could not be read. */
+  failed?: boolean
 }
 
 /** The occurrences the visible ones of `calendars` have in a span, each with its colour resolved. */
@@ -41,7 +43,7 @@ export async function readVisibleOccurrences(
   return occs.map((occ) => ({ ...occ, color: occ.color || colorById.get(occ.calendarId) }))
 }
 
-async function readCalendarData(startUtc: string, endUtc: string): Promise<CalendarDataRead> {
+export async function readCalendarData(startUtc: string, endUtc: string): Promise<CalendarDataRead> {
   const api = window.xrncal
   const found: CalendarDataRead = {}
   if (!api?.calendars || !api.events) return found
@@ -55,7 +57,8 @@ async function readCalendarData(startUtc: string, endUtc: string): Promise<Calen
     found.accounts = accs
     found.occurrences = await readVisibleOccurrences(cals, startUtc, endUtc)
   } catch {
-    // Keep the events already on screen.
+    // Keep the events already on screen - if they are this range's (see reload).
+    found.failed = true
   }
 
   if (api.events.listConflicts) {
@@ -66,6 +69,20 @@ async function readCalendarData(startUtc: string, endUtc: string): Promise<Calen
     }
   }
   return found
+}
+
+/**
+ * The occurrences to show after a read: those read, else - the read failed -
+ * the ones on screen while they are of the range asked for, or none. Paging
+ * after a failed read used to leave last week's events drawn on this week.
+ */
+export function occurrencesAfterRead(
+  found: CalendarDataRead,
+  shown: { occurrences: ExpandedOccurrence[]; rangeKey: string },
+  rangeKey: string
+): ExpandedOccurrence[] {
+  if (found.occurrences) return found.occurrences
+  return shown.rangeKey === rangeKey ? shown.occurrences : []
 }
 
 /**
@@ -82,17 +99,30 @@ export function useCalendarData(range: { startUtc: string; endUtc: string }, ena
   // Paging quickly starts reads that can finish out of order; only the latest
   // may write, or last week's events could land on this week.
   const latestRead = useRef(0)
+  // The range the occurrences on screen were read for.
+  const shownRange = useRef('')
+  const occurrencesShown = useRef<ExpandedOccurrence[]>([])
 
   const reload = useCallback((): Promise<void> => {
     const read = ++latestRead.current
+    const rangeKey = `${range.startUtc}/${range.endUtc}`
     return readCalendarData(range.startUtc, range.endUtc).then((found) => {
       if (read !== latestRead.current) return
       if (found.calendars) setCalendars(found.calendars)
       if (found.accounts) setAccounts(found.accounts)
-      if (found.occurrences) setOccurrences(found.occurrences)
+      const shown = { occurrences: occurrencesShown.current, rangeKey: shownRange.current }
+      const next = occurrencesAfterRead(found, shown, rangeKey)
+      if (next !== occurrencesShown.current) {
+        occurrencesShown.current = next
+        setOccurrences(next)
+      }
+      shownRange.current = rangeKey
       if (found.conflicts) setConflicts(found.conflicts)
+      // An empty grid used to look like a week with no events. One toast,
+      // replaced rather than stacked while the failure lasts.
+      if (found.failed) toast.error(t('toast.readFailed'), { id: 'calendar-read-failed' })
     })
-  }, [range.startUtc, range.endUtc])
+  }, [range.startUtc, range.endUtc, t])
 
   useEffect(() => {
     if (enabled) void reload()
@@ -142,23 +172,33 @@ export function useCalendarData(range: { startUtc: string; endUtc: string }, ena
     setCalendars((prev) => prev.map((c) => byId.get(c.id) ?? c))
   }
 
-  const toggleCalendarVisibility = async (cal: Calendar): Promise<void> => {
-    if (!window.xrncal?.calendars) return
-    replaceCalendars([await window.xrncal.calendars.update(cal.id, { isVisible: !cal.isVisible })])
+  // A refused change used to be an unhandled rejection with nothing on screen.
+  const updateCalendars = async (update: () => Promise<Calendar[]>): Promise<void> => {
+    try {
+      replaceCalendars(await update())
+    } catch (err) {
+      showFriendlyError(err, t('toast.calendarUpdateFailed'))
+      return
+    }
     await reload()
+  }
+
+  const toggleCalendarVisibility = async (cal: Calendar): Promise<void> => {
+    const api = window.xrncal?.calendars
+    if (!api) return
+    await updateCalendars(async () => [await api.update(cal.id, { isVisible: !cal.isVisible })])
   }
 
   const setCalendarsVisibility = async (changes: { id: string; isVisible: boolean }[]): Promise<void> => {
-    if (!window.xrncal?.calendars || changes.length === 0) return
-    const api = window.xrncal.calendars
-    replaceCalendars(await Promise.all(changes.map((c) => api.update(c.id, { isVisible: c.isVisible }))))
-    await reload()
+    const api = window.xrncal?.calendars
+    if (!api || changes.length === 0) return
+    await updateCalendars(() => Promise.all(changes.map((c) => api.update(c.id, { isVisible: c.isVisible }))))
   }
 
   const changeCalendarColor = async (cal: Calendar, color: string): Promise<void> => {
-    if (!window.xrncal?.calendars) return
-    replaceCalendars([await window.xrncal.calendars.update(cal.id, { color })])
-    await reload()
+    const api = window.xrncal?.calendars
+    if (!api) return
+    await updateCalendars(async () => [await api.update(cal.id, { color })])
   }
 
   const resolveConflict = async (eventId: string, resolution: 'keepMine' | 'keepTheirs'): Promise<void> => {

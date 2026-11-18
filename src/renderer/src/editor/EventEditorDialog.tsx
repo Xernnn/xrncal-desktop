@@ -45,8 +45,10 @@ import { zoneForEditing, zonePickerOptions } from '../lib/time-zones'
 import { zoneAt, type ZonePeriod } from '@shared/zone-history'
 import { defaultCalendarFor } from '../lib/new-event'
 import { newEventEnd } from '@shared/event-length'
+import { editorCommandForKey, isTextField } from '@shared/keyboard-commands'
 import { leadingEmoji, titleFromSuggestion, withLeadingEmoji, withoutLeadingEmoji } from '@shared/title-emoji'
 import { useToday } from '../hooks/use-now'
+import { useDialogFocus } from '../hooks/use-dialog-focus'
 import { parseEntry, applyEntry, ENTRY_WEEKDAYS, type EntrySlot, type ParsedEntry } from '@shared/natural-entry'
 
 export interface EventEditorInitialData {
@@ -62,13 +64,33 @@ export interface EventEditorInitialData {
 }
 
 /** Live snapshot of a not-yet-saved new event, so the calendar behind the dialog can
- *  paint a preview at the exact slot/color the form currently holds. */
+ *  paint a preview at the exact slot/color the form currently holds. No title:
+ *  the preview draws none, and carrying it re-rendered the whole calendar behind
+ *  the editor on every keystroke typed into it. */
 export interface EventEditorDraftPreview {
   start: DateTime
   end: DateTime
   allDay: boolean
   color: string
-  title: string
+}
+
+/**
+ * The preview to draw next: the one already drawn while what it shows is the
+ * same, so a form change that moves nothing on the grid (a title, notes, a
+ * guest) leaves the calendar behind the editor alone - React skips a state
+ * update to the same object.
+ */
+export function keepDraftPreview(
+  drawn: EventEditorDraftPreview | null,
+  next: EventEditorDraftPreview | null
+): EventEditorDraftPreview | null {
+  if (!drawn || !next) return next ?? null
+  const same =
+    drawn.allDay === next.allDay &&
+    drawn.color === next.color &&
+    drawn.start.toMillis() === next.start.toMillis() &&
+    drawn.end.toMillis() === next.end.toMillis()
+  return same ? drawn : next
 }
 
 /** Mounted only while open, and anew for each opening (App keys it), so the
@@ -576,12 +598,10 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
       start,
       end,
       allDay: allDay || lunarYearly,
-      color: color || cal?.color || DEFAULT_EVENT_COLOR,
-      title: title.trim() || t('common.untitled')
+      color: color || cal?.color || DEFAULT_EVENT_COLOR
     })
   }, [
     onDraftChange,
-    t,
     isEditing,
     allDay,
     recurrencePreset,
@@ -592,7 +612,6 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
     color,
     calendarId,
     calendars,
-    title,
     tzid
   ])
 
@@ -979,15 +998,14 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
 
     // Everything else is behind Ctrl/Cmd: the form is full of text fields,
     // and a bare letter belongs to whichever one has focus.
-    if (!(e.ctrlKey || e.metaKey) || showDiscardConfirm) return
-
-    if (e.key === 'Enter') {
-      e.preventDefault()
-      submitEvent()
-    } else if (e.key === 'Backspace' || e.key === 'Delete') {
-      e.preventDefault()
-      deleteEvent()
-    }
+    const command = editorCommandForKey(
+      { key: e.key, ctrl: e.ctrlKey || e.metaKey, inTextField: isTextField(e.target as HTMLElement | null) },
+      showDiscardConfirm
+    )
+    if (!command) return
+    e.preventDefault()
+    if (command === 'save') submitEvent()
+    else deleteEvent()
   })
 
   useEffect(() => {
@@ -1097,6 +1115,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
   // slot clicked to create, an event clicked to edit - it comes in from the side
   // away from that spot so the spot stays in sight; without one (Create, search)
   // from the right.
+  const { ref: dialogRef, onKeyDown: onDialogKeyDown } = useDialogFocus<HTMLDivElement>()
   const panelSide: 'left' | 'right' =
     typeof data?.initialClientX === 'number' && data.initialClientX >= window.innerWidth / 2 ? 'left' : 'right'
 
@@ -1108,9 +1127,15 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
       }}
     >
       <div
+        ref={dialogRef}
         className={`absolute top-0 flex h-full w-full max-w-[420px] flex-col overflow-hidden bg-dialog text-primary shadow-xl ${
           panelSide === 'right' ? 'right-0 border-l border-hairline gc-slide-right' : 'left-0 border-r border-hairline gc-slide-left'
         }`}
+        role="dialog"
+        aria-modal="true"
+        aria-label={isEditing ? t('editor.editEvent') : t('editor.newEvent')}
+        tabIndex={-1}
+        onKeyDown={onDialogKeyDown}
       >
         <div className="flex shrink-0 items-center justify-between border-b border-hairline px-5 py-3">
           <div className="flex items-center gap-2.5">
@@ -1430,7 +1455,6 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
                       {t('editor.lunarNext', { dates: lunarPreview.join(' · ') })}
                     </div>
                   )}
-                  <p className="text-[11px] text-muted leading-relaxed">{t('editor.lunarHelp')}</p>
                 </div>
               </FormRow>
             )}

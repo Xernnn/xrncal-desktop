@@ -83,8 +83,8 @@ describe('a field removed from one occurrence stays removed', () => {
 })
 
 describe('an override pulled from a CalDAV server', () => {
-  const CAL = 'https://dav.example/sonn/personal/'
-  const CREDS: CalDavCredentials = { url: 'https://dav.example/sonn/', username: 'sonn', password: 'pw' }
+  const CAL = 'https://dav.example/alex/personal/'
+  const CREDS: CalDavCredentials = { url: 'https://dav.example/alex/', username: 'alex', password: 'pw' }
   let db: ISqliteDatabase
   let repo: EventsRepo
 
@@ -146,7 +146,7 @@ describe('an override pulled from a CalDAV server', () => {
           return answer(
             207,
             `<?xml version="1.0"?><D:multistatus xmlns:D="DAV:" xmlns:CS="http://calendarserver.org/ns/">` +
-              `<D:response><D:href>/sonn/personal/</D:href><D:propstat><D:prop>` +
+              `<D:response><D:href>/alex/personal/</D:href><D:propstat><D:prop>` +
               `<D:resourcetype><D:collection/><C:calendar xmlns:C="urn:ietf:params:xml:ns:caldav"/></D:resourcetype>` +
               `<D:displayname>Personal</D:displayname><CS:getctag>c1</CS:getctag>` +
               `</D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response></D:multistatus>`
@@ -156,7 +156,7 @@ describe('an override pulled from a CalDAV server', () => {
           return answer(
             207,
             `<?xml version="1.0"?><D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">` +
-              `<D:response><D:href>/sonn/personal/series.ics</D:href><D:propstat><D:prop>` +
+              `<D:response><D:href>/alex/personal/series.ics</D:href><D:propstat><D:prop>` +
               `<D:getetag>"s1"</D:getetag><C:calendar-data>${xml(ics)}</C:calendar-data>` +
               `</D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat></D:response></D:multistatus>`
           )

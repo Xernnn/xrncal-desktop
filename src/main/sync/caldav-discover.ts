@@ -53,9 +53,46 @@ export function normalizeCalDavUrl(
 }
 
 /**
+ * Whether an account at `url` would send its password in clear across the
+ * internet: Basic auth over http:// to a host that is not this computer, a
+ * private network, a tailnet (WireGuard-encrypted) or a local name. Such an
+ * address used to connect without a word, with the password in every request.
+ */
+export function sendsPasswordInClear(url: string): boolean {
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return false
+  }
+  if (parsed.protocol !== 'http:') return false
+  const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '')
+
+  const v4 = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(host)
+  if (v4) {
+    const [a, b] = [Number(v4[1]), Number(v4[2])]
+    const local =
+      a === 127 ||
+      a === 10 ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 169 && b === 254) ||
+      // Carrier-grade NAT, where Tailscale gives its addresses.
+      (a === 100 && b >= 64 && b <= 127)
+    return !local
+  }
+  if (host.includes(':')) {
+    // IPv6: loopback, unique-local (fc00::/7), link-local (fe80::/10).
+    return !(host === '::1' || /^f[cd][0-9a-f]{0,2}:/.test(host) || /^fe[89ab][0-9a-f]?:/.test(host))
+  }
+  if (!host.includes('.')) return false
+  return !/(^|\.)(localhost|local|lan|internal|home\.arpa|ts\.net)$/.test(host)
+}
+
+/**
  * What to call a CalDAV account the user did not name: the server it lives on
  * (`homeserver.example.ts.net`, `cloud.example.com`), which is what tells two
- * accounts apart in the list - the old `GENERIC (sonn)` said neither.
+ * accounts apart in the list - the old `GENERIC (alex)` said neither.
  */
 export function defaultCalDavName(provider: CalDavProvider, normalizedUrl: string): string {
   if (provider === 'icloud') return 'iCloud'
@@ -146,8 +183,8 @@ export function normalizeCalendarColor(value: string | undefined): string | unde
 }
 
 /**
- * The href a DAV property points at, e.g. the `/sonn/` in
- * `<current-user-principal><href>/sonn/</href></current-user-principal>`.
+ * The href a DAV property points at, e.g. the `/alex/` in
+ * `<current-user-principal><href>/alex/</href></current-user-principal>`.
  */
 export function extractPropHref(xml: string, propName: string): string | undefined {
   const inner = extractXmlTagValue(xml, propName)

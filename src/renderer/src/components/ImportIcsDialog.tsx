@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useDialogFocus } from '../hooks/use-dialog-focus'
 import { FileUp, X } from 'lucide-react'
 import type { Calendar } from '@shared/event-model'
 import type { OpenedIcsFile } from '@shared/ipc-contract'
@@ -28,6 +29,7 @@ export const ImportIcsDialog: React.FC<ImportIcsDialogProps> = ({ files, calenda
   // The files being imported; a new batch is never busy.
   const [importing, setImporting] = useState<OpenedIcsFile[] | null>(null)
   const busy = importing !== null && importing === files
+  const { ref: dialogRef, onKeyDown: onDialogKeyDown } = useDialogFocus<HTMLDivElement>(Boolean(files && files.length > 0))
 
   useEffect(() => {
     if (!files) return
@@ -70,7 +72,16 @@ export const ImportIcsDialog: React.FC<ImportIcsDialogProps> = ({ files, calenda
 
   return (
     <div className="gc-overlay select-none" onMouseDown={onClose}>
-      <div className="gc-dialog w-full max-w-sm p-5" onMouseDown={(e) => e.stopPropagation()}>
+      <div
+        ref={dialogRef}
+        className="gc-dialog w-full max-w-sm p-5"
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('ics.importTitle')}
+        tabIndex={-1}
+        onKeyDown={onDialogKeyDown}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <button type="button" onClick={onClose} className="gc-icon-btn absolute top-3 right-3" aria-label={t('common.close')}>
           <X className="h-4 w-4" />
         </button>
@@ -96,7 +107,6 @@ export const ImportIcsDialog: React.FC<ImportIcsDialogProps> = ({ files, calenda
           options={writable.map((c) => ({ value: c.id, label: c.name, color: c.color }))}
           placeholder={t('editor.chooseCalendar')}
         />
-        <p className="mt-2 text-[11px] leading-snug text-muted">{t('ics.importHint')}</p>
 
         <div className="mt-5 flex justify-end gap-2">
           <button type="button" className="gc-btn" onClick={onClose}>

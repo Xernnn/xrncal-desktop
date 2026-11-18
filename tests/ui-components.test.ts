@@ -15,6 +15,7 @@ import FormRow from '../src/renderer/src/components/ui/FormRow'
 import TextArea from '../src/renderer/src/components/ui/TextArea'
 import WeekView from '../src/renderer/src/views/WeekView'
 import KeyboardShortcutsModal from '../src/renderer/src/components/KeyboardShortcutsModal'
+import { RestoreBackupRow } from '../src/renderer/src/components/SettingsPanel'
 import type { ExpandedOccurrence } from '../src/shared/event-model'
 
 describe('UI Components SSR Render & Lifecycle', () => {
@@ -174,5 +175,16 @@ describe('UI Components SSR Render & Lifecycle', () => {
     expect(html).toContain('Event editor')
     // Every row is a real catalog string, never a raw i18n key falling through.
     expect(html).not.toContain('shortcuts.')
+  })
+})
+
+/** Restore replaces everything, so it asks first - in its own row, not a
+ *  native confirm (see no-native-dialogs.test.ts). */
+describe('Restore from backup', () => {
+  it('asks in its own row before the file is chosen', () => {
+    const closed = renderToString(React.createElement(RestoreBackupRow, { onRestore: () => {} }))
+    expect(closed).not.toContain('gc-btn text-today')
+    const asking = renderToString(React.createElement(RestoreBackupRow, { onRestore: () => {}, initiallyAsking: true }))
+    expect(asking).toContain('gc-btn text-today')
   })
 })

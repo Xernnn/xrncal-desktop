@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import { DateTime } from 'luxon'
-import { commandForKey, type KeyContext, type KeyInput } from '../src/shared/keyboard-commands'
+import {
+  commandForKey,
+  editorCommandForKey,
+  isTextField,
+  type KeyContext,
+  type KeyInput
+} from '../src/shared/keyboard-commands'
 import { stepAnchor } from '../src/shared/visible-range'
 
 const key = (k: string, mods: Partial<KeyInput> = {}): KeyInput => ({
@@ -135,5 +141,50 @@ describe('stepAnchor', () => {
     expect(stepAnchor(at, 'month', 1).toISODate()).toBe('2026-02-28')
     expect(stepAnchor(at, 'list', -1).toISODate()).toBe('2025-12-31')
     expect(stepAnchor(at, 'year', 1).toISODate()).toBe('2027-01-31')
+  })
+})
+
+/**
+ * Ctrl+Backspace in the editor's Title or Notes deleted the event: the editor
+ * listened on the window and never asked where the key was pressed. A one-off
+ * event raised the delete prompt; a recurring one closed the editor with what
+ * was typed and asked which dates to delete. In a text field the key deletes
+ * the previous word, as everywhere else.
+ */
+describe('editorCommandForKey', () => {
+  it('leaves Ctrl+Backspace and Ctrl+Delete to a text field', () => {
+    for (const k of ['Backspace', 'Delete']) {
+      expect(editorCommandForKey({ key: k, ctrl: true, inTextField: true }, false)).toBeNull()
+      expect(editorCommandForKey({ key: k, ctrl: true, inTextField: false }, false)).toBe('delete')
+    }
+  })
+
+  it('saves on Ctrl+Enter from anywhere, a text field too', () => {
+    expect(editorCommandForKey({ key: 'Enter', ctrl: true, inTextField: true }, false)).toBe('save')
+    expect(editorCommandForKey({ key: 'Enter', ctrl: true, inTextField: false }, false)).toBe('save')
+  })
+
+  it('does nothing without Ctrl, or while the discard prompt is up', () => {
+    expect(editorCommandForKey({ key: 'Backspace', ctrl: false, inTextField: false }, false)).toBeNull()
+    expect(editorCommandForKey({ key: 'Enter', ctrl: false, inTextField: false }, false)).toBeNull()
+    expect(editorCommandForKey({ key: 'Backspace', ctrl: true, inTextField: false }, true)).toBeNull()
+    expect(editorCommandForKey({ key: 'Enter', ctrl: true, inTextField: false }, true)).toBeNull()
+  })
+})
+
+describe('isTextField', () => {
+  it('is a text input, a textarea or editable content', () => {
+    expect(isTextField({ tagName: 'INPUT', type: 'text' })).toBe(true)
+    expect(isTextField({ tagName: 'INPUT', type: 'url' })).toBe(true)
+    expect(isTextField({ tagName: 'INPUT', type: '' })).toBe(true)
+    expect(isTextField({ tagName: 'TEXTAREA' })).toBe(true)
+    expect(isTextField({ tagName: 'DIV', isContentEditable: true })).toBe(true)
+  })
+
+  it('is not a checkbox, a button or nothing', () => {
+    expect(isTextField({ tagName: 'INPUT', type: 'checkbox' })).toBe(false)
+    expect(isTextField({ tagName: 'BUTTON' })).toBe(false)
+    expect(isTextField({ tagName: 'DIV' })).toBe(false)
+    expect(isTextField(null)).toBe(false)
   })
 })

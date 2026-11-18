@@ -199,7 +199,6 @@ export const PrintDialog: React.FC<PrintDialogProps> = ({ calendars, view, ancho
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-hairline bg-app px-6 py-3">
-          <span className="mr-auto min-w-0 text-xs text-muted">{t('print.hint')}</span>
           <button
             type="button"
             className="gc-btn gc-focus-ring"

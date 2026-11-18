@@ -20,13 +20,16 @@ export function subscribeHolidayCalendar(
   const eventsRepo = new EventsRepo(db)
   const meta = HOLIDAY_CALENDAR_META[type]
 
-  const existing = calendarsRepo.listCalendars().find((c) => c.name === meta.name)
+  // By its type, never its name: a calendar of the user's, or a synced one,
+  // may be called the same, and a subscription may have been renamed.
+  const existing = calendarsRepo.listCalendars().find((c) => c.holidayType === type)
   const holidayCal =
     existing ??
     calendarsRepo.createCalendar({
       name: meta.name,
       color: meta.color,
-      isReadOnly: true
+      isReadOnly: true,
+      holidayType: type
     })
 
   const years: number[] = []
@@ -63,7 +66,7 @@ export function refreshHolidayCalendars(
   const refreshed: HolidayCalendarType[] = []
 
   for (const type of Object.keys(HOLIDAY_CALENDAR_META) as HolidayCalendarType[]) {
-    const cal = calendars.find((c) => c.name === HOLIDAY_CALENDAR_META[type].name)
+    const cal = calendars.find((c) => c.holidayType === type)
     if (!cal) continue
     const last = db
       .prepare('SELECT MAX(dtstart_utc) AS last FROM events WHERE calendar_id = ? AND is_deleted = 0')
@@ -79,8 +82,8 @@ export function refreshHolidayCalendars(
 
 export function unsubscribeHolidayCalendar(db: ISqliteDatabase, type: HolidayCalendarType): boolean {
   const calendarsRepo = new CalendarsRepo(db)
-  const meta = HOLIDAY_CALENDAR_META[type]
-  const holidayCal = calendarsRepo.listCalendars().find((c) => c.name === meta.name)
-  if (!holidayCal) return false
-  return calendarsRepo.deleteCalendar(holidayCal.id)
+  const holidayCals = calendarsRepo.listCalendars().filter((c) => c.holidayType === type)
+  let removed = false
+  for (const cal of holidayCals) removed = calendarsRepo.deleteCalendar(cal.id) || removed
+  return removed
 }

@@ -40,7 +40,7 @@ test('finds an event without its accents, edits it in its own zone, and recolour
   // The shortcut, not the header's Search button: the header auto-hides 150 ms
   // after load, and clicking into it raced its slide-in and out.
   await page.keyboard.press('Control+k')
-  await page.getByPlaceholder(/Search events by title/).fill('hop phu')
+  await page.getByPlaceholder('Search (Ctrl+K)').fill('hop phu')
   await page.getByText('Họp phụ huynh New York').first().click()
 
   const startRow = page.locator('div.group', { hasText: 'Start' }).first()

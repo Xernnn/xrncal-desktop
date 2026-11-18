@@ -101,7 +101,7 @@ describe('database backup', () => {
   })
 
   it('survives a path containing a quote', () => {
-    const dest = join(dir, "sonn's backup.sqlite")
+    const dest = join(dir, "alex's backup.sqlite")
     seedEvent('Quoted path')
 
     expect(() => backupDatabaseTo(db, dest)).not.toThrow()

@@ -12,7 +12,7 @@ import type { Calendar, CalendarEvent, EventException } from '../src/shared/even
  */
 
 const CALENDAR: Calendar = {
-  id: 'https://dav.example/sonn/personal/',
+  id: 'https://dav.example/alex/personal/',
   accountId: 'acc',
   name: 'Personal',
   color: '#000000',
@@ -67,7 +67,7 @@ function serverCopy(extraMaster: string[] = [], extraOverride: string[] = []): s
     'X-ONECAL-ID:abc123',
     'ORGANIZER;CN=Boss:mailto:boss@example.com',
     'ATTENDEE;CN=Boss;PARTSTAT=ACCEPTED:mailto:boss@example.com',
-    'ATTENDEE;ROLE=OPT-PARTICIPANT;RSVP=TRUE;X-NUM-GUESTS=1;PARTSTAT=NEEDS-ACTION:mailto:sonn@example.com',
+    'ATTENDEE;ROLE=OPT-PARTICIPANT;RSVP=TRUE;X-NUM-GUESTS=1;PARTSTAT=NEEDS-ACTION:mailto:alex@example.com',
     ...extraMaster,
     'END:VEVENT',
     'BEGIN:VEVENT',
@@ -201,9 +201,9 @@ describe('mergeServerCopy', () => {
 
   it("keeps a guest's RSVP and party size, but not a role changed here", () => {
     const { event, exceptions } = pulled()
-    const attendees = event.attendees!.map((a) => (a.email === 'sonn@example.com' ? { ...a, role: undefined } : a))
+    const attendees = event.attendees!.map((a) => (a.email === 'alex@example.com' ? { ...a, role: undefined } : a))
     const [master] = vevents(merged({ ...event, attendees }, exceptions))
-    const me = master.getAllProperties('attendee').find((p) => String(p.getFirstValue()).includes('sonn@'))!
+    const me = master.getAllProperties('attendee').find((p) => String(p.getFirstValue()).includes('alex@'))!
 
     expect(me.getParameter('rsvp')).toBe('TRUE')
     expect(me.getParameter('x-num-guests')).toBe('1')
@@ -224,7 +224,7 @@ describe('mergeServerCopy', () => {
     const alarm = (lines: string[]) => ['BEGIN:VALARM', ...lines, 'END:VALARM']
     const source = serverCopy([
       ...alarm(['ACTION:AUDIO', 'TRIGGER:-PT10M', 'ATTACH;VALUE=URI:Chord']),
-      ...alarm(['ACTION:EMAIL', 'TRIGGER:-PT1H', 'SUMMARY:Standup', 'DESCRIPTION:Soon', 'ATTENDEE:mailto:sonn@example.com']),
+      ...alarm(['ACTION:EMAIL', 'TRIGGER:-PT1H', 'SUMMARY:Standup', 'DESCRIPTION:Soon', 'ATTENDEE:mailto:alex@example.com']),
       ...alarm(['ACTION:DISPLAY', 'TRIGGER;VALUE=DATE-TIME:20261005T060000Z', 'DESCRIPTION:Fixed time']),
       ...alarm(['ACTION:DISPLAY', 'TRIGGER;RELATED=END:PT5M', 'DESCRIPTION:After'])
     ])

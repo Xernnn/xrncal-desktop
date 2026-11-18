@@ -1,5 +1,4 @@
 import type { Calendar, CalendarAccount } from '@shared/event-model'
-import { HOLIDAY_CALENDAR_META } from '@shared/holiday-calendars'
 
 /**
  * How accounts and calendars are presented: grouped the way OneCalendar does it,
@@ -23,11 +22,9 @@ export interface CalendarGroup {
 /** The account seeded for calendars that live only on this computer. */
 export const LOCAL_ACCOUNT_ID = 'account-local-primary'
 
-const HOLIDAY_NAMES = new Set<string>(Object.values(HOLIDAY_CALENDAR_META).map((meta) => meta.name))
-
-/** Holiday subscriptions are local calendars recognised by name, as HolidayCalendarToggle does. */
+/** Holiday subscriptions carry their type; a calendar merely named like one is not one. */
 function isHolidayCalendar(cal: Calendar): boolean {
-  return HOLIDAY_NAMES.has(cal.name)
+  return Boolean(cal.holidayType)
 }
 
 export function providerKind(account: CalendarAccount): ProviderKind {

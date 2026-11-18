@@ -2,6 +2,7 @@ import type { ISqliteDatabase } from '../sqlite-driver'
 import type {
   CalendarEvent,
   EventException,
+  EventSearchResult,
   ExpandedOccurrence,
   Attendee,
   CreateEventInput,
@@ -23,6 +24,7 @@ import type { LocationSample } from '@shared/location-suggestions'
 import { parseRemindersJson, serializeReminders, type EventReminder } from '@shared/reminders'
 import { resolveLunarOccurrence } from '@shared/lunar-vietnam'
 import { expandOccurrences } from '@shared/expand-occurrences'
+import { nearestOccurrence } from '@shared/nearest-occurrence'
 import { CALENDAR_MAX_OCCURRENCES, calendarExpansionBudget, type ExpansionBudget } from '@shared/bounded-rrule'
 import { namedDays, occurrenceShift, ruleForMovedStart, seriesZone, wallTime } from '@shared/series-update'
 import { DateTime } from 'luxon'
@@ -81,6 +83,9 @@ export interface EventRow {
   /** The date of someone else's series this event stands for, when that
    *  series is not here (a CalDAV invitation to some of its dates, migration 025). */
   recurrence_id: string | null
+  /** The id this event's create goes out with until the provider has it
+   *  (migration 028; see assignCreateId). */
+  create_id: string | null
   created_at: string
   updated_at: string
 }
@@ -318,6 +323,40 @@ export class EventsRepo {
     } catch {
       return []
     }
+  }
+
+  /** The guest lists of several events, by event id. */
+  private getAttendeesForEvents(eventIds: string[]): Map<string, Attendee[]> {
+    const byEvent = new Map<string, Attendee[]>()
+    for (const ids of EventsRepo.chunk(eventIds)) {
+      const rows = this.db
+        .prepare(
+          `SELECT event_id, email, display_name, response_status, is_organizer, is_self, role
+           FROM attendees WHERE event_id IN (${ids.map(() => '?').join(',')})`
+        )
+        .all<{
+          event_id: string
+          email: string
+          display_name: string | null
+          response_status: Attendee['responseStatus']
+          is_organizer: number
+          is_self: number
+          role: Attendee['role'] | null
+        }>(...ids)
+      for (const r of rows) {
+        const list = byEvent.get(r.event_id) ?? []
+        list.push({
+          email: r.email,
+          displayName: r.display_name || undefined,
+          responseStatus: r.response_status,
+          isOrganizer: r.is_organizer === 1,
+          isSelf: r.is_self === 1,
+          role: r.role || undefined
+        })
+        byEvent.set(r.event_id, list)
+      }
+    }
+    return byEvent
   }
 
   /** Replace an event's guest list. Also how the sync engines store the list
@@ -961,8 +1000,12 @@ export class EventsRepo {
           )
           .run(push.calendarId, push.providerEventId, id)
       }
+      // The provider has the event now: a later create of this row (after a
+      // move, or an undone delete) is a new one, with an id of its own.
       this.db
-        .prepare('UPDATE events SET provider_event_id = ?, etag = ?, has_conflict = 0, keep_mine = 0 WHERE id = ?')
+        .prepare(
+          'UPDATE events SET provider_event_id = ?, etag = ?, has_conflict = 0, keep_mine = 0, create_id = NULL WHERE id = ?'
+        )
         .run(push.providerEventId, push.etag, id)
       const clean =
         this.db
@@ -973,6 +1016,37 @@ export class EventsRepo {
           .run(now, id, push.sentUpdatedAt).changes > 0
       return this.recordWhereProviderHasIt(id, push.calendarId) && clean
     })()
+  }
+
+  /**
+   * The id the create of event `id` goes out with - Google's event id, Outlook's
+   * transactionId - made by `make` and stored before the first try, and the
+   * same on every retry until the provider has the event (markEventPushed).
+   * Without it, a create that reached the provider but whose answer was lost
+   * was read back in as a second event by the pull and made again by the next
+   * push.
+   */
+  assignCreateId(id: string, make: () => string): string {
+    this.db.prepare('UPDATE events SET create_id = ? WHERE id = ? AND create_id IS NULL').run(make(), id)
+    return this.db.prepare('SELECT create_id FROM events WHERE id = ?').get<{ create_id: string }>(id)!.create_id
+  }
+
+  /**
+   * A pull came on the provider's copy of an event created here whose create
+   * answer never came back: the row it was made from takes the provider's id
+   * and etag, so the copy is not read in as a second event and the row's edits
+   * go out as an update. The row keeps what it holds - it is still to be
+   * pushed. Returns whether such a row was there.
+   */
+  bindPendingCreate(calendarId: string, createId: string, providerEventId: string, etag: string | null): boolean {
+    return (
+      this.db
+        .prepare(
+          `UPDATE events SET provider_event_id = ?, etag = ?, create_id = NULL
+           WHERE calendar_id = ? AND create_id = ? AND provider_event_id IS NULL`
+        )
+        .run(providerEventId, etag, calendarId, createId).changes > 0
+    )
   }
 
   /**
@@ -1077,6 +1151,12 @@ export class EventsRepo {
          WHERE id = ?`
       )
       .run(sentUpdatedAt, providerInstanceId ?? null, etag ?? null, id)
+  }
+
+  /** An override's provider instance id that no longer names anything: the
+   *  next push looks the instance up again. */
+  forgetExceptionInstance(id: string): void {
+    this.db.prepare('UPDATE event_exceptions SET provider_instance_id = NULL WHERE id = ?').run(id)
   }
 
   /** Clear the dirty flag on the exceptions a series push carried (CalDAV pushes
@@ -1900,49 +1980,79 @@ export class EventsRepo {
    * Events whose title, notes or location match, newest first. The full-text
    * index finds words by how they start, with diacritics folded ("gio" finds
    * "Giỗ"); LIKE adds matches inside a word ("ntist"), which the index cannot.
+   *
+   * A series is dated by its date nearest to now (`occurrence`), which the
+   * result shows and opens: by its first date, a weekly meeting begun in 2023
+   * opened in 2023 and ranked below every newer one-off, past the limit and
+   * out of the list. Series are fetched apart from one-off events for that.
    */
-  searchEvents(query: string, limit = 50): CalendarEvent[] {
+  searchEvents(query: string, limit = 50, now = new Date()): EventSearchResult[] {
     const trimmed = query.trim()
     if (!trimmed) return []
 
-    const pattern = `%${trimmed}%`
+    // `%` and `_` typed are themselves: "30%" used to match every text with a
+    // "30" in it, and "a_b" any "a", one character, "b".
+    const pattern = `%${trimmed.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
     const ftsQuery = trimmed
-      .replace(/[^\w\s\u00C0-\u1EF9]/g, ' ')
+      .replace(/[^\w\sÀ-ỹ]/g, ' ')
       .trim()
       .split(/\s+/)
       .filter(Boolean)
       .map((w) => `"${w}"*`)
       .join(' ')
 
-    let rows: EventRow[] | undefined
-    if (ftsQuery) {
-      try {
-        rows = this.db
-          .prepare(
-            `SELECT * FROM events
-             WHERE is_deleted = 0
-               AND (rowid IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)
-                    OR title LIKE ? OR notes LIKE ? OR location LIKE ?)
-             ORDER BY dtstart_utc DESC LIMIT ?`
-          )
-          .all<EventRow>(ftsQuery, pattern, pattern, pattern, limit)
-      } catch {
-        // A query the index will not parse still gets the plain match below.
+    const find = (kind: string): EventRow[] => {
+      if (ftsQuery) {
+        try {
+          return this.db
+            .prepare(
+              `SELECT * FROM events
+               WHERE is_deleted = 0 AND ${kind}
+                 AND (rowid IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)
+                      OR title LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\' OR location LIKE ? ESCAPE '\\')
+               ORDER BY dtstart_utc DESC LIMIT ?`
+            )
+            .all<EventRow>(ftsQuery, pattern, pattern, pattern, limit)
+        } catch {
+          // A query the index will not parse still gets the plain match below.
+        }
       }
+      return this.db
+        .prepare(
+          `SELECT * FROM events
+           WHERE is_deleted = 0 AND ${kind}
+             AND (title LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\' OR location LIKE ? ESCAPE '\\')
+           ORDER BY dtstart_utc DESC LIMIT ?`
+        )
+        .all<EventRow>(pattern, pattern, pattern, limit)
     }
-    rows ??= this.db
-      .prepare(
-        `SELECT * FROM events
-         WHERE is_deleted = 0 AND (title LIKE ? OR notes LIKE ? OR location LIKE ?)
-         ORDER BY dtstart_utc DESC LIMIT ?`
-      )
-      .all<EventRow>(pattern, pattern, pattern, limit)
 
-    return rows.map((r) => {
-      const event = mapRowToEvent(r)
-      event.attendees = this.getAttendeesForEvent(r.id)
-      return event
-    })
+    const oneOffs = find('rrule IS NULL AND lunar_rule IS NULL')
+    const series = find('(rrule IS NOT NULL OR lunar_rule IS NOT NULL)')
+    const exceptionsByMaster = this.getExceptionsForEvents(series.map((r) => r.id))
+    const coveredYearsByMaster = this.getMaterializedYearsFor(
+      series.filter((r) => r.lunar_rule !== null).map((r) => r.id)
+    )
+
+    const found: { result: EventSearchResult; when: string }[] = oneOffs.map((r) => ({
+      result: mapRowToEvent(r),
+      when: r.dtstart_utc
+    }))
+    for (const r of series) {
+      const result: EventSearchResult = mapRowToEvent(r)
+      const occurrence = nearestOccurrence(result, exceptionsByMaster.get(r.id) ?? [], now.getTime(), coveredYearsByMaster.get(r.id))
+      if (occurrence) result.occurrence = occurrence
+      found.push({ result, when: occurrence?.startUtc ?? r.dtstart_utc })
+    }
+
+    const results = found
+      .sort((a, b) => b.when.localeCompare(a.when))
+      .slice(0, limit)
+      .map(({ result }) => result)
+    // In one query, not one per result.
+    const attendees = this.getAttendeesForEvents(results.map((r) => r.id))
+    for (const result of results) result.attendees = attendees.get(result.id) ?? []
+    return results
   }
 
   /**

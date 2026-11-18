@@ -1,5 +1,6 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
+import { useDialogFocus } from '../hooks/use-dialog-focus'
 import { X } from 'lucide-react'
 import type { RecurringEditScope } from '@shared/event-model'
 
@@ -19,19 +20,28 @@ export const RecurringScopeDialog: React.FC<RecurringScopeDialogProps> = ({
   onCancel
 }) => {
   const { t } = useTranslation()
+  const { ref: dialogRef, onKeyDown: onDialogKeyDown } = useDialogFocus<HTMLDivElement>(isOpen)
   if (!isOpen) return null
 
   const isDelete = action === 'delete'
 
-  const options: { scope: RecurringEditScope; label: string; hint: string }[] = [
-    { scope: 'this', label: t('recurring.thisLabel'), hint: t('recurring.thisHint') },
-    { scope: 'future', label: t('recurring.futureLabel'), hint: t('recurring.futureHint') },
-    { scope: 'all', label: t('recurring.allLabel'), hint: t('recurring.allHint') }
+  const options: { scope: RecurringEditScope; label: string }[] = [
+    { scope: 'this', label: t('recurring.thisLabel') },
+    { scope: 'future', label: t('recurring.futureLabel') },
+    { scope: 'all', label: t('recurring.allLabel') }
   ]
 
   return (
     <div className="gc-overlay select-none">
-      <div className="gc-dialog w-full max-w-sm p-5">
+      <div
+        ref={dialogRef}
+        className="gc-dialog w-full max-w-sm p-5"
+        role="dialog"
+        aria-modal="true"
+        aria-label={isDelete ? t('recurring.deleteTitle') : t('recurring.editTitle')}
+        tabIndex={-1}
+        onKeyDown={onDialogKeyDown}
+      >
         <button type="button" onClick={onCancel} className="gc-icon-btn absolute top-3 right-3">
           <X className="h-4 w-4" />
         </button>
@@ -43,12 +53,8 @@ export const RecurringScopeDialog: React.FC<RecurringScopeDialogProps> = ({
           {title && <p className="text-xs text-muted truncate max-w-[280px]">"{title}"</p>}
         </div>
 
-        <p className="text-xs text-muted mb-4">
-          {isDelete ? t('recurring.askDelete') : t('recurring.askEdit')}
-        </p>
-
         <div className="space-y-0.5">
-          {options.map(({ scope, label, hint }) => (
+          {options.map(({ scope, label }) => (
             <button
               key={scope}
               onClick={() => onConfirm(scope)}
@@ -56,7 +62,6 @@ export const RecurringScopeDialog: React.FC<RecurringScopeDialogProps> = ({
               style={{ borderRadius: 'var(--radius-control)' }}
             >
               <span className="text-xs font-medium text-primary group-hover:text-primary">{label}</span>
-              <span className="text-[11px] text-muted">{hint}</span>
             </button>
           ))}
         </div>

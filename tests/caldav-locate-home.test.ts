@@ -43,7 +43,7 @@ function fakeServer(routes: Record<string, Route>) {
   return calls
 }
 
-const creds = (url: string) => ({ url, username: 'sonn', password: 'pw' })
+const creds = (url: string) => ({ url, username: 'alex', password: 'pw' })
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -53,20 +53,20 @@ describe('CalDavAdapter.locateCalendarHome', () => {
     fakeServer({
       [`${base}/`]: (depth, body) =>
         depth === '1'
-          ? { status: 207, xml: ms(collection('/') + collection('/sonn/', '<principal/>')) }
+          ? { status: 207, xml: ms(collection('/') + collection('/alex/', '<principal/>')) }
           : body.includes('current-user-principal')
-            ? { status: 207, xml: ms(`<response><href>/</href><propstat><prop><current-user-principal><href>/sonn/</href></current-user-principal></prop></propstat></response>`) }
+            ? { status: 207, xml: ms(`<response><href>/</href><propstat><prop><current-user-principal><href>/alex/</href></current-user-principal></prop></propstat></response>`) }
             : { status: 404 },
-      [`${base}/sonn/`]: (depth, body) =>
+      [`${base}/alex/`]: (depth, body) =>
         depth === '0' && body.includes('calendar-home-set')
-          ? { status: 207, xml: ms(`<response><href>/sonn/</href><propstat><prop><C:calendar-home-set><href>/sonn/</href></C:calendar-home-set></prop></propstat></response>`) }
+          ? { status: 207, xml: ms(`<response><href>/alex/</href><propstat><prop><C:calendar-home-set><href>/alex/</href></C:calendar-home-set></prop></propstat></response>`) }
           : depth === '1'
             ? {
                 status: 207,
                 xml: ms(
-                  collection('/sonn/', '<principal/>') +
+                  collection('/alex/', '<principal/>') +
                     collection(
-                      '/sonn/personal/',
+                      '/alex/personal/',
                       '<C:calendar/>',
                       '<displayname>Personal</displayname><current-user-privilege-set><privilege><write/></privilege></current-user-privilege-set>'
                     )
@@ -77,18 +77,18 @@ describe('CalDavAdapter.locateCalendarHome', () => {
 
     const found = await new CalDavAdapter(creds(`${base}/`)).locateCalendarHome()
 
-    expect(found.url).toBe(`${base}/sonn/`)
+    expect(found.url).toBe(`${base}/alex/`)
     expect(found.calendars.map((c) => [c.displayName, c.href, c.isReadOnly])).toEqual([
-      ['Personal', `${base}/sonn/personal/`, false]
+      ['Personal', `${base}/alex/personal/`, false]
     ])
   })
 
   it('stops at the address when calendars are already there', async () => {
-    const home = 'https://dav.example.com/calendars/sonn'
+    const home = 'https://dav.example.com/calendars/alex'
     const calls = fakeServer({
       [home]: () => ({
         status: 207,
-        xml: ms(collection('/calendars/sonn/work/', '<C:calendar/>', '<displayname>Work</displayname>'))
+        xml: ms(collection('/calendars/alex/work/', '<C:calendar/>', '<displayname>Work</displayname>'))
       })
     })
 
@@ -109,22 +109,22 @@ describe('CalDavAdapter.locateCalendarHome', () => {
               status: 207,
               // fetch followed the redirect to the DAV root.
               finalUrl: `${base}/remote.php/dav/`,
-              xml: ms(`<response><href>/remote.php/dav/</href><propstat><prop><current-user-principal><href>principals/users/sonn/</href></current-user-principal></prop></propstat></response>`)
+              xml: ms(`<response><href>/remote.php/dav/</href><propstat><prop><current-user-principal><href>principals/users/alex/</href></current-user-principal></prop></propstat></response>`)
             }
           : { status: 404 },
-      [`${base}/remote.php/dav/principals/users/sonn/`]: () => ({
+      [`${base}/remote.php/dav/principals/users/alex/`]: () => ({
         status: 207,
-        xml: ms(`<response><href>/remote.php/dav/principals/users/sonn/</href><propstat><prop><C:calendar-home-set><href>https://cloud.example.com/remote.php/dav/calendars/sonn/</href></C:calendar-home-set></prop></propstat></response>`)
+        xml: ms(`<response><href>/remote.php/dav/principals/users/alex/</href><propstat><prop><C:calendar-home-set><href>https://cloud.example.com/remote.php/dav/calendars/alex/</href></C:calendar-home-set></prop></propstat></response>`)
       }),
-      [`${base}/remote.php/dav/calendars/sonn/`]: () => ({
+      [`${base}/remote.php/dav/calendars/alex/`]: () => ({
         status: 207,
-        xml: ms(collection('/remote.php/dav/calendars/sonn/personal/', '<C:calendar/>', '<displayname>Personal</displayname>'))
+        xml: ms(collection('/remote.php/dav/calendars/alex/personal/', '<C:calendar/>', '<displayname>Personal</displayname>'))
       })
     })
 
     const found = await new CalDavAdapter(creds(`${base}/`)).locateCalendarHome()
 
-    expect(found.url).toBe(`${base}/remote.php/dav/calendars/sonn/`)
+    expect(found.url).toBe(`${base}/remote.php/dav/calendars/alex/`)
     expect(found.calendars.map((c) => c.displayName)).toEqual(['Personal'])
   })
 
@@ -147,8 +147,8 @@ describe('CalDavAdapter.locateCalendarHome', () => {
 
 describe('discovery helpers', () => {
   it('reads the href a property points at', () => {
-    const xml = '<d:current-user-principal><d:href>/sonn/</d:href></d:current-user-principal>'
-    expect(extractPropHref(xml, 'current-user-principal')).toBe('/sonn/')
+    const xml = '<d:current-user-principal><d:href>/alex/</d:href></d:current-user-principal>'
+    expect(extractPropHref(xml, 'current-user-principal')).toBe('/alex/')
     expect(extractPropHref(xml, 'calendar-home-set')).toBeUndefined()
   })
 
@@ -156,7 +156,7 @@ describe('discovery helpers', () => {
     expect(resolveDavHref('principals/u/', 'https://a.example/remote.php/dav/')).toBe(
       'https://a.example/remote.php/dav/principals/u/'
     )
-    expect(resolveDavHref('/sonn/', 'https://a.example/x/')).toBe('https://a.example/sonn/')
+    expect(resolveDavHref('/alex/', 'https://a.example/x/')).toBe('https://a.example/alex/')
     expect(resolveDavHref('https://p01.example/123/', 'https://a.example/')).toBe('https://p01.example/123/')
   })
 
@@ -171,14 +171,14 @@ describe('calendar colours', () => {
   it("asks for Apple's calendar-color, which is where servers keep it", async () => {
     // Asked for in the CalDAV namespace, Radicale answered 404 for the property
     // and every calendar discovered later came in the default green.
-    const url = 'https://homeserver.example.ts.net/sonn/'
+    const url = 'https://homeserver.example.ts.net/alex/'
     let asked = ''
     fakeServer({
       [url]: (_depth, body) => {
         asked = body
         return {
           status: 207,
-          xml: `<?xml version="1.0"?><multistatus xmlns="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav" xmlns:I="http://apple.com/ns/ical/">${collection('/sonn/work/', '<C:calendar/>', '<displayname>Work</displayname><I:calendar-color>#039BE5</I:calendar-color>')}</multistatus>`
+          xml: `<?xml version="1.0"?><multistatus xmlns="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav" xmlns:I="http://apple.com/ns/ical/">${collection('/alex/work/', '<C:calendar/>', '<displayname>Work</displayname><I:calendar-color>#039BE5</I:calendar-color>')}</multistatus>`
         }
       }
     })
@@ -203,19 +203,19 @@ describe('calendar colours', () => {
 
 describe('where the CalDAV password goes', () => {
   it('only to the account\'s server and its own domain, never down to plain HTTP', () => {
-    const home = 'https://calendar.tail0123ab.ts.net/sonn/'
-    expect(mayCarryCredentials(home, 'https://calendar.tail0123ab.ts.net/sonn/work/x.ics')).toBe(true)
-    expect(mayCarryCredentials(home, 'https://other.tail0123ab.ts.net/sonn/')).toBe(true)
+    const home = 'https://calendar.tail0123ab.ts.net/alex/'
+    expect(mayCarryCredentials(home, 'https://calendar.tail0123ab.ts.net/alex/work/x.ics')).toBe(true)
+    expect(mayCarryCredentials(home, 'https://other.tail0123ab.ts.net/alex/')).toBe(true)
     expect(mayCarryCredentials(home, 'https://evil.example/collect')).toBe(false)
     expect(mayCarryCredentials(home, 'https://ts.net.evil.example/')).toBe(false)
-    expect(mayCarryCredentials(home, 'http://calendar.tail0123ab.ts.net/sonn/')).toBe(false)
+    expect(mayCarryCredentials(home, 'http://calendar.tail0123ab.ts.net/alex/')).toBe(false)
     expect(mayCarryCredentials(home, 'file:///etc/passwd')).toBe(false)
     // iCloud answers from per-user hosts in its own domain.
     expect(mayCarryCredentials('https://caldav.icloud.com', 'https://p42-caldav.icloud.com/123/calendars/')).toBe(true)
     // A two-label name or an address: that host only.
     expect(mayCarryCredentials('https://example.com/dav/', 'https://cal.example.com/dav/')).toBe(false)
-    expect(mayCarryCredentials('http://192.168.1.5:5232/', 'http://192.168.1.5:5232/sonn/')).toBe(true)
-    expect(mayCarryCredentials('http://192.168.1.5:5232/', 'http://192.168.1.6:5232/sonn/')).toBe(false)
+    expect(mayCarryCredentials('http://192.168.1.5:5232/', 'http://192.168.1.5:5232/alex/')).toBe(true)
+    expect(mayCarryCredentials('http://192.168.1.5:5232/', 'http://192.168.1.6:5232/alex/')).toBe(false)
   })
 
   it('not to the neighbours under a suffix anyone can register a name in', () => {
@@ -233,7 +233,7 @@ describe('where the CalDAV password goes', () => {
   })
 
   it('leaves the password off a request to a host a server named', async () => {
-    const url = 'https://homeserver.example.ts.net/sonn/'
+    const url = 'https://homeserver.example.ts.net/alex/'
     const seen: Record<string, string | undefined> = {}
     vi.stubGlobal(
       'fetch',

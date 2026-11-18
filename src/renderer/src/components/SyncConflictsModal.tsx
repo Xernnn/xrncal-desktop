@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useDialogFocus } from '../hooks/use-dialog-focus'
 import { DateTime } from 'luxon'
 import { AlertTriangle, X } from 'lucide-react'
 import type { SyncConflict } from '@shared/event-model'
@@ -19,6 +20,7 @@ export const SyncConflictsModal: React.FC<SyncConflictsModalProps> = ({
 }) => {
   const { t, i18n } = useTranslation()
   const [busyId, setBusyId] = useState<string | null>(null)
+  const { ref: dialogRef, onKeyDown: onDialogKeyDown } = useDialogFocus<HTMLDivElement>(isOpen)
   if (!isOpen) return null
 
   const handleResolve = async (eventId: string, resolution: 'keepMine' | 'keepTheirs') => {
@@ -32,7 +34,15 @@ export const SyncConflictsModal: React.FC<SyncConflictsModalProps> = ({
 
   return (
     <div className="gc-overlay select-none">
-      <div className="gc-dialog w-full max-w-lg">
+      <div
+        ref={dialogRef}
+        className="gc-dialog w-full max-w-lg"
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('sync.conflictsTitle')}
+        tabIndex={-1}
+        onKeyDown={onDialogKeyDown}
+      >
         <div className="flex items-center justify-between border-b border-hairline bg-app px-6 py-4">
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-today" />
@@ -44,8 +54,6 @@ export const SyncConflictsModal: React.FC<SyncConflictsModalProps> = ({
         </div>
 
         <div className="p-5 space-y-3 overflow-y-auto max-h-[65vh]">
-          <p className="text-xs text-muted">{t('sync.conflictsExplain')}</p>
-
           {conflicts.length === 0 ? (
             <p className="py-8 text-center text-xs text-muted">{t('sync.conflictsNone')}</p>
           ) : (

@@ -7,6 +7,7 @@ import type {
   CalendarAccount,
   CalendarEvent,
   EventException,
+  EventSearchResult,
   RsvpResponse,
   ExpandedOccurrence,
   CreateEventInput,
@@ -221,7 +222,8 @@ export interface XrncalAPI {
     getLocale: () => Promise<AppLocale>
     setLocale: (locale: AppLocale) => Promise<boolean>
     getPlatform: () => Promise<string>
-    pickBackgroundImage: () => Promise<{ dataUrl: string } | null>
+    /** null when cancelled; `tooLarge` for a picture that cannot be brought under the cap. */
+    pickBackgroundImage: () => Promise<{ dataUrl: string } | { tooLarge: true } | null>
     /** Write a consistent snapshot of the whole database to a file the user picks. */
     backupDatabase: () => Promise<BackupResult>
     /** Replace the database with a backup the user picks, then restart. The
@@ -288,7 +290,7 @@ export interface XrncalAPI {
     upsertException: (exception: Omit<EventException, 'id' | 'createdAt' | 'updatedAt'>) => Promise<EventException>
     materializeLunar: (input: MaterializeLunarInput) => Promise<{ count: number }>
     detachLunar: (input: DetachLunarInput) => Promise<{ count: number }>
-    search: (query: string, limit?: number) => Promise<CalendarEvent[]>
+    search: (query: string, limit?: number) => Promise<EventSearchResult[]>
     /** Ranked title autocomplete for the event editor, with the calendar each
      *  title normally lives on. */
     suggestTitles: (options: SuggestTitlesOptions) => Promise<TitleSuggestion[]>

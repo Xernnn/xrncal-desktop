@@ -7,7 +7,7 @@ import { accountErrorChanges } from '../src/main/sync/sync-worker'
 
 describe('redactSecrets', () => {
   it('removes a password written into a URL', () => {
-    expect(redactSecrets('PROPFIND https://sonn:hunter2@example.com/dav/ failed')).toBe(
+    expect(redactSecrets('PROPFIND https://alex:hunter2@example.com/dav/ failed')).toBe(
       'PROPFIND https://***@example.com/dav/ failed'
     )
   })

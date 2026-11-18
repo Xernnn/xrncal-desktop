@@ -21,6 +21,7 @@ import {
   Printer
 } from 'lucide-react'
 import { useSettings } from '../context/SettingsContext'
+import { useDialogFocus } from '../hooks/use-dialog-focus'
 import { NumberInput, CustomSelect, DatePicker, toast } from './ui'
 import { SNAP_STEP_OPTIONS } from '../dnd/resize-math'
 import { EVENT_LENGTH_OPTIONS, newEventMinutes } from '@shared/event-length'
@@ -65,15 +66,10 @@ interface SettingsPanelProps {
 }
 
 /** One labelled control. Consistent rhythm across every section. */
-const Row: React.FC<{ label: string; hint?: string; children: React.ReactNode }> = ({
-  label,
-  hint,
-  children
-}) => (
+const Row: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
   <div className="flex items-start justify-between gap-3 border-b border-hairline py-3 last:border-b-0">
     <div className="min-w-0 pt-0.5">
       <div className="text-sm text-primary">{label}</div>
-      {hint && <div className="mt-0.5 text-xs leading-snug text-muted">{hint}</div>}
     </div>
     <div className="shrink-0">{children}</div>
   </div>
@@ -88,9 +84,53 @@ const Toggle: React.FC<{ on: boolean; onChange: (next: boolean) => void }> = ({ 
   )
 }
 
+/** "Restore from backup", asked here first: it replaces everything. In the
+ *  panel's own style - a native confirm matched nothing else in the app. */
+export const RestoreBackupRow: React.FC<{ onRestore: () => void; initiallyAsking?: boolean }> = ({
+  onRestore,
+  initiallyAsking = false
+}) => {
+  const { t } = useTranslation()
+  const [asking, setAsking] = React.useState(initiallyAsking)
+  return (
+    <>
+      <button
+        type="button"
+        className="flex w-full items-center gap-2.5 rounded-[3px] px-2.5 py-2.5 text-left text-sm text-primary transition-colors hover:bg-hover"
+        onClick={() => setAsking(true)}
+      >
+        <HardDriveUpload className="h-4 w-4 shrink-0 text-muted" />
+        <span className="flex-1 truncate">{t('settings.restore')}</span>
+      </button>
+      {asking && (
+        <div
+          className="mx-2 mb-2 flex items-center gap-2 border border-today/40 px-3 py-2 text-xs"
+          style={{ borderRadius: 'var(--radius-control)' }}
+        >
+          <span className="flex-1 text-primary">{t('settings.restoreConfirm')}</span>
+          <button type="button" className="gc-btn" onClick={() => setAsking(false)}>
+            {t('common.cancel')}
+          </button>
+          <button
+            type="button"
+            className="gc-btn text-today"
+            onClick={() => {
+              setAsking(false)
+              onRestore()
+            }}
+          >
+            {t('settings.restoreAction')}
+          </button>
+        </div>
+      )}
+    </>
+  )
+}
+
 export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
   const { t, i18n } = useTranslation()
   const { settings, setSetting, setLanguage } = useSettings()
+  const { ref: dialogRef, onKeyDown: onDialogKeyDown } = useDialogFocus<HTMLDivElement>(props.isOpen)
   if (!props.isOpen) return null
 
   const preferredTimeZones = parseZoneList(settings.preferredTimeZones)
@@ -106,7 +146,13 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
     // sheet sliding in from the right, rather than a centred modal.
     <div className="fixed inset-0 z-50 select-none bg-black/30" onMouseDown={props.onClose}>
       <div
+        ref={dialogRef}
         className="gc-slide-right absolute top-0 right-0 flex h-full w-full max-w-[400px] flex-col overflow-hidden border-l border-hairline bg-dialog text-primary shadow-xl"
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('settings.title')}
+        tabIndex={-1}
+        onKeyDown={onDialogKeyDown}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <header className="flex shrink-0 items-center gap-1 border-b border-hairline px-2 py-2.5">
@@ -244,14 +290,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
                 <span className="flex-1 truncate">{t('settings.backup')}</span>
               </button>
 
-              <button
-                type="button"
-                className="flex w-full items-center gap-2.5 rounded-[3px] px-2.5 py-2.5 text-left text-sm text-primary transition-colors hover:bg-hover"
-                onClick={props.onRestoreBackup}
-              >
-                <HardDriveUpload className="h-4 w-4 shrink-0 text-muted" />
-                <span className="flex-1 truncate">{t('settings.restore')}</span>
-              </button>
+              <RestoreBackupRow onRestore={props.onRestoreBackup} />
 
               <button
                 type="button"
@@ -318,24 +357,21 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
                   <Row label={t('settings.showMiniCalendar')}>
                     <Toggle on={settings.showMiniCalendar} onChange={(next) => void setSetting('showMiniCalendar', next)} />
                   </Row>
-                  <Row label={t('settings.launchAtLogin')} hint={t('settings.launchAtLoginHint')}>
+                  <Row label={t('settings.launchAtLogin')}>
                     <Toggle on={settings.launchAtLogin} onChange={(next) => void setSetting('launchAtLogin', next)} />
                   </Row>
-                  <Row label={t('settings.closeToTray')} hint={t('settings.closeToTrayHint')}>
+                  <Row label={t('settings.closeToTray')}>
                     <Toggle on={settings.closeToTray} onChange={(next) => void setSetting('closeToTray', next)} />
                   </Row>
-                  <Row label={t('settings.checkForUpdates')} hint={t('settings.checkForUpdatesHint')}>
+                  <Row label={t('settings.checkForUpdates')}>
                     <Toggle on={settings.checkForUpdates} onChange={(next) => void setSetting('checkForUpdates', next)} />
                   </Row>
-                  <Row label={t('settings.autoBackup')} hint={t('settings.autoBackupHint')}>
+                  <Row label={t('settings.autoBackup')}>
                     <Toggle on={settings.autoBackup} onChange={(next) => void setSetting('autoBackup', next)} />
                   </Row>
                   {/* Full width, like the timezone list: the labels are long. */}
                   <div className="border-b border-hairline py-3">
-                    <div className="text-sm text-primary">{t('reminders.settingsTimed')}</div>
-                    <div className="mt-0.5 mb-2 text-xs leading-snug text-muted">
-                      {t('reminders.settingsTimedHint')}
-                    </div>
+                    <div className="mb-2 text-sm text-primary">{t('reminders.settingsTimed')}</div>
                     <CustomSelect
                       value={settings.defaultReminderMinutes === null ? '' : String(settings.defaultReminderMinutes)}
                       onChange={(v) => void setSetting('defaultReminderMinutes', v === '' ? null : Number(v))}
@@ -350,10 +386,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
                     />
                   </div>
                   <div className="border-b border-hairline py-3">
-                    <div className="text-sm text-primary">{t('reminders.settingsAllDay')}</div>
-                    <div className="mt-0.5 mb-2 text-xs leading-snug text-muted">
-                      {t('reminders.settingsAllDayHint')}
-                    </div>
+                    <div className="mb-2 text-sm text-primary">{t('reminders.settingsAllDay')}</div>
                     <CustomSelect
                       value={
                         settings.defaultAllDayReminderMinutes === null ? '' : String(settings.defaultAllDayReminderMinutes)
@@ -372,10 +405,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
                   {/* The zones the event editor lists first, so picking one there
                       is not a hunt through the whole list. */}
                   <div className="border-b border-hairline py-3">
-                    <div className="text-sm text-primary">{t('settings.preferredTimeZones')}</div>
-                    <div className="mt-0.5 mb-2 text-xs leading-snug text-muted">
-                      {t('settings.preferredTimeZonesHint')}
-                    </div>
+                    <div className="mb-2 text-sm text-primary">{t('settings.preferredTimeZones')}</div>
                     {preferredTimeZones.length > 0 && (
                       <div className="mb-2 space-y-1">
                         {preferredTimeZones.map((zone) => (
@@ -416,8 +446,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
                       none opens in - Google's export writes one-off events as bare
                       UTC, with nothing to say whether they were made at +7 or +11. */}
                   <div className="py-3">
-                    <div className="text-sm text-primary">{t('settings.zoneHistory')}</div>
-                    <div className="mt-0.5 mb-2 text-xs leading-snug text-muted">{t('settings.zoneHistoryHint')}</div>
+                    <div className="mb-2 text-sm text-primary">{t('settings.zoneHistory')}</div>
                     {zoneHistory.length > 0 && (
                       <div className="mb-2 space-y-1">
                         {zoneHistory.map((period, idx) => (
@@ -498,7 +527,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
                       ))}
                     </div>
                   </Row>
-                  <Row label={t('settings.dayStartHour')} hint={t('settings.dayStartHourHint')}>
+                  <Row label={t('settings.dayStartHour')}>
                     <NumberInput
                       value={settings.dayStartHour}
                       onChange={(v) =>
@@ -553,10 +582,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
                   </Row>
                   {/* Full width, and wrapping: six lengths do not fit beside a label. */}
                   <div className="border-b border-hairline py-3 last:border-b-0">
-                    <div className="text-sm text-primary">{t('settings.defaultEventLength')}</div>
-                    <div className="mt-0.5 mb-2 text-xs leading-snug text-muted">
-                      {t('settings.defaultEventLengthHint')}
-                    </div>
+                    <div className="mb-2 text-sm text-primary">{t('settings.defaultEventLength')}</div>
                     <div className="flex flex-wrap gap-1">
                       {EVENT_LENGTH_OPTIONS.map((opt) => (
                         <button
@@ -582,10 +608,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
                   </Row>
                   {/* Full width: a searchable zone list needs the room. */}
                   <div className="border-b border-hairline py-3 last:border-b-0">
-                    <div className="text-sm text-primary">{t('settings.secondaryTimezone')}</div>
-                    <div className="mt-0.5 mb-2 text-xs leading-snug text-muted">
-                      {t('settings.secondaryTimezoneHint')}
-                    </div>
+                    <div className="mb-2 text-sm text-primary">{t('settings.secondaryTimezone')}</div>
                     <CustomSelect
                       value={settings.secondaryTimezone}
                       onChange={(next) => void setSetting('secondaryTimezone', next)}

@@ -1,5 +1,6 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
+import { useDialogFocus } from '../hooks/use-dialog-focus'
 import { Keyboard, X } from 'lucide-react'
 
 interface KeyboardShortcutsModalProps {
@@ -18,6 +19,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
   onClose
 }) => {
   const { t } = useTranslation()
+  const { ref: dialogRef, onKeyDown: onDialogKeyDown } = useDialogFocus<HTMLDivElement>(isOpen)
   if (!isOpen) return null
 
   const groups: { title: string; shortcuts: Shortcut[] }[] = [
@@ -89,7 +91,15 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
 
   return (
     <div className="gc-overlay select-none">
-      <div className="gc-dialog w-full max-w-3xl">
+      <div
+        ref={dialogRef}
+        className="gc-dialog w-full max-w-3xl"
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('shortcuts.title')}
+        tabIndex={-1}
+        onKeyDown={onDialogKeyDown}
+      >
         <div className="flex items-center justify-between border-b border-hairline bg-app px-6 py-4">
           <div className="flex items-center gap-2">
             <Keyboard className="h-5 w-5 text-accent" />

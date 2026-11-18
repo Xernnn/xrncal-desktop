@@ -65,6 +65,10 @@
     "tests/settings-event-length.test.ts",
     "tests/location-suggest-input.test.ts",
     "tests/grid-nav.test.ts",
-    "tests/emoji-picker.test.ts"
+    "tests/emoji-picker.test.ts",
+    "tests/wallpapers.test.ts",
+    "tests/mini-refresh.test.ts",
+    "tests/calendar-read-failure.test.ts",
+    "tests/dialog-focus.test.ts"
   ]
 }
