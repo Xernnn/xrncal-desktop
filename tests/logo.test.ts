@@ -28,12 +28,15 @@ function icoEntries(ico: Buffer): { size: number; isBitmap: boolean; tile: strin
 }
 
 describe('the logo', () => {
-  it.each(['site/mark.svg', 'docs/assets/mark.svg'])('%s draws what icon.svg draws', (path) => {
-    const mark = readFileSync(projectFile(path), 'utf8')
+  it.each(['site/mark.svg', 'docs/assets/mark.svg', 'src/renderer/src/assets/mark.svg'])(
+    '%s draws what icon.svg draws',
+    (path) => {
+      const mark = readFileSync(projectFile(path), 'utf8')
 
-    expect(withoutRootTag(mark)).toBe(withoutRootTag(source))
-    expect(mark).toContain('aria-label="xrncal"')
-  })
+      expect(withoutRootTag(mark)).toBe(withoutRootTag(source))
+      expect(mark).toContain('aria-label="xrncal"')
+    }
+  )
 
   it('has every Windows size in icon.ico, in the colour of icon.svg', () => {
     const tile = /<rect width="100" height="100" fill="(#[0-9A-F]{6})"/.exec(source)?.[1]

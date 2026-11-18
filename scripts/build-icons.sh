@@ -23,7 +23,8 @@ done
 magick "${frames[@]}" -compress none resources/icon.ico
 
 # The marks have the tile edge to edge: the icon's margin is there for the OS.
-for mark in site/mark.svg docs/assets/mark.svg; do
+# The app's own copy stands in for its name in the window (src/renderer/src/components/ui/AppMark.tsx).
+for mark in site/mark.svg docs/assets/mark.svg src/renderer/src/assets/mark.svg; do
   sed -E 's|<svg [^>]*>|<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="xrncal">|' \
     resources/icon.svg > "$mark"
 done

@@ -5,7 +5,7 @@ import type { AppLocale, ProviderStatus } from '@shared/ipc-contract'
 import HolidayCalendarToggle from './HolidayCalendarToggle'
 import ProviderMark from './accounts/ProviderMark'
 import { NavRow } from './accounts/AccountViews'
-import { ToggleSwitch } from './ui'
+import { AppMark, ToggleSwitch } from './ui'
 
 /** Where the welcome hands over: a provider to connect, or nowhere. */
 export type WelcomeNext = 'google' | 'graph' | 'icloud' | 'caldav' | 'subscription' | null
@@ -73,8 +73,9 @@ export const WelcomeDialog: React.FC<WelcomeDialogProps> = ({
       <div className="gc-dialog flex w-full max-w-md flex-col gap-5 p-6" role="dialog" aria-label={t('welcome.title')}>
         {step === 0 && (
           <>
-            <div>
-              <h2 className="text-xl font-semibold text-primary">{t('welcome.title')}</h2>
+            <div className="flex flex-col items-start gap-3">
+              <AppMark size={40} />
+              <h2 className="text-xl font-semibold text-primary">{t('welcome.heading')}</h2>
             </div>
             <div>
               <div className="mb-2 text-xs font-medium text-muted">{t('settings.language')}</div>
