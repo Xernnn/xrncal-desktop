@@ -14,6 +14,10 @@ APPS_DIR="$HOME/Applications"
 DESKTOP_DIR="$HOME/.local/share/applications"
 ICON_DIR="$HOME/.local/share/icons"
 TARGET_APPIMAGE="$APPS_DIR/${APP_NAME}.AppImage"
+# Where the launcher has the AppImage unpack itself (see TMPDIR below): xrncal's
+# own folder in the user's cache, on disk. src/main/launch-at-login.ts uses the
+# same one for the entry that starts xrncal at login.
+UNPACK_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/${APP_ID}"
 
 echo "==> Building production bundle + AppImage"
 npm run pack:linux
@@ -27,6 +31,7 @@ fi
 echo "==> Built: $SRC_APPIMAGE"
 
 mkdir -p "$APPS_DIR" "$DESKTOP_DIR" "$ICON_DIR"
+install -d -m 700 "$UNPACK_DIR"
 
 # Write beside the target and rename over it, rather than copying into it.
 # An AppImage that is already running is mounted from this exact file, and
@@ -44,7 +49,7 @@ install -m 644 resources/icon.png "$ICON_DIR/${APP_ID}.png"
 # stay on top (see executableArgs in electron-builder.yml).
 #
 # --appimage-extract-and-run with NO_CLEANUP=1: run from an extracted copy in
-# ${TMPDIR:-/tmp}, not from the FUSE mount. The mount lives only as long as the
+# UNPACK_DIR, not from the FUSE mount. The mount lives only as long as the
 # AppImage runtime process does; if that process goes while the app is still
 # running, the app dies with SIGBUS the next time it pages in code from the
 # mount. app.relaunch() (database restore) hits the same thing: the old process
@@ -53,12 +58,22 @@ install -m 644 resources/icon.png "$ICON_DIR/${APP_ID}.png"
 # second launch that only hands off to the running instance would delete that
 # instance's files on its way out. The runtime still sets APPIMAGE to this
 # file, which launch-at-login relies on.
+#
+# TMPDIR: the runtime extracts into $TMPDIR/appimage_extracted_<MD5 of the
+# AppImage>, so this puts the copy in UNPACK_DIR, on disk. In /tmp, which is
+# often memory (tmpfs), each build held about 300 MB of RAM until a restart,
+# and systemd-tmpfiles removes /tmp files untouched for 10 days, which can take
+# files xrncal has not read since it started (locale packs, the icon) from
+# under it while it sits in the tray. xrncal gets this TMPDIR too: Chromium's
+# single-instance socket and the .ics files Share writes go in the same
+# user-only folder, and a second launch still finds the running xrncal through
+# the link to that socket in its profile.
 cat > "$DESKTOP_DIR/${APP_ID}.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=${APP_NAME}
 Comment=Modern desktop calendar with multi-provider sync
-Exec=env NO_CLEANUP=1 "${TARGET_APPIMAGE}" --appimage-extract-and-run --ozone-platform=x11 %U
+Exec=env NO_CLEANUP=1 "TMPDIR=${UNPACK_DIR}" "${TARGET_APPIMAGE}" --appimage-extract-and-run --ozone-platform=x11 %U
 Icon=${ICON_DIR}/${APP_ID}.png
 Terminal=false
 Categories=Office;Calendar;
@@ -67,18 +82,21 @@ StartupWMClass=xrncal
 EOF
 chmod 644 "$DESKTOP_DIR/${APP_ID}.desktop"
 
-# Each build extracts to its own ${TMPDIR:-/tmp}/appimage_extracted_<digest>,
-# and NO_CLEANUP keeps it there, so remove the copies no running process uses.
-for dir in "${TMPDIR:-/tmp}"/appimage_extracted_*; do
-  [[ -x "$dir/$APP_NAME" && -f "$dir/${APP_ID}.desktop" ]] || continue
-  in_use=0
-  for exe in /proc/[0-9]*/exe; do
-    if [[ "$(readlink "$exe" 2>/dev/null)" == "$dir/"* ]]; then
-      in_use=1
-      break
-    fi
-  done
-  (( in_use )) || rm -rf -- "$dir"
+# Each build extracts to its own folder and NO_CLEANUP keeps it, so remove the
+# copies of earlier builds that nothing uses: no process runs from one, works in
+# one or has one of its files mapped. The copy a running xrncal uses stays,
+# whichever build it is, and so does this build's, which a launch may be
+# extracting right now. The same goes for the copies launchers before this one
+# extracted into ${TMPDIR:-/tmp}, where only xrncal's own are touched.
+CURRENT_COPY="$UNPACK_DIR/appimage_extracted_$(md5sum "$TARGET_APPIMAGE" | cut -d' ' -f1)"
+IN_USE="$( { find /proc/[0-9]*/exe /proc/[0-9]*/cwd -maxdepth 0 -printf '%l\n'; cat /proc/[0-9]*/maps; } 2>/dev/null || true)"
+for dir in "$UNPACK_DIR"/appimage_extracted_* "${TMPDIR:-/tmp}"/appimage_extracted_*; do
+  [[ -d "$dir" && "$dir" != "$CURRENT_COPY" ]] || continue
+  [[ "$dir" == "$UNPACK_DIR"/* || ( -x "$dir/$APP_NAME" && -f "$dir/${APP_ID}.desktop" ) ]] || continue
+  if grep -qF -- "$dir/" <<<"$IN_USE" || grep -qxF -- "$dir" <<<"$IN_USE"; then
+    continue
+  fi
+  rm -rf -- "$dir"
 done
 
 if command -v update-desktop-database >/dev/null 2>&1; then

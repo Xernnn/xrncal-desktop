@@ -1,13 +1,13 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createSqliteDriver } from '../src/main/db/sqlite-driver'
 import { closeDatabase, initDatabase, runMigrations, SCHEMA_VERSION } from '../src/main/db/database'
 import { SettingsRepo, setSystemDefaults } from '../src/main/db/repos/settings-repo'
 import { EventsRepo } from '../src/main/db/repos/events-repo'
 import { beforeRestoreFileName, checkBackup } from '../src/main/db/backup'
-import { linuxAutostartEntry, START_HIDDEN_ARG } from '../src/main/launch-at-login'
+import { linuxAutostartEntry, linuxUnpackFolder, START_HIDDEN_ARG } from '../src/main/launch-at-login'
 import { icsPathsIn, queueOpenedFiles, setOpenedFileNotifier, takeOpenedFiles } from '../src/main/opened-ics-files'
 import { settleExistingProfile } from '../src/main/first-run'
 
@@ -138,15 +138,24 @@ describe('restoring a backup', () => {
 })
 
 describe('starting at login on Linux', () => {
-  it('starts the AppImage in the tray, with the path quoted for the desktop entry', () => {
-    const entry = linuxAutostartEntry('/home/a "b"/Apps/xrncal.AppImage')
+  afterEach(() => vi.unstubAllEnvs())
+
+  it('starts the AppImage in the tray, unpacked into its cache folder, with the paths quoted for the desktop entry', () => {
+    const entry = linuxAutostartEntry('/home/a "b"/Apps/xrncal.AppImage', '/home/a "b"/.cache/xrncal')
     expect(entry).toContain('[Desktop Entry]')
     expect(entry).toContain(
-      `Exec=env NO_CLEANUP=1 "/home/a \\"b\\"/Apps/xrncal.AppImage" --appimage-extract-and-run --ozone-platform=x11 ${START_HIDDEN_ARG}`
+      `Exec=env NO_CLEANUP=1 "TMPDIR=/home/a \\"b\\"/.cache/xrncal" "/home/a \\"b\\"/Apps/xrncal.AppImage" --appimage-extract-and-run --ozone-platform=x11 ${START_HIDDEN_ARG}`
     )
-    expect(linuxAutostartEntry('/opt/$HOME`x`.AppImage')).toContain(
-      'Exec=env NO_CLEANUP=1 "/opt/\\$HOME\\`x\\`.AppImage"'
+    expect(linuxAutostartEntry('/opt/$HOME`x`.AppImage', '/c/$x')).toContain(
+      'Exec=env NO_CLEANUP=1 "TMPDIR=/c/\\$x" "/opt/\\$HOME\\`x\\`.AppImage"'
     )
+  })
+
+  it('unpacks into xrncal’s folder in the user’s cache, not the temporary folder', () => {
+    vi.stubEnv('XDG_CACHE_HOME', '/home/a/cache')
+    expect(linuxUnpackFolder()).toBe('/home/a/cache/xrncal')
+    vi.stubEnv('XDG_CACHE_HOME', '')
+    expect(linuxUnpackFolder()).toBe(join(homedir(), '.cache', 'xrncal'))
   })
 })
 
