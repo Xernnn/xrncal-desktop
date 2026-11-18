@@ -17,18 +17,29 @@ function execArg(value: string): string {
 }
 
 /**
+ * Where the AppImage unpacks itself to run: xrncal's own folder in the user's
+ * cache, on disk, the same one scripts/install-linux-app.sh gives the launcher.
+ */
+export function linuxUnpackFolder(): string {
+  const cacheHome = process.env.XDG_CACHE_HOME || join(homedir(), '.cache')
+  return join(cacheHome, 'xrncal')
+}
+
+/**
  * The freedesktop autostart entry that starts the AppImage at login. The path
  * is the AppImage's own, which only an AppImage run knows (`APPIMAGE`). The X11
- * switch and the extract-and-run launch match the launcher `npm run app:install`
- * writes, for the same reasons (see scripts/install-linux-app.sh): run from the
- * FUSE mount, the app dies with SIGBUS if the mount goes away under it.
+ * switch, the extract-and-run launch and the TMPDIR it unpacks into match the
+ * launcher `npm run app:install` writes, for the same reasons (see
+ * scripts/install-linux-app.sh): run from the FUSE mount, the app dies with
+ * SIGBUS if the mount goes away under it, and unpacked into /tmp it sits in
+ * memory, where files untouched for days can be cleaned away under it.
  */
-export function linuxAutostartEntry(appImagePath: string): string {
+export function linuxAutostartEntry(appImagePath: string, unpackFolder: string): string {
   return [
     '[Desktop Entry]',
     'Type=Application',
     'Name=xrncal',
-    `Exec=env NO_CLEANUP=1 ${execArg(appImagePath)} --appimage-extract-and-run --ozone-platform=x11 ${START_HIDDEN_ARG}`,
+    `Exec=env NO_CLEANUP=1 ${execArg(`TMPDIR=${unpackFolder}`)} ${execArg(appImagePath)} --appimage-extract-and-run --ozone-platform=x11 ${START_HIDDEN_ARG}`,
     'Terminal=false',
     'X-GNOME-Autostart-enabled=true',
     ''
@@ -52,7 +63,7 @@ export function applyLaunchAtLogin(enabled: boolean): void {
         return
       }
       mkdirSync(dirname(file), { recursive: true })
-      writeFileSync(file, linuxAutostartEntry(appImage))
+      writeFileSync(file, linuxAutostartEntry(appImage, linuxUnpackFolder()))
       return
     }
     app.setLoginItemSettings({ openAtLogin: enabled, args: [START_HIDDEN_ARG] })
