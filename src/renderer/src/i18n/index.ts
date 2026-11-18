@@ -581,6 +581,7 @@ export const resources = {
       },
       welcome: {
         title: 'Welcome to xrncal',
+        heading: 'Welcome',
         basicsTitle: 'A few basics',
         connectTitle: 'Add your calendars',
         next: 'Next',
@@ -1247,6 +1248,7 @@ export const resources = {
       },
       welcome: {
         title: 'Chào mừng đến với xrncal',
+        heading: 'Chào mừng',
         basicsTitle: 'Vài thiết lập cơ bản',
         connectTitle: 'Thêm lịch của bạn',
         next: 'Tiếp',

@@ -62,7 +62,7 @@ Neither moon colour may be red: red means today.
 
 ## Typography
 
-Font: Inter. Hierarchy:
+Font: MiSans Latin, the variable cut bundled in `src/renderer/src/assets/fonts` (the font every xrn app uses). `font-mono` is the same font with tabular figures, for times and counts that must line up. Hierarchy:
 - H1 period title: ~28px, weight 400
 - H2 day groups: 14–16px, weight 600
 - Body event titles: 13–14px, weight 400–500

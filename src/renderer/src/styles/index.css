@@ -2,8 +2,22 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* MiSans Latin by Xiaomi, the official variable cut (weights 150-700), bundled
+   so no font is fetched: the font every xrn app uses, Vietnamese included. The
+   variable cut rather than the static files, whose Bold draws "@" as "&". */
+@font-face {
+  font-family: 'MiSans Latin VF';
+  src: url('../assets/fonts/MiSansLatinVF.woff2') format('woff2');
+  font-weight: 150 700;
+  font-display: swap;
+}
+
 @theme inline {
-  --font-sans: 'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: 'MiSans Latin VF', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  /* Times, counts and shortcut keys: the same font, with figures of one width
+     so a column of times still lines up and a ticking value does not jitter. */
+  --font-mono: var(--font-sans);
+  --font-mono--font-feature-settings: 'tnum';
   --color-app: var(--color-bg-app);
   --color-surface: var(--color-bg-surface);
   --color-dialog: var(--color-bg-dialog);
@@ -19,7 +33,7 @@
 }
 
 :root {
-  --font-sans: 'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: 'MiSans Latin VF', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --color-bg-app: #f7f6f3;
   --color-bg-surface: #ffffff;
   /* Dialogs and side panels sit on top of everything and get read closely, so

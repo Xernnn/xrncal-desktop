@@ -8,6 +8,7 @@ import { DEFAULT_APP_SETTINGS } from '@shared/settings-contract'
 import { formatClockTime, type TimeFormatPref } from '@shared/time-format'
 import i18n from '../i18n'
 import { keepUpcomingFresh } from './upcoming-refresh'
+import { AppMark } from '../components/ui/AppMark'
 
 /** The next events, or null when they could not be read (the list stays as it was). */
 function readUpcoming(): Promise<ExpandedOccurrence[] | null> {
@@ -113,10 +114,7 @@ export const MiniApp: React.FC = () => {
         className="flex shrink-0 items-center justify-between border-b border-hairline bg-surface px-3.5 py-2.5"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
-        <div className="flex items-center gap-2">
-          <div className="h-2 w-2 rounded-full bg-accent" />
-          <span className="text-xs font-semibold">xrncal</span>
-        </div>
+        <AppMark size={22} />
 
         <div
           className="flex items-center gap-1.5"

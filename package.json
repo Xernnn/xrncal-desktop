@@ -37,7 +37,6 @@
     "icons": "bash scripts/build-icons.sh"
   },
   "dependencies": {
-    "@fontsource-variable/inter": "^5.3.0",
     "electron-updater": "^6.8.9",
     "i18next": "^26.4.7",
     "ical.js": "^2.2.1",

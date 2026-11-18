@@ -358,7 +358,7 @@ Run a single test file: `npx vitest run tests/expand-occurrences.test.ts`. CI ru
 
 [MIT](LICENSE) © Xernnn.
 
-Uses `ical.js` (MPL-2.0), `rrule` (BSD-3-Clause) and the Inter typeface (SIL Open Font License 1.1, bundled with the app); everything else is MIT or ISC. No viral copyleft dependencies.
+Uses `ical.js` (MPL-2.0) and `rrule` (BSD-3-Clause); everything else is MIT or ISC. No viral copyleft dependencies. The app and the website use [MiSans](https://hyperos.mi.com/font) by Xiaomi, free for commercial use and embedded under its terms; the font ships with them, so none is fetched from anywhere.
 
 ---
 
