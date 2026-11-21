@@ -1,5 +1,6 @@
 import { join } from 'node:path'
 import { createSqliteDriver, type ISqliteDatabase } from './sqlite-driver'
+import { ensureLocalAccount, ensureWritableCalendar, settleDefaultCalendar } from './repos/default-calendar'
 
 let dbInstance: ISqliteDatabase | null = null
 
@@ -767,26 +768,14 @@ export function runMigrations(db: ISqliteDatabase): void {
 }
 
 /**
- * Seed default local account and primary calendar if they don't exist
+ * The local account, and a calendar on this computer when there is nowhere
+ * else to write - on a fresh profile, the "Personal Calendar" it starts with
+ * (see ensureWritableCalendar).
  */
 export function seedDefaultData(db: ISqliteDatabase): void {
-  const accountCount = db.prepare('SELECT COUNT(*) as count FROM accounts').get<{ count: number }>()?.count ?? 0
-
-  if (accountCount === 0) {
-    const now = new Date().toISOString()
-    const defaultAccountId = 'account-local-primary'
-    const defaultCalendarId = 'calendar-local-default'
-
-    db.prepare(
-      `INSERT INTO accounts (id, type, name, is_active, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?)`
-    ).run(defaultAccountId, 'local', 'Personal Account', 1, now, now)
-
-    db.prepare(
-      `INSERT INTO calendars (id, account_id, name, color, is_visible, is_read_only, is_default, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(defaultCalendarId, defaultAccountId, 'Personal Calendar', '#6366f1', 1, 0, 1, now, now)
-  }
+  const now = new Date().toISOString()
+  ensureLocalAccount(db, now)
+  ensureWritableCalendar(db, now)
 }
 
 /** The database file initDatabase() opens for a profile folder (or a file path given as is). */
@@ -808,6 +797,7 @@ export function initDatabase(dbDirOrPath: string): ISqliteDatabase {
   try {
     runMigrations(db)
     seedDefaultData(db)
+    settleDefaultCalendar(db)
   } catch (err) {
     // Not left open: the file stays as it was for whatever opens it next.
     db.close()

@@ -1,4 +1,5 @@
 import type { Calendar, CalendarAccount } from '@shared/event-model'
+import { compareAccountsForSidebar, compareCalendarsForSidebar } from '@shared/calendar-order'
 
 /**
  * How accounts and calendars are presented: grouped the way OneCalendar does it,
@@ -69,14 +70,9 @@ export function groupCalendars(accounts: CalendarAccount[], calendars: Calendar[
     byAccount.set(key, list)
   }
 
-  const sortCalendars = (list: Calendar[]) =>
-    [...list].sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name))
+  const sortCalendars = (list: Calendar[]) => [...list].sort(compareCalendarsForSidebar)
 
-  const ordered = [...accounts].sort((a, b) => {
-    if (a.type === 'local' && b.type !== 'local') return -1
-    if (b.type === 'local' && a.type !== 'local') return 1
-    return a.createdAt.localeCompare(b.createdAt)
-  })
+  const ordered = [...accounts].sort(compareAccountsForSidebar)
 
   const groups: CalendarGroup[] = ordered.map((account) => ({
     key: account.id,

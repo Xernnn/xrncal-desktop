@@ -25,6 +25,7 @@ import {
 } from '@shared/location-suggestions'
 import { DateTime } from 'luxon'
 import { CalendarsRepo } from '../db/repos/calendars-repo'
+import { settleDefaultCalendar } from '../db/repos/default-calendar'
 import { EventsRepo, ReadOnlyCalendarError } from '../db/repos/events-repo'
 import { getDatabase } from '../db/database'
 import { parseIcsContent } from '../ics/parse-ics'
@@ -98,7 +99,10 @@ export function registerCalendarIpcHandlers(): void {
   )
 
   ipcMain.handle(IPC_CHANNELS.CALENDAR.DELETE, (_event, id: string) => {
-    return calendarsRepo.deleteCalendar(id)
+    const removed = calendarsRepo.deleteCalendar(id)
+    // The default may have been this calendar.
+    if (removed) settleDefaultCalendar(db)
+    return removed
   })
 
   // 2. Event handlers
