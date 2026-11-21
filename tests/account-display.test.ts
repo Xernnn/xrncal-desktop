@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import type { Calendar, CalendarAccount } from '../src/shared/event-model'
 import {
+  canRemoveLocalCalendar,
   classifyConnectError,
+  eventMoveTargets,
   classifySyncError,
   groupCalendars,
   hostOf,
@@ -181,5 +183,46 @@ describe('classifySyncError', () => {
     expect(classifySyncError('No calendars found')).toBe('unknown')
     expect(classifySyncError('Sign-in was cancelled')).toBe('unknown')
     expect(classifySyncError(undefined)).toBe('unknown')
+  })
+})
+
+describe('removing a calendar on this computer', () => {
+  const local = account(LOCAL_ACCOUNT_ID, 'local', '2026-01-01T00:00:00Z')
+  const server = account('acc_caldav', 'caldav', '2026-02-01T00:00:00Z')
+  const google = account('acc_google', 'google', '2026-03-01T00:00:00Z')
+  const personal = cal('calendar-local-default', LOCAL_ACCOUNT_ID, { name: 'Personal Calendar', isDefault: true })
+  const holidays = cal('cal_holidays', LOCAL_ACCOUNT_ID, { isReadOnly: true, holidayType: 'vietnam' })
+  const feed = cal('cal_feed', LOCAL_ACCOUNT_ID, { isReadOnly: true, subscriptionUrl: 'https://example.com/team.ics' })
+
+  it('is offered for the default calendar too, while another calendar can be written to', () => {
+    // It used to be offered for every calendar here but the default.
+    expect(canRemoveLocalCalendar(personal, [personal, cal('cal_trips', LOCAL_ACCOUNT_ID)])).toBe(true)
+    expect(canRemoveLocalCalendar(personal, [personal, cal('https://dav.example.com/alex/work/', server.id)])).toBe(true)
+  })
+
+  it('is not offered for the last calendar new events could go into', () => {
+    const readOnly = cal('https://dav.example.com/alex/shared/', server.id, { isReadOnly: true })
+    expect(canRemoveLocalCalendar(personal, [personal, holidays, feed, readOnly])).toBe(false)
+  })
+
+  it("offers the events every other writable calendar, in the sidebar's order, starting with the one the default moves to", () => {
+    const work = cal('https://dav.example.com/alex/work/', server.id, { name: 'Work' })
+    const family = cal('https://dav.example.com/alex/family/', server.id, { name: 'Family', isVisible: false })
+    const shared = cal('https://dav.example.com/alex/shared/', server.id, { name: 'Alpha', isReadOnly: true })
+    const primary = cal('alex@example.com', google.id, { name: 'alex@example.com' })
+    const trips = cal('cal_trips', LOCAL_ACCOUNT_ID, { name: 'Trips' })
+    const calendars = [personal, trips, holidays, feed, work, family, shared, primary]
+
+    const { groups, preferred } = eventMoveTargets(personal, [local, server, google], calendars)
+
+    expect(groups.map((g) => [g.key, g.calendars.map((c) => c.id)])).toEqual([
+      [LOCAL_ACCOUNT_ID, ['cal_trips']],
+      [server.id, [family.id, work.id]],
+      [google.id, [primary.id]]
+    ])
+    // The first shown account calendar: what the main process makes the default.
+    expect(preferred?.id).toBe(work.id)
+    // A default that stays is where new events keep going.
+    expect(eventMoveTargets(trips, [local, server, google], calendars.map((c) => (c.id === primary.id ? { ...c, isDefault: true } : { ...c, isDefault: false }))).preferred?.id).toBe(primary.id)
   })
 })

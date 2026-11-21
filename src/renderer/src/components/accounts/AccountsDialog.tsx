@@ -4,7 +4,13 @@ import { ChevronLeft, X } from 'lucide-react'
 import type { Calendar, CalendarAccount } from '@shared/event-model'
 import { LOCAL_ACCOUNT_ID } from '../../lib/account-display'
 import type { AccountsPageProps, AccountsView } from './accounts-nav'
-import { AccountDetailView, AccountListView, NewLocalCalendarView, RemoveAccountView } from './AccountViews'
+import {
+  AccountDetailView,
+  AccountListView,
+  NewLocalCalendarView,
+  RemoveAccountView,
+  RemoveCalendarView
+} from './AccountViews'
 import {
   ChooseCalendarsView,
   ConnectView,
@@ -91,7 +97,9 @@ export const AccountsDialog: React.FC<AccountsDialogProps> = (props) => {
           : t('accounts.account')
         : view.name === 'remove'
           ? t('accounts.removeTitle')
-          : view.name === 'add'
+          : view.name === 'removeCalendar'
+            ? t('accounts.deleteCalendar')
+            : view.name === 'add'
             ? t('addAccount.title')
             : view.name === 'connect'
               ? t(`addAccount.providers.${view.provider}.title`)
@@ -128,6 +136,9 @@ export const AccountsDialog: React.FC<AccountsDialogProps> = (props) => {
           {view.name === 'list' && <AccountListView {...page} />}
           {view.name === 'account' && <AccountDetailView {...page} accountId={view.accountId} />}
           {view.name === 'remove' && <RemoveAccountView {...page} accountId={view.accountId} />}
+          {view.name === 'removeCalendar' && (
+            <RemoveCalendarView {...page} calendarId={view.calendarId} eventCount={view.eventCount} />
+          )}
           {view.name === 'add' && <ProviderPickView {...page} />}
           {view.name === 'connect' && <ConnectView key={view.provider} {...page} provider={view.provider} />}
           {view.name === 'local' && <NewLocalCalendarView {...page} />}
