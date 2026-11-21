@@ -356,3 +356,24 @@ export function resolveLunarOccurrence(
   lunarOccurrenceCache.set(key, result)
   return result
 }
+
+/**
+ * The next `count` dates (YYYY-MM-DD) of a yearly lunar anniversary, from
+ * `fromIsoDate` on, that day included: what is still to come, not this year's
+ * date once it has gone by.
+ */
+export function nextLunarOccurrences(
+  spec: LunarRecurrenceSpec,
+  fromIsoDate: string,
+  count: number
+): string[] {
+  const out: string[] = []
+  const firstYear = Number(fromIsoDate.slice(0, 4))
+  // Each year has at most one date, and one that cannot place the date is
+  // skipped (see resolveLunarOccurrence), so a few years past `count` is enough.
+  for (let year = firstYear; out.length < count && year <= firstYear + count + 2; year++) {
+    const iso = resolveLunarOccurrence(spec, year)
+    if (iso && iso >= fromIsoDate) out.push(iso)
+  }
+  return out
+}

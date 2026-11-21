@@ -60,6 +60,7 @@
     "tests/wallpapers.test.ts",
     "tests/mini-refresh.test.ts",
     "tests/calendar-read-failure.test.ts",
-    "tests/dialog-focus.test.ts"
+    "tests/dialog-focus.test.ts",
+    "tests/lunar-next-dates.test.ts"
   ]
 }
