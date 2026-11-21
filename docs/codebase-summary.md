@@ -1,8 +1,8 @@
 # xrncal — Codebase Summary
 
-**Last updated:** 2026-10-27  
-**Version:** 0.1.0  
-**Build status:** 539 tests in 62 files passing, 0 TypeScript errors, 0 lint errors, clean production build. CI (`.github/workflows/ci.yml`) runs lint + typecheck + tests + build on every push and PR; a `v*` tag runs `.github/workflows/release.yml`.
+**Last updated:** 2026-11-21  
+**Version:** 0.2.0  
+**Build status:** 1,341 tests in 140 files passing, 0 TypeScript errors, 0 lint errors, clean production build. CI (`.github/workflows/ci.yml`) runs lint + typecheck + tests + build on every push and PR; a `v*` tag runs `.github/workflows/release.yml`.
 
 ---
 
@@ -23,7 +23,7 @@ xrncal/
 │   │   │   ├── settings-ipc.ts  # Settings get/set IPC handlers
 │   │   │   └── subscriptions-ipc.ts # Calendars subscribed to by .ics / webcal link
 │   │   ├── db/                  # Database layer
-│   │   │   ├── database.ts      # initDatabase, runMigrations (inline 001-025), seedDefaultData
+│   │   │   ├── database.ts      # initDatabase, runMigrations (inline 001-029), seedDefaultData
 │   │   │   ├── sqlite-driver.ts # ISqliteDatabase abstraction (node:sqlite / better-sqlite3)
 │   │   │   ├── backup.ts        # VACUUM INTO snapshot for Settings → Back up database
 │   │   │   ├── migrations/      # Reference copies of the inline migrations (001-027)
@@ -138,7 +138,7 @@ xrncal/
 │       ├── locale-defaults.ts   # A new profile's language, clock and week start from the computer's locale
 │       ├── zone-history.ts      # Where the user was, from when: the zone of an event saved without one; moves added as the computer's zone changes
 │       └── ipc-contract.ts      # IPC_CHANNELS constants and XrncalAPI interface
-├── tests/                       # Vitest unit tests (~950 tests / 89 files); e2e/ drives the built app
+├── tests/                       # Vitest unit tests (1,341 tests / 140 files); e2e/ drives the built app
 │   ├── integration/             # CalDAV sync against a real Radicale (`npm run test:caldav`, not in `npm run test`)
 │   └── stubs/electron.ts        # `electron` module stub for main-process tests
 └── docs/
@@ -297,7 +297,7 @@ Key types: `CalendarEvent`, `ExpandedOccurrence`, `Calendar`, `CalendarAccount`,
 
 ---
 
-## Database Schema (25 migrations)
+## Database Schema (29 migrations)
 
 Applied by `runMigrations()` from the inline constants in `src/main/db/database.ts`, each in one
 transaction with the row recording it; the files in `src/main/db/migrations/` are reference copies.
@@ -327,6 +327,10 @@ transaction with the row recording it; the files in `src/main/db/migrations/` ar
 | 023 | `keep_mine`: a conflict resolved as "keep mine" overwrites the provider's event, without If-Match |
 | 024 | Moves to another account's calendar, made before they were refused, become new events there |
 | 025 | `recurrence_id`: a CalDAV invitation to single dates of someone else's series, kept as events |
+| 026 | Meeting links that came back from CalDAV escaped as text (`\,` `\;`) unescaped, and pushed again |
+| 027 | Google calendars listed in full once more, so stored series get their EXDATE and RDATE lines |
+| 028 | `create_id`: the id a new event's create went out with, so a lost answer makes no second event |
+| 029 | `calendars.holiday_type`: a holiday subscription is found by its type, not by its name |
 
 ## Test Coverage
 
@@ -345,8 +349,8 @@ tests/
 └── undo-restore.test.ts           # Bringing a deleted event back, before and after its push
 ```
 
-**Total: 954 unit tests across 89 files, all passing**, plus 25 Playwright tests in `e2e/` that
-drive the built app and 12 in `tests/integration/` that sync with a real Radicale server
+**Total: 1,341 unit tests across 140 files, all passing**, plus 30 Playwright tests in `e2e/` that
+drive the built app and 25 in `tests/integration/` that sync with a real Radicale server
 (`docs/deployment-guide.md`, "Running Tests").
 
 Main-process tests run in plain Node; the `electron` module is aliased to
