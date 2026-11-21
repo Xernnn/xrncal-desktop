@@ -5,6 +5,7 @@ import { DateTime } from 'luxon'
 import type { ExpandedOccurrence } from '@shared/event-model'
 import { applyDocumentTheme, shouldUseDarkClass, type ThemeMode } from '@shared/theme-mode'
 import { DEFAULT_APP_SETTINGS } from '@shared/settings-contract'
+import { DEFAULT_EVENT_COLOR } from '@shared/mini-calendar-grid'
 import { formatClockTime, type TimeFormatPref } from '@shared/time-format'
 import i18n from '../i18n'
 import { keepUpcomingFresh } from './upcoming-refresh'
@@ -162,7 +163,7 @@ export const MiniApp: React.FC = () => {
                       <div className="flex items-center gap-2">
                         <span
                           className="h-2 w-2 rounded-full shrink-0"
-                          style={{ backgroundColor: occ.color || '#6366f1' }}
+                          style={{ backgroundColor: occ.color || DEFAULT_EVENT_COLOR }}
                         />
                         <span className="flex-1 truncate font-semibold text-primary">
                           {occ.title || t('mini.untitled')}
