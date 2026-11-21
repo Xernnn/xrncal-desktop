@@ -62,7 +62,9 @@ const xrncalApi: XrncalAPI = {
       ipcRenderer.invoke(IPC_CHANNELS.CALENDAR.CREATE, data),
     update: (id: string, data: Partial<Pick<Calendar, 'name' | 'color' | 'isVisible'>>) =>
       ipcRenderer.invoke(IPC_CHANNELS.CALENDAR.UPDATE, id, data),
-    delete: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.CALENDAR.DELETE, id)
+    delete: (id: string, options?: { moveEventsTo?: string }) =>
+      ipcRenderer.invoke(IPC_CHANNELS.CALENDAR.DELETE, id, options),
+    eventCount: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.CALENDAR.EVENT_COUNT, id)
   },
   events: {
     queryRange: (calendarIds: string[], startUtc: string, endUtc: string) =>

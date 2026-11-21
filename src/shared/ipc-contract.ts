@@ -78,7 +78,8 @@ export const IPC_CHANNELS = {
     LIST: 'xrncal:calendar:list',
     CREATE: 'xrncal:calendar:create',
     UPDATE: 'xrncal:calendar:update',
-    DELETE: 'xrncal:calendar:delete'
+    DELETE: 'xrncal:calendar:delete',
+    EVENT_COUNT: 'xrncal:calendar:event-count'
   },
   EVENT: {
     QUERY_RANGE: 'xrncal:event:query-range',
@@ -275,7 +276,12 @@ export interface XrncalAPI {
     list: () => Promise<Calendar[]>
     create: (data: { name: string; color: string }) => Promise<Calendar>
     update: (id: string, data: Partial<Pick<Calendar, 'name' | 'color' | 'isVisible'>>) => Promise<Calendar>
-    delete: (id: string) => Promise<boolean>
+    /** Remove a calendar and its events, or with `moveEventsTo`, after moving
+     *  its events there (a calendar on this computer only). The default
+     *  calendar moves on when it is the one removed. */
+    delete: (id: string, options?: { moveEventsTo?: string }) => Promise<boolean>
+    /** The events a calendar holds, for asking what should happen to them. */
+    eventCount: (id: string) => Promise<number>
   }
   events: {
     queryRange: (calendarIds: string[], startUtc: string, endUtc: string) => Promise<ExpandedOccurrence[]>

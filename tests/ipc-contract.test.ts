@@ -123,7 +123,8 @@ describe('IPC Channels and Contracts', () => {
           createdAt: '',
           updatedAt: ''
         }),
-        delete: async () => true
+        delete: async () => true,
+        eventCount: async () => 0
       },
       events: {
         queryRange: async () => [],
