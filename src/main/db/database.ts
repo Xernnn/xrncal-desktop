@@ -682,6 +682,33 @@ WHERE name IN ('Ngày lễ Việt Nam', 'International Holidays')
   AND account_id IN (SELECT id FROM accounts WHERE type = 'local');
 `
 
+/**
+ * The "Personal Calendar" a profile was given on its first start, where every
+ * calendar in use comes from an account: it was seeded as the default, could
+ * not be removed, and new events went to it - or, once it was hidden, past it -
+ * though it never syncs. Removed only when it is plainly unused: still the
+ * default, hidden, with no event in it, and an account calendar that can be
+ * written to exists to take over as the default (settleDefaultCalendar, right
+ * after the migrations). One that is shown, or holds an event, is the user's
+ * and stays; so does any other calendar on this computer.
+ */
+export const MIGRATION_030_SQL = `
+DELETE FROM calendars
+WHERE id = 'calendar-local-default'
+  AND is_default = 1
+  AND is_visible = 0
+  AND is_read_only = 0
+  AND account_id IN (SELECT id FROM accounts WHERE type = 'local')
+  AND NOT EXISTS (SELECT 1 FROM events e WHERE e.calendar_id = calendars.id AND e.is_deleted = 0)
+  AND EXISTS (
+    SELECT 1 FROM calendars c JOIN accounts a ON a.id = c.account_id
+    WHERE a.type <> 'local'
+      AND c.is_read_only = 0
+      AND c.subscription_url IS NULL
+      AND c.holiday_type IS NULL
+  );
+`
+
 /** Every migration in order: the one at index i is version i + 1. */
 const MIGRATIONS: readonly string[] = [
   MIGRATION_001_SQL,
@@ -712,7 +739,8 @@ const MIGRATIONS: readonly string[] = [
   MIGRATION_026_SQL,
   MIGRATION_027_SQL,
   MIGRATION_028_SQL,
-  MIGRATION_029_SQL
+  MIGRATION_029_SQL,
+  MIGRATION_030_SQL
 ]
 
 /** The newest migration this build knows: a restore refuses a backup made by
