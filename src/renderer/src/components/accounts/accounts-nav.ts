@@ -12,6 +12,7 @@ export type AccountsView =
   | { name: 'list' }
   | { name: 'account'; accountId: string }
   | { name: 'remove'; accountId: string }
+  | { name: 'removeCalendar'; calendarId: string; eventCount: number }
   | { name: 'add' }
   | { name: 'connect'; provider: 'google' | 'graph' | 'icloud' | 'caldav' }
   | { name: 'local' }

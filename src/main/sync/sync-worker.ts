@@ -5,6 +5,7 @@ import { GoogleSyncEngine } from './google-sync-engine'
 import { MicrosoftSyncEngine } from './microsoft-sync-engine'
 import { CalDavSyncEngine } from './caldav-sync-engine'
 import { refreshDueSubscriptions } from '../subscriptions/ics-subscription'
+import { settleDefaultCalendar } from '../db/repos/default-calendar'
 import type { SyncStatus, SyncResult } from '@shared/event-model'
 import type { OAuthClient } from '@shared/oauth-client'
 import { mt } from '../i18n-main'
@@ -163,12 +164,17 @@ export class SyncWorker {
       for (const line of accountErrorChanges(this.loggedFailures, failures)) log(line.level, line.message)
       this.loggedFailures = failures
 
+      // An account's first sync brings in its calendars, and a sync can find
+      // a calendar gone from the provider: either can leave the default on a
+      // calendar here, or on none.
+      const defaultMoved = settleDefaultCalendar(this.db)
+
       // Tell the renderer its copy of the data is out of date. This matters more
       // than "the view is a few minutes stale": a successful push re-keys the
       // local row to the id the provider assigned, so an occurrence the renderer
       // is still holding by its old `evt_...` id no longer resolves, and the next
       // move or resize of it fails with "Event not found".
-      if (totalPulled > 0 || totalPushed > 0) {
+      if (totalPulled > 0 || totalPushed > 0 || defaultMoved) {
         for (const win of BrowserWindow.getAllWindows()) {
           if (!win.isDestroyed()) win.webContents.send(IPC_CHANNELS.SYNC.CHANGED)
         }

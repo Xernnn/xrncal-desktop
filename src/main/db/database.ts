@@ -1,5 +1,6 @@
 import { join } from 'node:path'
 import { createSqliteDriver, type ISqliteDatabase } from './sqlite-driver'
+import { ensureLocalAccount, ensureWritableCalendar, settleDefaultCalendar } from './repos/default-calendar'
 
 let dbInstance: ISqliteDatabase | null = null
 
@@ -681,6 +682,33 @@ WHERE name IN ('Ngày lễ Việt Nam', 'International Holidays')
   AND account_id IN (SELECT id FROM accounts WHERE type = 'local');
 `
 
+/**
+ * The "Personal Calendar" a profile was given on its first start, where every
+ * calendar in use comes from an account: it was seeded as the default, could
+ * not be removed, and new events went to it - or, once it was hidden, past it -
+ * though it never syncs. Removed only when it is plainly unused: still the
+ * default, hidden, with no event in it, and an account calendar that can be
+ * written to exists to take over as the default (settleDefaultCalendar, right
+ * after the migrations). One that is shown, or holds an event, is the user's
+ * and stays; so does any other calendar on this computer.
+ */
+export const MIGRATION_030_SQL = `
+DELETE FROM calendars
+WHERE id = 'calendar-local-default'
+  AND is_default = 1
+  AND is_visible = 0
+  AND is_read_only = 0
+  AND account_id IN (SELECT id FROM accounts WHERE type = 'local')
+  AND NOT EXISTS (SELECT 1 FROM events e WHERE e.calendar_id = calendars.id AND e.is_deleted = 0)
+  AND EXISTS (
+    SELECT 1 FROM calendars c JOIN accounts a ON a.id = c.account_id
+    WHERE a.type <> 'local'
+      AND c.is_read_only = 0
+      AND c.subscription_url IS NULL
+      AND c.holiday_type IS NULL
+  );
+`
+
 /** Every migration in order: the one at index i is version i + 1. */
 const MIGRATIONS: readonly string[] = [
   MIGRATION_001_SQL,
@@ -711,7 +739,8 @@ const MIGRATIONS: readonly string[] = [
   MIGRATION_026_SQL,
   MIGRATION_027_SQL,
   MIGRATION_028_SQL,
-  MIGRATION_029_SQL
+  MIGRATION_029_SQL,
+  MIGRATION_030_SQL
 ]
 
 /** The newest migration this build knows: a restore refuses a backup made by
@@ -767,26 +796,14 @@ export function runMigrations(db: ISqliteDatabase): void {
 }
 
 /**
- * Seed default local account and primary calendar if they don't exist
+ * The local account, and a calendar on this computer when there is nowhere
+ * else to write - on a fresh profile, the "Personal Calendar" it starts with
+ * (see ensureWritableCalendar).
  */
 export function seedDefaultData(db: ISqliteDatabase): void {
-  const accountCount = db.prepare('SELECT COUNT(*) as count FROM accounts').get<{ count: number }>()?.count ?? 0
-
-  if (accountCount === 0) {
-    const now = new Date().toISOString()
-    const defaultAccountId = 'account-local-primary'
-    const defaultCalendarId = 'calendar-local-default'
-
-    db.prepare(
-      `INSERT INTO accounts (id, type, name, is_active, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?)`
-    ).run(defaultAccountId, 'local', 'Personal Account', 1, now, now)
-
-    db.prepare(
-      `INSERT INTO calendars (id, account_id, name, color, is_visible, is_read_only, is_default, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(defaultCalendarId, defaultAccountId, 'Personal Calendar', '#6366f1', 1, 0, 1, now, now)
-  }
+  const now = new Date().toISOString()
+  ensureLocalAccount(db, now)
+  ensureWritableCalendar(db, now)
 }
 
 /** The database file initDatabase() opens for a profile folder (or a file path given as is). */
@@ -808,6 +825,7 @@ export function initDatabase(dbDirOrPath: string): ISqliteDatabase {
   try {
     runMigrations(db)
     seedDefaultData(db)
+    settleDefaultCalendar(db)
   } catch (err) {
     // Not left open: the file stays as it was for whatever opens it next.
     db.close()

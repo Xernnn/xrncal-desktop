@@ -13,6 +13,7 @@ import { SyncWorker, type SyncOAuthClients } from '../sync/sync-worker'
 import { describeError } from '../sync/http'
 import { AccountsRepo } from '../db/repos/accounts-repo'
 import { detachAccount } from '../db/repos/detach-account'
+import { settleDefaultCalendar } from '../db/repos/default-calendar'
 import type { CalendarAccount } from '@shared/event-model'
 
 let syncWorkerInstance: SyncWorker | null = null
@@ -204,7 +205,10 @@ export function registerAuthSyncIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.AUTH.DETACH_ACCOUNT, (_event, accountId: string) => {
     // Nothing to sync afterwards - the point is that this data is now local -
     // but the worker should stop polling an account that no longer exists.
-    return detachAccount(db, accountId)
+    const result = detachAccount(db, accountId)
+    // The default may have been one of its calendars, which are local now.
+    if (result.success) settleDefaultCalendar(db)
+    return result
   })
 
   ipcMain.handle(IPC_CHANNELS.SYNC.TRIGGER_NOW, async () => {

@@ -25,6 +25,7 @@ import {
 } from '@shared/location-suggestions'
 import { DateTime } from 'luxon'
 import { CalendarsRepo } from '../db/repos/calendars-repo'
+import { countCalendarEvents, removeCalendar } from '../db/repos/remove-calendar'
 import { EventsRepo, ReadOnlyCalendarError } from '../db/repos/events-repo'
 import { getDatabase } from '../db/database'
 import { parseIcsContent } from '../ics/parse-ics'
@@ -49,6 +50,7 @@ export function registerCalendarIpcHandlers(): void {
   ipcMain.removeHandler(IPC_CHANNELS.CALENDAR.CREATE)
   ipcMain.removeHandler(IPC_CHANNELS.CALENDAR.UPDATE)
   ipcMain.removeHandler(IPC_CHANNELS.CALENDAR.DELETE)
+  ipcMain.removeHandler(IPC_CHANNELS.CALENDAR.EVENT_COUNT)
 
   ipcMain.removeHandler(IPC_CHANNELS.EVENT.QUERY_RANGE)
   ipcMain.removeHandler(IPC_CHANNELS.EVENT.GET_BY_ID)
@@ -97,8 +99,16 @@ export function registerCalendarIpcHandlers(): void {
     }
   )
 
-  ipcMain.handle(IPC_CHANNELS.CALENDAR.DELETE, (_event, id: string) => {
-    return calendarsRepo.deleteCalendar(id)
+  ipcMain.handle(IPC_CHANNELS.CALENDAR.DELETE, (_event, id: string, options?: { moveEventsTo?: string }) => {
+    const moveEventsTo = typeof options?.moveEventsTo === 'string' ? options.moveEventsTo : undefined
+    const removed = removeCalendar(db, id, { moveEventsTo })
+    // Events moved into an account's calendar go up now, not at the next poll.
+    if (removed && moveEventsTo) nudgeSync()
+    return removed
+  })
+
+  ipcMain.handle(IPC_CHANNELS.CALENDAR.EVENT_COUNT, (_event, id: string) => {
+    return countCalendarEvents(db, id)
   })
 
   // 2. Event handlers
