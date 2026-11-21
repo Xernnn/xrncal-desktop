@@ -6,7 +6,7 @@
     <title>xrncal</title>
     <meta
       name="description"
-      content="xrncal is a local-first calendar for Windows, Linux and Android that syncs with Google Calendar, Microsoft 365 and CalDAV."
+      content="xrncal is a local-first calendar for Windows and Linux that syncs with Google Calendar, Microsoft 365 and CalDAV."
     />
     <link rel="icon" href="mark.svg" />
     <link rel="stylesheet" href="style.css" />
@@ -19,26 +19,27 @@
 
       <h1>A calendar that keeps your data on your own machine.</h1>
       <p class="lede">
-        xrncal is a calendar app for Windows, Linux and Android. It stores everything in a local
-        SQLite database on your device and syncs that database with the accounts you connect —
+        xrncal is a calendar app for Windows and Linux. It stores everything in a local SQLite
+        database on your computer and syncs that database with the accounts you connect —
         Google Calendar, Microsoft 365 or any CalDAV server.
       </p>
 
       <h2>How it works</h2>
       <ul>
         <li>
-          <strong>Local first.</strong> The database on your device is the source of truth. The app
+          <strong>Local first.</strong> The database on your computer is the source of truth. The app
           reads and writes it directly and works offline; syncing pushes your changes out and pulls
           other devices' changes in.
         </li>
         <li>
           <strong>No servers in the middle.</strong> The app talks to your calendar providers
           directly. There is no xrncal account, no xrncal backend, and no copy of your calendar
-          anywhere but your device and your provider.
+          anywhere but your computer and your provider.
         </li>
         <li>
-          <strong>Credentials stay encrypted.</strong> Access tokens are encrypted at rest with the
-          operating system's own keystore, never written in plain text.
+          <strong>Credentials stay encrypted.</strong> Passwords and access tokens are encrypted
+          with a key the operating system keeps — Windows' data protection for your Windows account,
+          or the system keyring on Linux — and never written in plain text.
         </li>
       </ul>
 
