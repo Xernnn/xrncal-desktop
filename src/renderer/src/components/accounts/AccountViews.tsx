@@ -5,14 +5,16 @@ import { AlertTriangle, ChevronRight, Loader2, Palette, Plus, RotateCw, Trash2 }
 import type { Calendar, SyncStatus } from '@shared/event-model'
 import { CALENDAR_COLOR_PALETTE } from '../../lib/calendar-colors'
 import {
+  canRemoveLocalCalendar,
   classifySyncError,
+  eventMoveTargets,
   groupCalendars,
   isRemoteAccount,
   LOCAL_ACCOUNT_ID,
   providerKind,
   type CalendarGroup
 } from '../../lib/account-display'
-import { TextInput, toast, showFriendlyError } from '../ui'
+import { CustomSelect, TextInput, toast, showFriendlyError } from '../ui'
 import { CalendarRow, ColorPalette } from './CalendarToggle'
 import ProviderMark from './ProviderMark'
 import type { AccountsPageProps } from './accounts-nav'
@@ -58,7 +60,11 @@ export const NavRow: React.FC<{
 export const AccountListView: React.FC<AccountsPageProps> = (props) => {
   const { t } = useTranslation()
   const label = useProviderLabel()
-  const groups = groupCalendars(props.accounts, props.calendars)
+  // This computer has a row while it has calendars of its own; a new one is
+  // made from Add account.
+  const groups = groupCalendars(props.accounts, props.calendars).filter(
+    (group) => group.kind !== 'local' || group.calendars.length > 0
+  )
   const { status, reload } = useSyncStatus()
 
   return (
@@ -208,6 +214,22 @@ export const AccountDetailView: React.FC<AccountsPageProps & { accountId: string
     }
   }
 
+  // An empty calendar is deleted after the confirmation here; one with events
+  // asks first what should happen to them, as removing an account does.
+  const askDelete = async (cal: Calendar) => {
+    if (deleting === cal.id) {
+      setDeleting(null)
+      return
+    }
+    try {
+      const count = (await window.xrncal?.calendars?.eventCount(cal.id)) ?? 0
+      if (count > 0) props.push({ name: 'removeCalendar', calendarId: cal.id, eventCount: count })
+      else setDeleting(cal.id)
+    } catch (err) {
+      showFriendlyError(err, t('accounts.calendarDeleteFailed'))
+    }
+  }
+
   const deleteCalendar = async (cal: Calendar) => {
     try {
       await window.xrncal?.calendars?.delete(cal.id)
@@ -279,13 +301,13 @@ export const AccountDetailView: React.FC<AccountsPageProps & { accountId: string
                   >
                     <Palette className="h-3.5 w-3.5" />
                   </button>
-                  {isLocal && !cal.isDefault && (
+                  {isLocal && canRemoveLocalCalendar(cal, props.calendars) && (
                     <button
                       type="button"
                       className="gc-icon-btn h-6 w-6 hover:text-today"
                       title={t('accounts.deleteCalendar')}
                       aria-label={t('accounts.deleteCalendar')}
-                      onClick={() => setDeleting(deleting === cal.id ? null : cal.id)}
+                      onClick={() => void askDelete(cal)}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -416,6 +438,103 @@ export const RemoveAccountView: React.FC<AccountsPageProps & { accountId: string
         <button type="button" className="gc-btn text-today" onClick={remove} disabled={busy}>
           {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
           {t('accounts.removeConfirm')}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------ remove calendar */
+
+/**
+ * The account removal's question, for a calendar on this computer that holds
+ * events: keep them by moving them into another calendar, or delete them with
+ * it. The calendar picked to start with is the one new events go into next.
+ */
+export const RemoveCalendarView: React.FC<AccountsPageProps & { calendarId: string; eventCount: number }> = (props) => {
+  const { t } = useTranslation()
+  const calendar = props.calendars.find((c) => c.id === props.calendarId)
+  const { groups, preferred } = calendar
+    ? eventMoveTargets(calendar, props.accounts, props.calendars)
+    : { groups: [], preferred: undefined }
+  const [keep, setKeep] = useState(preferred !== undefined)
+  const [targetId, setTargetId] = useState(preferred?.id ?? '')
+  const [busy, setBusy] = useState(false)
+  if (!calendar) return null
+
+  const accountName = (group: CalendarGroup) =>
+    group.kind === 'local' ? t('calendarList.thisComputer') : group.account?.name ?? ''
+  const target = groups.flatMap((g) => g.calendars).find((c) => c.id === targetId)
+
+  const remove = async () => {
+    if (!window.xrncal?.calendars) return
+    setBusy(true)
+    try {
+      const moveTo = keep ? target : undefined
+      await window.xrncal.calendars.delete(calendar.id, moveTo ? { moveEventsTo: moveTo.id } : undefined)
+      await props.refresh()
+      toast.success(t('accounts.calendarDeleted'), {
+        description: moveTo ? t('accounts.eventsMoved', { count: props.eventCount, name: moveTo.name }) : calendar.name
+      })
+      props.back()
+    } catch (err) {
+      showFriendlyError(err, t('accounts.calendarDeleteFailed'))
+      setBusy(false)
+    }
+  }
+
+  const option = (value: boolean, title: string, disabled: boolean, extra?: React.ReactNode) => (
+    <div
+      className={`border px-3 py-2.5 transition-colors ${
+        keep === value ? 'border-accent/60 bg-accent/5' : 'border-hairline hover:bg-hover'
+      } ${disabled ? 'opacity-50' : ''}`}
+      style={{ borderRadius: 'var(--radius-control)' }}
+    >
+      <label className={`flex gap-3 ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+        <input
+          type="radio"
+          name="remove-calendar-mode"
+          className="mt-0.5 accent-accent"
+          checked={keep === value}
+          disabled={disabled}
+          onChange={() => setKeep(value)}
+        />
+        <span className="block text-sm text-primary">{title}</span>
+      </label>
+      {extra}
+    </div>
+  )
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-primary">
+        {t('accounts.removeCalendarQuestion', { name: calendar.name, count: props.eventCount })}
+      </p>
+      {option(
+        true,
+        t('accounts.removeCalendarMove'),
+        groups.length === 0,
+        keep && groups.length > 0 ? (
+          <div className="mt-2 pl-7">
+            <CustomSelect
+              value={targetId}
+              onChange={setTargetId}
+              variant="boxed"
+              options={groups.flatMap((group) =>
+                group.calendars.map((c) => ({ value: c.id, label: c.name, color: c.color, group: accountName(group) }))
+              )}
+            />
+          </div>
+        ) : undefined
+      )}
+      {option(false, t('accounts.removeCalendarDelete'), false)}
+      <div className="flex justify-end gap-2 pt-1">
+        <button type="button" className="gc-btn" onClick={props.back} disabled={busy}>
+          {t('common.cancel')}
+        </button>
+        <button type="button" className="gc-btn text-today" onClick={remove} disabled={busy || (keep && !target)}>
+          {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          {t('accounts.deleteCalendar')}
         </button>
       </div>
     </div>

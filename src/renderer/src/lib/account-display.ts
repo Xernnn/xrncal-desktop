@@ -1,4 +1,5 @@
 import type { Calendar, CalendarAccount } from '@shared/event-model'
+import { compareAccountsForSidebar, compareCalendarsForSidebar } from '@shared/calendar-order'
 
 /**
  * How accounts and calendars are presented: grouped the way OneCalendar does it,
@@ -69,14 +70,9 @@ export function groupCalendars(accounts: CalendarAccount[], calendars: Calendar[
     byAccount.set(key, list)
   }
 
-  const sortCalendars = (list: Calendar[]) =>
-    [...list].sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name))
+  const sortCalendars = (list: Calendar[]) => [...list].sort(compareCalendarsForSidebar)
 
-  const ordered = [...accounts].sort((a, b) => {
-    if (a.type === 'local' && b.type !== 'local') return -1
-    if (b.type === 'local' && a.type !== 'local') return 1
-    return a.createdAt.localeCompare(b.createdAt)
-  })
+  const ordered = [...accounts].sort(compareAccountsForSidebar)
 
   const groups: CalendarGroup[] = ordered.map((account) => ({
     key: account.id,
@@ -98,6 +94,45 @@ export function groupCalendars(accounts: CalendarAccount[], calendars: Calendar[
     groups.push({ key: 'holidays', kind: 'holidays', calendars: sortCalendars(holidays) })
   }
   return groups
+}
+
+/** A calendar new events can go into: not read-only, and not filled from a feed. */
+export function isWritableCalendar(cal: Calendar): boolean {
+  return !cal.isReadOnly && !cal.subscriptionUrl && !cal.holidayType
+}
+
+/**
+ * Whether a calendar on this computer can be removed: one new events can go
+ * into, while another such calendar is left to be the default (the main
+ * process moves the default there, settleDefaultCalendar).
+ */
+export function canRemoveLocalCalendar(cal: Calendar, calendars: Calendar[]): boolean {
+  return isWritableCalendar(cal) && calendars.some((other) => other.id !== cal.id && isWritableCalendar(other))
+}
+
+/**
+ * Where a removed calendar's events can be moved: every other calendar they
+ * can be written into, in the sidebar's order, grouped by account. The one
+ * picked to start with is the calendar new events go into after the removal -
+ * the default if it is not the one going, else what the main process makes
+ * the default: the first account calendar, a shown one before a hidden one,
+ * else the first calendar on this computer the same way.
+ */
+export function eventMoveTargets(
+  cal: Calendar,
+  accounts: CalendarAccount[],
+  calendars: Calendar[]
+): { groups: CalendarGroup[]; preferred?: Calendar } {
+  const groups = groupCalendars(accounts, calendars)
+    .map((group) => ({ ...group, calendars: group.calendars.filter((c) => c.id !== cal.id && isWritableCalendar(c)) }))
+    .filter((group) => group.calendars.length > 0)
+  const targets = groups.flatMap((group) => group.calendars)
+  const remoteIds = new Set(accounts.filter(isRemoteAccount).map((a) => a.id))
+  const remote = targets.filter((c) => remoteIds.has(c.accountId))
+  const pool = remote.length > 0 ? remote : targets
+  const preferred =
+    targets.find((c) => c.isDefault) ?? pool.find((c) => c.isVisible) ?? pool[0]
+  return { groups, preferred }
 }
 
 /**

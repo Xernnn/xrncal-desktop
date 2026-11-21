@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.2.0-5865F2?style=flat-square" alt="Version 0.2.0">
+  <img src="https://img.shields.io/badge/version-0.2.1-5865F2?style=flat-square" alt="Version 0.2.1">
   <img src="https://img.shields.io/badge/Windows-10%2F11-1A73E8?style=flat-square" alt="Windows">
   <img src="https://img.shields.io/badge/Linux-AppImage-34C77B?style=flat-square" alt="Linux">
   <img src="https://img.shields.io/badge/Electron-44-47848F?style=flat-square" alt="Electron">
@@ -142,7 +142,7 @@ The way xrncal looks and behaves follows One Calendar (Code Spark), which has no
 
 ## Install
 
-No release has been published yet: version 0.2.0 is in `package.json`, and the release workflow is ready. Until a release is out, [build it yourself](#build-it-yourself).
+No release has been published yet: version 0.2.1 is in `package.json`, and the release workflow is ready. Until a release is out, [build it yourself](#build-it-yourself).
 
 A release will be at **[Releases](https://github.com/Xernnn/xrncal-desktop/releases/latest)**, with:
 
