@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.2.1-5865F2?style=flat-square" alt="Phiên bản 0.2.1">
+  <img src="https://img.shields.io/badge/version-0.2.2-5865F2?style=flat-square" alt="Phiên bản 0.2.2">
   <img src="https://img.shields.io/badge/Windows-10%2F11-1A73E8?style=flat-square" alt="Windows">
   <img src="https://img.shields.io/badge/Linux-AppImage-34C77B?style=flat-square" alt="Linux">
   <img src="https://img.shields.io/badge/Electron-44-47848F?style=flat-square" alt="Electron">
@@ -142,7 +142,7 @@ Giao diện và cách dùng của xrncal theo One Calendar (Code Spark), app kh�
 
 ## Cài đặt
 
-Chưa có bản release nào: phiên bản 0.2.1 đã nằm trong `package.json`, và workflow release đã sẵn sàng. Trong lúc chờ, hãy [tự build](#tự-build).
+Chưa có bản release nào: phiên bản 0.2.2 đã nằm trong `package.json`, và workflow release đã sẵn sàng. Trong lúc chờ, hãy [tự build](#tự-build).
 
 Bản release sẽ nằm ở **[Releases](https://github.com/Xernnn/xrncal-desktop/releases/latest)**, gồm:
 
