@@ -19,3 +19,17 @@ export const EVENT_COLORS: readonly { googleId: string; hex: string; name: strin
   { googleId: '10', hex: '#0b8043', name: 'basil' },
   { googleId: '11', hex: '#d50000', name: 'tomato' }
 ]
+
+/**
+ * Each occurrence in the colour it is drawn in: its own, else its calendar's.
+ * An event that has no colour of its own is stored without one, so whatever
+ * shows a list of them fills it in here - the main window's views and the mini
+ * window alike, so the two never disagree.
+ */
+export function withCalendarColors<T extends { calendarId: string; color?: string }>(
+  occurrences: readonly T[],
+  calendars: readonly { id: string; color: string }[]
+): T[] {
+  const colorById = new Map(calendars.map((c) => [c.id, c.color]))
+  return occurrences.map((occ) => ({ ...occ, color: occ.color || colorById.get(occ.calendarId) }))
+}

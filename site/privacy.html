@@ -6,7 +6,7 @@
     <title>Privacy Policy — xrncal</title>
     <meta
       name="description"
-      content="How xrncal handles your calendar data: it stays on your device, and the app talks only to the providers you connect."
+      content="How xrncal handles your calendar data: it stays on your computer, and the app talks only to the providers you connect."
     />
     <link rel="icon" href="mark.svg" />
     <link rel="stylesheet" href="style.css" />
@@ -18,12 +18,12 @@
       </header>
 
       <h1>Privacy Policy</h1>
-      <p class="meta">Last updated: 19 October 2026</p>
+      <p class="meta">Last updated: 21 November 2026</p>
 
       <p class="lede">
-        xrncal is a calendar application for Windows, Linux and Android. It runs entirely on your
-        device. The developer operates no servers, receives no data from the app, and has no way to
-        see your calendars or your account.
+        xrncal is a calendar application for Windows and Linux. It runs entirely on your computer.
+        The developer operates no servers, receives no data from the app, and has no way to see your
+        calendars or your account.
       </p>
 
       <h2>What the app handles</h2>
@@ -38,24 +38,34 @@
         </li>
         <li>
           <strong>Credentials</strong> — the OAuth tokens (or, for CalDAV, the username and
-          password) needed to reach your provider.
+          password) needed to reach your provider, and the OAuth client ID and secret if you enter
+          your own in the app.
+        </li>
+        <li>
+          <strong>Settings</strong> — your preferences, and the time zones this computer has been
+          set to, so that an event opens in the zone you were in on its date.
         </li>
       </ul>
 
       <h2>Where it is kept</h2>
       <p>
         All of it is stored locally, in a SQLite database inside the application's own profile
-        directory on your computer, or in app-private storage on Android. Nothing is uploaded
-        anywhere by the app.
+        directory on your computer. In the same directory the app keeps its automatic backups of
+        that database (one a week, the last four, unless you turn them off, and a copy taken before
+        you restore one) and a small log file of startup, sync failures, backups and update errors,
+        which never holds event text or passwords. Nothing is uploaded anywhere by the app.
       </p>
       <p>
-        Credentials are encrypted at rest before being written: on desktop with Electron's
-        <code>safeStorage</code>, backed by the operating system keychain, and on Android with an
-        AES-GCM key held in the Android Keystore. If a Linux system has no keyring available, the
-        app refuses to store the credential rather than fall back to plain text.
+        Credentials are encrypted before they are written, with Electron's <code>safeStorage</code>,
+        and only the encrypted form is kept in the database. The key stays with the operating
+        system: on Windows, its data protection API (DPAPI), tied to your Windows account; on Linux,
+        the system keyring — GNOME Keyring, KeePassXC or another Secret Service, or KDE Wallet. A
+        copy of the database alone therefore does not reveal them. If a Linux system has no keyring
+        available, the app refuses to store the credential rather than fall back to plain text or
+        to the fixed key built into Chromium.
       </p>
 
-      <h2>What leaves your device</h2>
+      <h2>What leaves your computer</h2>
       <p>The app makes network requests to these destinations only:</p>
       <ul>
         <li>Google's OAuth and Calendar API endpoints, if you connect a Google account.</li>
@@ -63,14 +73,15 @@
         <li>The CalDAV server whose address you enter, if you connect a CalDAV or iCloud account.</li>
         <li>The address of a calendar you subscribe to by link, to refresh it.</li>
         <li>
-          GitHub, to check for a new version of the desktop app. The request carries no calendar data
-          and nothing about you, and <em>Check for updates</em> in Settings turns it off.
+          GitHub, to check for a new version of the app and download it. The requests carry no
+          calendar data and nothing about you, and <em>Check for updates</em> in Settings turns them
+          off.
         </li>
       </ul>
       <p>
         There are no other outbound requests. The app contains no analytics, no telemetry, no crash
         reporting, no advertising and no third-party trackers; its fonts are part of the app rather
-        than loaded from the web. Holiday calendars are generated on your device rather than fetched
+        than loaded from the web. Holiday calendars are generated on your computer rather than fetched
         from anywhere.
       </p>
 
@@ -102,19 +113,21 @@
       <h2>Removing your data</h2>
       <ul>
         <li>
-          Disconnecting an account in the app deletes that account's stored credentials from your
-          device, along with the local copy of its calendars.
+          Removing an account in the app deletes its stored credentials from your computer. You
+          choose whether its calendars stay in xrncal as calendars on this computer or are deleted
+          with it; neither changes anything at the provider.
         </li>
         <li>
           To withdraw the app's access at Google independently of the app, visit
           <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>
-          and remove xrncal. Disconnecting inside the app removes the credential locally but does not
-          by itself revoke the grant on Google's side.
+          and remove xrncal. Removing the account inside the app deletes the credential locally but
+          does not by itself revoke the grant on Google's side.
         </li>
         <li>
           Uninstalling the app and deleting its profile directory removes everything the app has
-          stored. Because the developer holds no copy, there is nothing left to request the deletion
-          of.
+          stored, its automatic backups included; a backup you saved elsewhere yourself stays where
+          you put it. Because the developer holds no copy, there is nothing left to request the
+          deletion of.
         </li>
       </ul>
 

@@ -16,7 +16,7 @@ import type {
 import { calendarMoveBlock, invitationSelf } from '@shared/event-model'
 import type { TitleSuggestion } from '@shared/title-suggestions'
 import { endDateForTimes, formatClockTime, formatClockTimeStr } from '@shared/time-format'
-import { convertSolarToLunar, resolveLunarOccurrence } from '@shared/lunar-vietnam'
+import { convertSolarToLunar, nextLunarOccurrences } from '@shared/lunar-vietnam'
 import { DEFAULT_EVENT_COLOR } from '@shared/mini-calendar-grid'
 import { EVENT_COLORS } from '@shared/event-colors'
 import {
@@ -884,16 +884,12 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
       leap: spec.leap ? t('editor.lunarLeapSuffix') : ''
     })
 
-  const lunarPreview: string[] = (() => {
-    if (!lunarSpec) return []
-    const thisYear = DateTime.local().year
-    const out: string[] = []
-    for (let y = thisYear; y < thisYear + 4; y++) {
-      const iso = resolveLunarOccurrence(lunarSpec, y)
-      if (iso) out.push(DateTime.fromISO(iso).toFormat('EEE, dd LLL yyyy'))
-    }
-    return out
-  })()
+  // The dates still to come, from today: this year's is left out once it has gone by.
+  const lunarPreview: string[] = lunarSpec
+    ? nextLunarOccurrences(lunarSpec, DateTime.local().toISODate()!, 4).map((iso) =>
+        DateTime.fromISO(iso).toFormat('EEE, dd LLL yyyy')
+      )
+    : []
 
   /** What the form now says, for the line under a title it was read from. */
   const scheduleSummary = (() => {

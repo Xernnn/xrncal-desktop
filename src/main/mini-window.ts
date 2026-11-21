@@ -5,6 +5,7 @@ import { IPC_CHANNELS } from '@shared/ipc-contract'
 import { getDatabase } from './db/database'
 import { EventsRepo } from './db/repos/events-repo'
 import { CalendarsRepo } from './db/repos/calendars-repo'
+import { withCalendarColors } from '@shared/event-colors'
 import { DateTime } from 'luxon'
 import { windowBackground } from './window-background'
 import { miniWindowPosition } from './mini-window-position'
@@ -127,11 +128,13 @@ export function registerMiniIpcHandlers(showMain: () => void): void {
     const startUtc = now.minus({ hours: 1 }).toISO()!
     const endUtc = now.plus({ days: 7 }).toISO()!
 
-    const occurrences = activeCalIds.length > 0
+    const found = activeCalIds.length > 0
       ? eventsRepo.queryEventsByRange(activeCalIds, startUtc, endUtc).slice(0, limit)
       : []
 
-    return { occurrences }
+    // As stored, an event without a colour of its own has none; the main
+    // window's views draw it in its calendar's, and so does the mini window.
+    return { occurrences: withCalendarColors(found, cals) }
   })
 
   ipcMain.handle(IPC_CHANNELS.MINI.SET_ALWAYS_ON_TOP, (_event, flag: boolean) => {

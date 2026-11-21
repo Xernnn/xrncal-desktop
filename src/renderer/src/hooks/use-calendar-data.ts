@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { Calendar, CalendarAccount, ExpandedOccurrence, SyncConflict } from '@shared/event-model'
+import { withCalendarColors } from '@shared/event-colors'
 import { showFriendlyError, toast } from '../components/ui'
 
 export interface CalendarData {
@@ -38,9 +39,7 @@ export async function readVisibleOccurrences(
   const api = window.xrncal?.events
   const visible = calendars.filter((c) => c.isVisible).map((c) => c.id)
   if (!api || visible.length === 0) return []
-  const colorById = new Map(calendars.map((c) => [c.id, c.color]))
-  const occs = await api.queryRange(visible, startUtc, endUtc)
-  return occs.map((occ) => ({ ...occ, color: occ.color || colorById.get(occ.calendarId) }))
+  return withCalendarColors(await api.queryRange(visible, startUtc, endUtc), calendars)
 }
 
 export async function readCalendarData(startUtc: string, endUtc: string): Promise<CalendarDataRead> {
