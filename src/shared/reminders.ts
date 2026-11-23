@@ -48,7 +48,9 @@ export function normalizeReminders(list: readonly EventReminder[]): EventReminde
   )
 }
 
-/** The `reminders` column: NULL means "use the default", `[]` means "none". */
+/** The `reminders` column: NULL means the event names none of its own (on
+ *  Google, it follows the calendar's default; anywhere else it has none), and
+ *  `[]` that it has none. */
 export function parseRemindersJson(raw: string | null | undefined): EventReminder[] | undefined {
   if (raw === null || raw === undefined || raw === '') return undefined
   try {
@@ -75,20 +77,38 @@ export interface ReminderDefaults {
 }
 
 /**
- * What actually rings for an event. Its own list wins, `[]` included; without
- * one, a timed event takes its calendar's default (Google publishes one per
- * calendar) and then the app setting, and an all-day event the app setting.
+ * What actually rings for an event: its own list, `[]` included. Without one,
+ * a timed event on a calendar that publishes a default (Google's, which such
+ * an event follows: `useDefault`) rings with that, and anything else rings
+ * nowhere - as in One Calendar, where the default reminders are only what a
+ * new event starts with (newEventReminders). They used to ring for every event
+ * of the user's calendars that had none, so an event the phone left silent
+ * (no alarm on the server) rang here.
  */
 export function effectiveReminders(
   eventReminders: readonly EventReminder[] | undefined,
   allDay: boolean,
+  calendarDefault: readonly EventReminder[] | undefined
+): EventReminder[] {
+  if (eventReminders !== undefined) return [...eventReminders]
+  if (!allDay && calendarDefault !== undefined) return [...calendarDefault]
+  return []
+}
+
+/**
+ * The reminders a new event starts with, saved with it as its own list - and
+ * so written to the server, where other devices see them. A timed event on a
+ * calendar with a default of its own (Google's) takes that, as Google would;
+ * otherwise the setting for its kind of event.
+ */
+export function newEventReminders(
+  allDay: boolean,
   calendarDefault: readonly EventReminder[] | undefined,
   defaults: ReminderDefaults
 ): EventReminder[] {
-  if (eventReminders !== undefined) return [...eventReminders]
-  if (allDay) return defaults.allDay === null ? [] : [{ minutesBefore: defaults.allDay }]
-  if (calendarDefault !== undefined) return [...calendarDefault]
-  return defaults.timed === null ? [] : [{ minutesBefore: defaults.timed }]
+  if (!allDay && calendarDefault !== undefined) return [...calendarDefault]
+  const minutes = allDay ? defaults.allDay : defaults.timed
+  return minutes === null ? [] : [{ minutesBefore: minutes }]
 }
 
 /**
@@ -218,11 +238,12 @@ export function mergePulledReminders(
 ): EventReminder[] | undefined {
   if (local === undefined) return pulled ? [...pulled] : undefined
   if (pulled === undefined) {
-    // An event with nothing CalDAV can hold is written with no VALARM at all,
-    // and reads back as having none - which is not the same as "use the default".
-    return provider === 'caldav' && remindersForProvider(provider, local).length === 0
-      ? [...local]
-      : undefined
+    // Google: the event follows its calendar's default again.
+    if (provider !== 'caldav') return undefined
+    // No VALARM at all. An event with nothing CalDAV can hold (none, or email
+    // reminders only) is written that way and reads back unchanged; any other
+    // had its alarms taken off elsewhere, and has none, as it has there.
+    return remindersForProvider(provider, local).length === 0 ? [...local] : []
   }
   return remindersEqual(remindersForProvider(provider, local), pulled) ? [...local] : [...pulled]
 }

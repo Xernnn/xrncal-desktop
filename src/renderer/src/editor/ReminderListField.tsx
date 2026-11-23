@@ -12,27 +12,20 @@ import { useDisplayPreferences } from '../context/DisplayPreferencesContext'
 import { reminderLabel, reminderOptions } from '../lib/reminder-labels'
 
 interface ReminderListFieldProps {
-  /** What the event rings with now - its own list, or the default it follows. */
+  /** What the event rings with (see editorReminders). */
   reminders: EventReminder[]
   allDay: boolean
-  /** The list shown is the default rather than one the event sets itself. */
-  isDefault: boolean
   onChange: (next: EventReminder[]) => void
-  /** Go back to following the default. */
-  onUseDefault: () => void
+  /** Puts the default reminders in the list; left out while the list already
+   *  is the default. */
+  onUseDefault?: () => void
 }
 
 /**
  * The editor's reminder list: one picker per reminder, a way to add another,
- * and - once the event has its own list - a way back to the default.
+ * and - while the list differs from the defaults - a way to fill them in.
  */
-export const ReminderListField: React.FC<ReminderListFieldProps> = ({
-  reminders,
-  allDay,
-  isDefault,
-  onChange,
-  onUseDefault
-}) => {
+export const ReminderListField: React.FC<ReminderListFieldProps> = ({ reminders, allDay, onChange, onUseDefault }) => {
   const { t } = useTranslation()
   const { timeFormat } = useDisplayPreferences()
 
@@ -87,9 +80,7 @@ export const ReminderListField: React.FC<ReminderListFieldProps> = ({
         <button type="button" onClick={add} className="text-xs text-muted transition-colors hover:text-primary">
           + {t('reminders.add')}
         </button>
-        {isDefault ? (
-          <span className="ml-auto text-[10px] uppercase tracking-wide text-muted">{t('reminders.isDefault')}</span>
-        ) : (
+        {onUseDefault && (
           <button
             type="button"
             onClick={onUseDefault}

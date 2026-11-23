@@ -8,13 +8,7 @@ import { ReminderLogRepo, ReminderStateRepo } from '../db/repos/reminder-log-rep
 import { mt, getMainLocale } from '../i18n-main'
 import { IPC_CHANNELS, type ActiveReminder } from '@shared/ipc-contract'
 import type { ExpandedOccurrence } from '@shared/event-model'
-import {
-  effectiveReminders,
-  reminderAnchorMs,
-  dueReminders,
-  describeReminderWhen,
-  type ReminderDefaults
-} from '@shared/reminders'
+import { effectiveReminders, reminderAnchorMs, dueReminders, describeReminderWhen } from '@shared/reminders'
 import { formatClockTime } from '@shared/time-format'
 
 const TICK_MS = 30_000
@@ -22,7 +16,6 @@ const TICK_MS = 30_000
  *  than a tick, so one late timer never swallows it. */
 const GRACE_MS = 2 * 60_000
 const DAY_MS = 24 * 60 * 60_000
-const NO_DEFAULTS: ReminderDefaults = { timed: null, allDay: null }
 
 /**
  * Rings event reminders and keeps the ones that have rung until the user deals
@@ -32,6 +25,11 @@ const NO_DEFAULTS: ReminderDefaults = { timed: null, allDay: null }
  * ignore all-day events entirely, and focus `BrowserWindow.getAllWindows()[0]`
  * when a notification was clicked - which, once the main window had been
  * closed to the tray, was the hidden mini window or nothing at all.
+ *
+ * An event rings with its own reminders (effectiveReminders), as in One
+ * Calendar. The default reminders in Settings are what a new event starts
+ * with, and are saved with it; they used to ring for every event of the
+ * user's calendars that had none.
  *
  * Native notifications cannot carry buttons on Linux, so snooze and "join"
  * live in the app: every reminder that rings also goes into an active list the
@@ -117,7 +115,6 @@ export class ReminderScheduler {
   tick(nowMs = Date.now()): void {
     const calendars = this.calendarsRepo.listCalendars()
     const visibleIds = calendars.filter((c) => c.isVisible).map((c) => c.id)
-    const defaults = this.readDefaults()
     // A day either side: an all-day event's anchor is local midnight, which
     // can sit up to fourteen hours away from the UTC midnight it is stored at.
     // The range query returns what overlaps it, so anything still under way is
@@ -128,7 +125,7 @@ export class ReminderScheduler {
         : this.eventsRepo.queryEventsByRange(
             visibleIds,
             new Date(nowMs - DAY_MS).toISOString(),
-            new Date(nowMs + this.maxLeadMinutes(defaults) * 60_000 + DAY_MS).toISOString()
+            new Date(nowMs + this.maxLeadMinutes() * 60_000 + DAY_MS).toISOString()
           )
     const current = new Map(occurrences.map((o) => [o.id, o]))
 
@@ -159,22 +156,13 @@ export class ReminderScheduler {
 
     const sources = this.eventsRepo.getReminderSources(occurrences.map((o) => o.eventId))
     const calendarDefaults = new Map(calendars.map((c) => [c.id, c.defaultReminders]))
-    const readOnlyIds = new Set(calendars.filter((c) => c.isReadOnly).map((c) => c.id))
     const newlyFired: { key: string; anchorMs: number }[] = []
 
     for (const occ of occurrences) {
       const source = sources.get(occ.eventId)
       // An invitation the user turned down is not something to be reminded of.
       if (source?.declined) continue
-      // The app's default is for the user's own calendars. A feed, a holiday
-      // list or a colleague's shared calendar rings only where the event (or
-      // the provider's default for that calendar) asks to.
-      const reminders = effectiveReminders(
-        source?.reminders,
-        occ.allDay,
-        calendarDefaults.get(occ.calendarId),
-        readOnlyIds.has(occ.calendarId) ? NO_DEFAULTS : defaults
-      )
+      const reminders = effectiveReminders(source?.reminders, occ.allDay, calendarDefaults.get(occ.calendarId))
       if (reminders.length === 0) continue
 
       const anchorMs = reminderAnchorMs(occ.startUtc, occ.allDay)
@@ -241,17 +229,10 @@ export class ReminderScheduler {
     return changed
   }
 
-  private readDefaults(): ReminderDefaults {
-    return {
-      timed: this.settingsRepo.getSetting('defaultReminderMinutes'),
-      allDay: this.settingsRepo.getSetting('defaultAllDayReminderMinutes')
-    }
-  }
-
   /** The longest lead any reminder in use has, so the query window reaches
    *  every occurrence that could come due. */
-  private maxLeadMinutes(defaults: ReminderDefaults): number {
-    let max = Math.max(defaults.timed ?? 0, defaults.allDay ?? 0)
+  private maxLeadMinutes(): number {
+    let max = 0
     for (const list of this.eventsRepo.listReminderListsInUse()) {
       for (const r of list) max = Math.max(max, r.minutesBefore)
     }

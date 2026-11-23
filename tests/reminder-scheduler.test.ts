@@ -44,7 +44,9 @@ describe('ReminderScheduler', () => {
     scheduler = new ReminderScheduler(db, showMainWindow)
   })
 
-  const timed = (startIso: string, reminders?: { minutesBefore: number }[] | null) =>
+  // Ten minutes before, unless the test says otherwise (null: none of its
+  // own). An event rings only with reminders of its own.
+  const timed = (startIso: string, reminders: { minutesBefore: number }[] | null = [{ minutesBefore: 10 }]) =>
     events.createEvent({
       calendarId: CAL,
       title: 'Meeting',
@@ -53,7 +55,7 @@ describe('ReminderScheduler', () => {
       reminders
     })
 
-  it('rings the default ten minutes before a timed event, once', () => {
+  it('rings a timed event\'s reminder at its time, once', () => {
     timed('2026-04-01T09:00:00.000Z')
     const start = Date.parse('2026-04-01T09:00:00Z')
 
@@ -99,7 +101,15 @@ describe('ReminderScheduler', () => {
     expect(shown.map((n) => n.title)).toEqual(['Giỗ ông'])
   })
 
-  it('leaves all-day events silent by default, and follows the setting when there is one', () => {
+  // As in One Calendar: the default reminders are what a new event starts
+  // with, saved with it. An event that has none of its own - one made before,
+  // one another program wrote without an alarm - rings nowhere, so it rings
+  // here no more than on the phone. The defaults used to ring for all of them.
+  it('rings nothing for an event without reminders of its own, whatever the defaults are', () => {
+    const settings = new SettingsRepo(db)
+    settings.setSetting('defaultReminderMinutes', 10)
+    settings.setSetting('defaultAllDayReminderMinutes', 900)
+    timed('2026-09-24T09:00:00.000Z', null)
     events.createEvent({
       calendarId: CAL,
       title: 'Holiday',
@@ -107,12 +117,22 @@ describe('ReminderScheduler', () => {
       dtEndUtc: '2026-09-24T23:59:59.999Z',
       allDay: true
     })
-    const nineTheDayBefore = new Date(2026, 8, 23, 9, 0).getTime()
-    scheduler.tick(nineTheDayBefore)
-    expect(shown).toHaveLength(0)
 
-    new SettingsRepo(db).setSetting('defaultAllDayReminderMinutes', 900)
-    scheduler.tick(nineTheDayBefore + MIN)
+    for (let t = new Date(2026, 8, 23, 9, 0).getTime(); t <= Date.parse('2026-09-24T09:00:00Z'); t += 5 * MIN) {
+      scheduler.tick(t)
+    }
+    expect(shown).toHaveLength(0)
+    expect(scheduler.listActive()).toHaveLength(0)
+  })
+
+  it('rings an event that follows its Google calendar\'s default with that default', () => {
+    db.prepare(`UPDATE calendars SET default_reminders = '[{"minutesBefore":30}]' WHERE id = ?`).run(CAL)
+    timed('2026-04-01T09:00:00.000Z', null)
+    const start = Date.parse('2026-04-01T09:00:00Z')
+
+    scheduler.tick(start - 31 * MIN)
+    expect(shown).toHaveLength(0)
+    scheduler.tick(start - 30 * MIN)
     expect(shown).toHaveLength(1)
   })
 

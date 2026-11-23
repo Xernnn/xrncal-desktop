@@ -175,7 +175,7 @@ xrncal/
 | `tray.ts` | System tray icon (the app icon), context menu via `setContextMenu` (Linux panels cannot pop one up), single-click toggle |
 | `first-run.ts`, `launch-at-login.ts`, `setting-effects.ts` | First run and existing profiles; start at sign-in; settings main acts on |
 | `opened-ics-files.ts`, `restore-database.ts` | .ics files opened with xrncal; restore from backup |
-| `notifications/reminder-scheduler.ts` | Rings each occurrence's reminders (per-event list, else the defaults); keeps rung reminders for snooze / join until dismissed |
+| `notifications/reminder-scheduler.ts` | Rings each occurrence's own reminders (or the Google calendar default it follows; the default reminders only fill in new events); keeps rung reminders for snooze / join until dismissed |
 
 ### `src/preload`
 
@@ -316,7 +316,7 @@ transaction with the row recording it; the files in `src/main/db/migrations/` ar
 | 012 | `color_is_custom`: a picked colour survives sync |
 | 013 | `moved_from_calendar_id` for provider-side moves |
 | 014 | `provider_event_id`: the local `id` never changes |
-| 015 | `events.reminders`, `calendars.default_reminders` (JSON; NULL = the default) |
+| 015 | `events.reminders`, `calendars.default_reminders` (JSON; NULL = none of its own: a Google calendar's default, else none) |
 | 016 | `attendees.is_self`, `events.rsvp_pending`, `events.attendees_synced` |
 | 017 | `calendars.subscription_url`, `subscription_refreshed_at` |
 | 018 | `reminder_log` (reminders that rang survive a restart), `attendees.role` (optional guests, rooms) |
