@@ -274,6 +274,14 @@ export function formatLunarLabel(lunarDate: LunarDate): {
 }
 
 /**
+ * Days from 1 January that the search below covers. A lunar year can end as
+ * late as 20 February of the next solar year (415 days on); 400 stopped near
+ * 5 February, so in a year with a late Tết (2026's is on 17 February) the end
+ * of the twelfth month - Ông Táo, Giao Thừa, a giỗ then - was never found.
+ */
+const LUNAR_YEAR_SEARCH_DAYS = 430
+
+/**
  * Convert a Lunar date (day, month, year, leap) to its Solar date counterpart (day, month, year)
  */
 export function convertLunarToSolar(
@@ -285,7 +293,7 @@ export function convertLunarToSolar(
 ): { day: number; month: number; year: number } | null {
   // Approximate starting point for the lunar year in solar calendar
   const jdStart = jdFromDate(1, 1, lunarYear)
-  for (let i = 0; i < 400; i++) {
+  for (let i = 0; i < LUNAR_YEAR_SEARCH_DAYS; i++) {
     const jd = jdStart + i
     const solar = jdToDate(jd)
     const lunar = convertSolarToLunar(solar.day, solar.month, solar.year, timeZone)

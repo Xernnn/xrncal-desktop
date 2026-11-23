@@ -709,6 +709,21 @@ WHERE id = 'calendar-local-default'
   );
 `
 
+/**
+ * The Vietnamese holidays, written again. The lunar-to-solar search stopped
+ * 400 days into the year, so the end of a twelfth month that falls after
+ * about 5 February was never found: no Giao Thừa in 2024, 2027 or 2032, and
+ * no Ông Táo or Giao Thừa in 2026 or 2029. A subscription is generated once
+ * and kept, so the fixed search would only reach years added later. Emptying
+ * the calendar makes the start-up refresh (refreshHolidayCalendars) write it
+ * again, under the same calendar, shown or hidden as it was. Its events are
+ * generated and read-only: nothing of the user's is in them.
+ */
+export const MIGRATION_031_SQL = `
+DELETE FROM events
+WHERE calendar_id IN (SELECT id FROM calendars WHERE holiday_type = 'vietnam');
+`
+
 /** Every migration in order: the one at index i is version i + 1. */
 const MIGRATIONS: readonly string[] = [
   MIGRATION_001_SQL,
@@ -740,7 +755,8 @@ const MIGRATIONS: readonly string[] = [
   MIGRATION_027_SQL,
   MIGRATION_028_SQL,
   MIGRATION_029_SQL,
-  MIGRATION_030_SQL
+  MIGRATION_030_SQL,
+  MIGRATION_031_SQL
 ]
 
 /** The newest migration this build knows: a restore refuses a backup made by

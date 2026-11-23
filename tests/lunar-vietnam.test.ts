@@ -79,6 +79,12 @@ describe('resolveLunarOccurrence (yearly lunar anniversaries / giỗ)', () => {
     }
   })
 
+  it('places an anniversary late in the twelfth month before a late Tết', () => {
+    // 25/12 of lunar 2025 is 12 February 2026, 407 days after 1 January 2025:
+    // past the 400 days the search used to stop at.
+    expect(resolveLunarOccurrence({ day: 25, month: 12, leap: false }, 2026)).toBe('2026-02-12')
+  })
+
   it('falls back to day 29 when the lunar month has only 29 days', () => {
     // Lunar month 2 of 2025 has 29 days — a "day 30" anniversary lands on day 29.
     expect(resolveLunarOccurrence({ day: 30, month: 2, leap: false }, 2025)).toBe('2025-03-28')
