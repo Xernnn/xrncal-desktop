@@ -126,27 +126,41 @@ export class CalendarsRepo {
     const isReadOnly = (params.isReadOnly !== undefined ? params.isReadOnly : existing.isReadOnly) ? 1 : 0
     const isDefault = (params.isDefault !== undefined ? params.isDefault : existing.isDefault) ? 1 : 0
 
-    this.db
-      .prepare(
-        `UPDATE calendars
-         SET name = ?, color = ?, is_visible = ?, is_read_only = ?, is_default = ?,
-             color_is_custom = ?, updated_at = ?
-         WHERE id = ?`
-      )
-      .run(
-        name,
-        color,
-        isVisible,
-        isReadOnly,
-        isDefault,
-        // Picking a colour here makes it the user's; provider syncs stop
-        // overwriting it from then on.
-        params.color !== undefined ? 1 : existing.colorIsCustom ? 1 : 0,
-        now,
-        id
-      )
+    // A colour picked here is the server's to keep on a CalDAV calendar that
+    // can be written to: it waits in calendar_color_push until a sync has sent
+    // it (CalDavSyncEngine.pushCalendarColors). Anywhere else it stays on this
+    // computer (color_is_custom), and syncs leave it alone.
+    const picked = params.color === undefined ? null : !isReadOnly && this.isCalDav(existing.accountId) ? 'server' : 'here'
+
+    this.db.transaction(() => {
+      this.db
+        .prepare(
+          `UPDATE calendars
+           SET name = ?, color = ?, is_visible = ?, is_read_only = ?, is_default = ?,
+               color_is_custom = CASE ? WHEN 'server' THEN 0 WHEN 'here' THEN 1 ELSE color_is_custom END,
+               updated_at = ?
+           WHERE id = ?`
+        )
+        .run(name, color, isVisible, isReadOnly, isDefault, picked, now, id)
+      if (picked === 'server') {
+        this.db
+          .prepare(
+            `INSERT INTO calendar_color_push (calendar_id, color) VALUES (?, ?)
+             ON CONFLICT(calendar_id) DO UPDATE SET color = excluded.color`
+          )
+          .run(id, color)
+      } else if (picked === 'here') {
+        this.db.prepare('DELETE FROM calendar_color_push WHERE calendar_id = ?').run(id)
+      }
+    })()
 
     return this.getCalendarById(id)!
+  }
+
+  private isCalDav(accountId: string): boolean {
+    return (
+      this.db.prepare('SELECT type FROM accounts WHERE id = ?').get<{ type: string }>(accountId)?.type === 'caldav'
+    )
   }
 
   deleteCalendar(id: string): boolean {

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { DateTime } from 'luxon'
-import { initialForm, keepDraftPreview, repeatUpdate, textFieldUpdate } from '../src/renderer/src/editor/EventEditorDialog'
+import { editorReminders, initialForm, keepDraftPreview, repeatUpdate, textFieldUpdate } from '../src/renderer/src/editor/EventEditorDialog'
 import type { Calendar, CalendarEvent, ExpandedOccurrence } from '../src/shared/event-model'
 
 const calendar = (id: string, extra: Partial<Calendar> = {}): Calendar => ({
@@ -186,6 +186,40 @@ describe('what a save sends for notes, a location and a meeting link', () => {
   it('sends the text, trimmed, when there is some', () => {
     expect(textFieldUpdate(' Room 2 ', '')).toBe('Room 2')
     expect(textFieldUpdate('Room 3', 'Room 2')).toBe('Room 3')
+  })
+})
+
+// The defaults were a lasting link: a new event left as it was saved with no
+// list (NULL), and rang with whatever the settings said at the time - while
+// on the server it had no alarm, so the phone never rang it. A new event now
+// starts with the defaults as its own list, and is saved with it.
+describe('the reminders the editor shows, and a save sends', () => {
+  const defaults = { timed: 15, allDay: 720 }
+  const home = calendar('home')
+
+  it('fills a new event in with the default for its kind', () => {
+    expect(editorReminders(null, { isNew: true, allDay: false, calendar: home }, defaults)).toEqual([{ minutesBefore: 15 }])
+    expect(editorReminders(null, { isNew: true, allDay: true, calendar: home }, defaults)).toEqual([{ minutesBefore: 720 }])
+    expect(editorReminders(null, { isNew: true, allDay: false, calendar: home }, { timed: null, allDay: null })).toEqual([])
+    // Picked by hand, removed included.
+    expect(editorReminders([], { isNew: true, allDay: false, calendar: home }, defaults)).toEqual([])
+    expect(editorReminders([{ minutesBefore: 60 }], { isNew: true, allDay: false, calendar: home }, defaults)).toEqual([
+      { minutesBefore: 60 }
+    ])
+  })
+
+  it('shows an event that has no reminders as having none, not the defaults', () => {
+    expect(editorReminders(null, { isNew: false, allDay: false, calendar: home }, defaults)).toEqual([])
+    expect(editorReminders(null, { isNew: false, allDay: true, calendar: home }, defaults)).toEqual([])
+    expect(editorReminders([{ minutesBefore: 5 }], { isNew: false, allDay: false, calendar: home }, defaults)).toEqual([
+      { minutesBefore: 5 }
+    ])
+  })
+
+  it('shows an event following its Google calendar\'s default with that default', () => {
+    const google = calendar('g', { defaultReminders: [{ minutesBefore: 30 }] })
+    expect(editorReminders(null, { isNew: false, allDay: false, calendar: google }, defaults)).toEqual([{ minutesBefore: 30 }])
+    expect(editorReminders(null, { isNew: true, allDay: false, calendar: google }, defaults)).toEqual([{ minutesBefore: 30 }])
   })
 })
 

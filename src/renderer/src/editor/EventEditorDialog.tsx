@@ -21,8 +21,11 @@ import { DEFAULT_EVENT_COLOR } from '@shared/mini-calendar-grid'
 import { EVENT_COLORS } from '@shared/event-colors'
 import {
   effectiveReminders,
+  newEventReminders,
+  remindersEqual,
   LUNAR_ANNIVERSARY_REMINDER,
-  type EventReminder
+  type EventReminder,
+  type ReminderDefaults
 } from '@shared/reminders'
 import {
   DatePicker,
@@ -174,7 +177,7 @@ interface EditorForm {
   attendees: Attendee[]
   /** False until the guest list is known; see `attendeesLoaded` below. */
   attendeesLoaded: boolean
-  /** null: the event follows the default reminders. */
+  /** null: none picked in the editor yet (see editorReminders). */
   reminders: EventReminder[] | null
 }
 
@@ -337,6 +340,26 @@ export function textFieldUpdate(value: string, opened: string): string | undefin
 }
 
 /**
+ * The reminders the editor shows - and a save sends, but for an edit that left
+ * them alone: those picked here (`picked`, removed ones included), else a new
+ * event's defaults for its kind (newEventReminders), else what the event has
+ * (effectiveReminders: its own list, the Google calendar default it follows,
+ * or none). As in One Calendar, the defaults only fill in a new event: it is
+ * saved with them as its own list, and an event that has none shows none.
+ */
+export function editorReminders(
+  picked: EventReminder[] | null,
+  opened: { isNew: boolean; allDay: boolean; calendar?: Pick<Calendar, 'defaultReminders'> },
+  defaults: ReminderDefaults
+): EventReminder[] {
+  if (picked) return picked
+  const calendarDefault = opened.calendar?.defaultReminders
+  return opened.isNew
+    ? newEventReminders(opened.allDay, calendarDefault, defaults)
+    : effectiveReminders(undefined, opened.allDay, calendarDefault)
+}
+
+/**
  * The repeat rule a save sends: `rule` is what the form's repeat controls
  * build, undefined when they build none. To an update undefined means "as it
  * was" - what an occurrence opened from the grid relies on to leave its
@@ -456,7 +479,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
     data?.event ?? null
   )
 
-  // null: the event follows the default reminders.
+  // null: none picked here yet (see editorReminders).
   const [reminders, setReminders] = useState<EventReminder[] | null>(initial.reminders)
   const [remindersTouched, setRemindersTouched] = useState<boolean>(false)
   const remindersTouchedRef = useRef(false)
@@ -657,7 +680,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
     if (!repeat) return next
     if (repeat.kind === 'lunar-yearly') {
       // As when "lunar yearly" is picked from the list: a day's notice, unless
-      // the user has an all-day default of their own.
+      // there is an all-day default.
       const reminders = defaultAllDayReminderMinutes === null ? [{ minutesBefore: LUNAR_ANNIVERSARY_REMINDER }] : base.reminders
       return { ...next, recurrencePreset: 'lunar-yearly', lunarLeap: repeat.spec.leap, reminders }
     }
@@ -804,7 +827,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
     }
   }
 
-  const changeReminders = (next: EventReminder[] | null) => {
+  const changeReminders = (next: EventReminder[]) => {
     setReminders(next)
     setRemindersTouched(true)
     remindersTouchedRef.current = true
@@ -839,6 +862,14 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
   }
 
   const isLunarYearly = recurrencePreset === 'lunar-yearly'
+
+  const selectedCalendar = (calendars || []).find((c) => c.id === calendarId)
+
+  // What the event rings with as the form stands, and the defaults for it.
+  const reminderDefaults: ReminderDefaults = { timed: defaultReminderMinutes, allDay: defaultAllDayReminderMinutes }
+  const reminderKind = { isNew: !isEditing, allDay: allDay || isLunarYearly, calendar: selectedCalendar }
+  const shownReminders = editorReminders(reminders, reminderKind, reminderDefaults)
+  const defaultReminderList = newEventReminders(reminderKind.allDay, selectedCalendar?.defaultReminders, reminderDefaults)
 
   const RECURRENCE_FREQ: Record<string, string> = {
     daily: 'DAILY',
@@ -957,9 +988,10 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
       // whatever a sync brought in meanwhile - on an invitation, possibly the
       // reply given on another device.
       attendees: !isEditing || (attendeesTouchedRef.current && attendeesLoaded) ? attendees : undefined,
-      // An edit that leaves reminders alone must not send them: null would
-      // reset an event's own list to the default.
-      reminders: isEditing && !remindersTouched ? undefined : reminders
+      // An edit that leaves reminders alone does not send them, so a sync
+      // that changed them meanwhile is not undone. A new event is saved with
+      // what it shows: the defaults, unless others were picked.
+      reminders: isEditing && !remindersTouched ? undefined : shownReminders
     }
 
     onSave({
@@ -1071,8 +1103,6 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
     }
   }
 
-  const selectedCalendar = (calendars || []).find((c) => c.id === calendarId)
-
   // The zones in use - the preferred ones from Settings, this machine's and the
   // event's own - head the list, so picking one needs no scrolling.
   const localZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
@@ -1094,18 +1124,6 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
       ? `${formatClockTime(startHere, timeFormat)}, ${startHere.setLocale(i18n.language).toFormat('EEE d LLL')}`
       : null
   const ownColorKnown = !color || EVENT_COLORS.some((c) => c.hex === color.toLowerCase())
-  // What the scheduler would ring - which, on a calendar the user cannot edit
-  // (a feed, holidays, a shared calendar), is never the app's own default.
-  const shownReminders =
-    reminders ??
-    effectiveReminders(
-      undefined,
-      allDay || isLunarYearly,
-      selectedCalendar?.defaultReminders,
-      selectedCalendar?.isReadOnly
-        ? { timed: null, allDay: null }
-        : { timed: defaultReminderMinutes, allDay: defaultAllDayReminderMinutes }
-    )
 
   // Always a side panel, never a dialog over the middle. Opened from the grid - a
   // slot clicked to create, an event clicked to edit - it comes in from the side
@@ -1322,8 +1340,8 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
                 value={recurrencePreset}
                 onChange={(val) => {
                   editSchedule(setRecurrencePreset, val)
-                  // A new giỗ gets a day's notice unless the user has set an
-                  // all-day default of their own (or already picked reminders).
+                  // A new giỗ gets a day's notice unless there is an all-day
+                  // default (or reminders were already picked).
                   if (
                     val === 'lunar-yearly' &&
                     !isEditing &&
@@ -1511,9 +1529,12 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
               <ReminderListField
                 reminders={shownReminders}
                 allDay={allDay || isLunarYearly}
-                isDefault={reminders === null}
                 onChange={changeReminders}
-                onUseDefault={() => changeReminders(null)}
+                // Fills the defaults in, as they would be on a new event; the
+                // event keeps them as its own list from then on.
+                onUseDefault={
+                  remindersEqual(shownReminders, defaultReminderList) ? undefined : () => changeReminders(defaultReminderList)
+                }
               />
             </FormRow>
 

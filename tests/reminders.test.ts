@@ -4,6 +4,7 @@ import {
   parseRemindersJson,
   serializeReminders,
   effectiveReminders,
+  newEventReminders,
   reminderAnchorMs,
   dueReminders,
   describeReminderWhen,
@@ -34,7 +35,7 @@ describe('reminder lists', () => {
     ])
   })
 
-  it('tells "use the default" (NULL) apart from "none" ([])', () => {
+  it('tells "none of its own" (NULL) apart from "none" ([])', () => {
     expect(parseRemindersJson(null)).toBeUndefined()
     expect(parseRemindersJson('[]')).toEqual([])
     expect(parseRemindersJson('not json')).toBeUndefined()
@@ -42,17 +43,27 @@ describe('reminder lists', () => {
     expect(serializeReminders([])).toBe('[]')
   })
 
-  it('resolves what rings: own list, then calendar default, then the setting', () => {
-    expect(effectiveReminders([], false, [{ minutesBefore: 30 }], defaults)).toEqual([])
-    expect(effectiveReminders(undefined, false, [{ minutesBefore: 30 }], defaults)).toEqual([
-      { minutesBefore: 30 }
-    ])
-    expect(effectiveReminders(undefined, false, undefined, defaults)).toEqual([{ minutesBefore: 10 }])
+  // The settings used to ring every event that had no list of its own. Now
+  // they only fill in a new event's (newEventReminders), and what rings is the
+  // event's own list - or, on Google, the calendar default the event follows.
+  it('resolves what rings: own list, then the calendar default it follows, never the settings', () => {
+    expect(effectiveReminders([], false, [{ minutesBefore: 30 }])).toEqual([])
+    expect(effectiveReminders([{ minutesBefore: 5 }], false, [{ minutesBefore: 30 }])).toEqual([{ minutesBefore: 5 }])
+    expect(effectiveReminders(undefined, false, [{ minutesBefore: 30 }])).toEqual([{ minutesBefore: 30 }])
+    expect(effectiveReminders(undefined, false, undefined)).toEqual([])
     // A calendar's timed default never applies to all-day events.
-    expect(effectiveReminders(undefined, true, [{ minutesBefore: 30 }], defaults)).toEqual([])
-    expect(effectiveReminders(undefined, true, undefined, { timed: null, allDay: 900 })).toEqual([
-      { minutesBefore: 900 }
-    ])
+    expect(effectiveReminders(undefined, true, [{ minutesBefore: 30 }])).toEqual([])
+    expect(effectiveReminders(undefined, true, undefined)).toEqual([])
+  })
+
+  it('fills a new event in with the default for its kind', () => {
+    expect(newEventReminders(false, undefined, defaults)).toEqual([{ minutesBefore: 10 }])
+    expect(newEventReminders(true, undefined, { timed: 10, allDay: 900 })).toEqual([{ minutesBefore: 900 }])
+    expect(newEventReminders(true, undefined, defaults)).toEqual([])
+    expect(newEventReminders(false, undefined, { timed: null, allDay: 900 })).toEqual([])
+    // On a Google calendar with a default of its own, as Google would.
+    expect(newEventReminders(false, [{ minutesBefore: 30 }], defaults)).toEqual([{ minutesBefore: 30 }])
+    expect(newEventReminders(true, [{ minutesBefore: 30 }], { timed: 10, allDay: 900 })).toEqual([{ minutesBefore: 900 }])
   })
 })
 
@@ -148,7 +159,7 @@ describe('reminders across providers', () => {
     expect(mergePulledReminders('caldav', [{ minutesBefore: 30, method: 'email' }], undefined)).toEqual([
       { minutesBefore: 30, method: 'email' }
     ])
-    // Alarms removed on another device: back to the default.
-    expect(mergePulledReminders('caldav', [{ minutesBefore: 10 }], undefined)).toBeUndefined()
+    // Alarms removed on another device: none, as there.
+    expect(mergePulledReminders('caldav', [{ minutesBefore: 10 }], undefined)).toEqual([])
   })
 })

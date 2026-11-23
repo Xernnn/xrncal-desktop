@@ -709,6 +709,66 @@ WHERE id = 'calendar-local-default'
   );
 `
 
+/**
+ * The Vietnamese holidays, written again. The lunar-to-solar search stopped
+ * 400 days into the year, so the end of a twelfth month that falls after
+ * about 5 February was never found: no Giao Thừa in 2024, 2027 or 2032, and
+ * no Ông Táo or Giao Thừa in 2026 or 2029. A subscription is generated once
+ * and kept, so the fixed search would only reach years added later. Emptying
+ * the calendar makes the start-up refresh (refreshHolidayCalendars) write it
+ * again, under the same calendar, shown or hidden as it was. Its events are
+ * generated and read-only: nothing of the user's is in them.
+ */
+export const MIGRATION_031_SQL = `
+DELETE FROM events
+WHERE calendar_id IN (SELECT id FROM calendars WHERE holiday_type = 'vietnam');
+`
+
+/**
+ * The default reminders become One Calendar's: 15 minutes before a timed
+ * event, 12 hours before an all-day one. A setting is stored only once it has
+ * been picked, so a profile without one follows the new defaults by itself;
+ * one that still holds the old values (10 minutes, none) is moved to the new
+ * ones, once. Any other choice stays. The defaults only fill in new events,
+ * so no event changes with them.
+ */
+export const MIGRATION_032_SQL = `
+UPDATE settings SET value = '15', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+WHERE key = 'defaultReminderMinutes' AND value = '10';
+UPDATE settings SET value = '720', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+WHERE key = 'defaultAllDayReminderMinutes' AND value = 'null';
+`
+
+/**
+ * A CalDAV calendar's colour is the server's now (Apple's calendar-color, which
+ * One Calendar and the phone app read): one picked here is written there with
+ * a PROPPATCH at the next sync, and one changed elsewhere arrives with the
+ * calendar list. `calendar_color_push` holds a colour picked here that the
+ * server does not have yet; the calendar list leaves it alone meanwhile.
+ * `color_is_custom` keeps its old effect - sync leaves the colour alone - for
+ * a colour that stays on this computer: a read-only calendar's, Google's or
+ * Outlook's (not written back), or one a CalDAV server refused.
+ *
+ * Colours picked here before were all kept here only. On a CalDAV calendar
+ * that can be written to, the one picked goes to the server at the next sync,
+ * so every device shows what this one has been showing.
+ */
+export const MIGRATION_033_SQL = `
+CREATE TABLE IF NOT EXISTS calendar_color_push (
+  calendar_id TEXT PRIMARY KEY REFERENCES calendars(id) ON DELETE CASCADE,
+  color TEXT NOT NULL
+);
+
+INSERT OR IGNORE INTO calendar_color_push (calendar_id, color)
+SELECT id, color FROM calendars
+WHERE color_is_custom = 1
+  AND is_read_only = 0
+  AND account_id IN (SELECT id FROM accounts WHERE type = 'caldav');
+
+UPDATE calendars SET color_is_custom = 0
+WHERE id IN (SELECT calendar_id FROM calendar_color_push);
+`
+
 /** Every migration in order: the one at index i is version i + 1. */
 const MIGRATIONS: readonly string[] = [
   MIGRATION_001_SQL,
@@ -740,7 +800,10 @@ const MIGRATIONS: readonly string[] = [
   MIGRATION_027_SQL,
   MIGRATION_028_SQL,
   MIGRATION_029_SQL,
-  MIGRATION_030_SQL
+  MIGRATION_030_SQL,
+  MIGRATION_031_SQL,
+  MIGRATION_032_SQL,
+  MIGRATION_033_SQL
 ]
 
 /** The newest migration this build knows: a restore refuses a backup made by

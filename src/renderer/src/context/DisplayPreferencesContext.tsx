@@ -19,7 +19,7 @@ export interface DisplayPreferences {
   timePickerStepMinutes: AppSettings['timePickerStepMinutes']
   /** Length of a new timed event started without a range of its own. */
   defaultEventMinutes: AppSettings['defaultEventMinutes']
-  /** What an event with no reminders of its own rings with (see effectiveReminders). */
+  /** The reminders a new event starts with (see newEventReminders). */
   defaultReminderMinutes: AppSettings['defaultReminderMinutes']
   defaultAllDayReminderMinutes: AppSettings['defaultAllDayReminderMinutes']
   /** Zones the event editor lists first (the parsed `preferredTimeZones` setting). */
@@ -42,8 +42,8 @@ const DEFAULT_DISPLAY_PREFERENCES: DisplayPreferences = {
   dragSnapMinutes: 15,
   timePickerStepMinutes: 15,
   defaultEventMinutes: 60,
-  defaultReminderMinutes: 10,
-  defaultAllDayReminderMinutes: null,
+  defaultReminderMinutes: 15,
+  defaultAllDayReminderMinutes: 720,
   preferredTimeZones: [],
   zoneHistory: [],
   firstDayOfWeek: 1,

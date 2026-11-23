@@ -35,6 +35,16 @@ describe('Holiday Calendars & Lunar Solar conversion', () => {
     expect(vn2026.some((h) => h.title.includes('Trung Thu'))).toBe(true)
   })
 
+  // Tết 2026 is on 17 February, late, so 23/12 and the last day of lunar 2025
+  // are 405 and 411 days after 1 January 2025. The search used to stop after
+  // 400, and 2026 had no Ông Táo and no Giao Thừa.
+  it('finds Ông Táo and Giao Thừa before a late Tết', () => {
+    expect(convertLunarToSolar(23, 12, 2025)).toEqual({ day: 10, month: 2, year: 2026 })
+    const vn2026 = getVietnamHolidays(2026)
+    expect(vn2026.find((h) => h.title.startsWith('Ông Táo'))?.solarDate).toBe('2026-02-10')
+    expect(vn2026.find((h) => h.title.startsWith('Đêm Giao Thừa'))?.solarDate).toBe('2026-02-16')
+  })
+
   it('should generate International holidays for 2026', () => {
     const intl2026 = getInternationalHolidays(2026)
     expect(intl2026.length).toBeGreaterThanOrEqual(8)

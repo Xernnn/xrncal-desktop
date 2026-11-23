@@ -1432,7 +1432,7 @@ export class EventsRepo {
     return occurrences.sort((a, b) => a.startUtc.localeCompare(b.startUtc))
   }
 
-  /** Each event's own reminder list (undefined where the default applies) and
+  /** Each event's own reminder list (undefined where it names none) and
    *  calendar, for the reminder scheduler. */
   getReminderSources(
     eventIds: string[]

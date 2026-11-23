@@ -50,7 +50,7 @@ Phần lớn app lịch là **client của một dịch vụ**, hoặc là **tab
 - **Giỗ / ngày âm lặp hằng năm** là một loại sự kiện thật sự: bạn khai báo *"12 tháng 8 âm"*, app tự giải ra ngày dương cho **từng năm**, xử lý cả tháng nhuận và tháng thiếu 29 ngày.
 - Google Calendar / Outlook / Apple Calendar không có quy tắc lặp theo lịch âm. Cách duy nhất ở đó là tự tra rồi tạo tay từng năm một — sai một năm là trượt cả chuỗi.
 - Giỗ được **materialize** thành sự kiện thường trong lịch có sync, nên điện thoại và đồng nghiệp vẫn thấy, dù họ không dùng xrncal.
-- Ngày giỗ mới **nhắc bạn từ hôm trước, lúc 09:00** - đủ thời gian sắm lễ - và lời nhắc được đồng bộ sang điện thoại cùng sự kiện.
+- Ngày giỗ mới **nhắc bạn từ hôm trước** - đủ thời gian sắm lễ - và lời nhắc được đồng bộ sang điện thoại cùng sự kiện.
 
 ### 2. Offline là mặc định, không phải chế độ dự phòng
 
@@ -264,7 +264,7 @@ Khi có sự cố, **Cài đặt → Mở tệp nhật ký** mở thư mục ch�
 - Microsoft 365 / Outlook.com (Graph), kể cả những lần xuất hiện bị dời, sửa hoặc huỷ trong Outlook
 - CalDAV: iCloud, Nextcloud, Synology, Fastmail, generic; mỗi người dùng trên một máy chủ là một tài khoản
 - Sửa một lần xuất hiện cũng được đẩy lên đúng
-- Nhắc nhở và danh sách khách đồng bộ hai chiều
+- Nhắc nhở và danh sách khách đồng bộ hai chiều, màu của lịch CalDAV cũng vậy
 - Trả lời lời mời: Có / Có thể / Không
 - Đăng ký lịch từ bất kỳ liên kết `.ics` / `webcal://`, làm mới mỗi sáu giờ
 - Poll thích ứng: 20 giây một lần khi cửa sổ đang được dùng, 5 phút một lần khi không

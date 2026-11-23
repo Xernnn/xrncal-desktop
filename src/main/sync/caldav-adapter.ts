@@ -8,6 +8,7 @@ import {
   extractPropHref,
   mayCarryCredentials,
   multistatusResponses,
+  normalizeCalendarColor,
   resolveDavHref,
   type CalDavCalendarDescriptor
 } from './caldav-discover'
@@ -349,6 +350,41 @@ ${refs.join('\n')}
     return res.ok || res.status === 404
   }
 
+  /**
+   * Set a calendar's colour on the server: Apple's calendar-color, which the
+   * other CalDAV clients read, written as Apple writes it (`#RRGGBBFF`).
+   * 'refused' when the server will not keep it - the request refused (403, 405,
+   * 501) or the property (a 4xx propstat) - so the colour can stay on this
+   * computer instead. Anything else that goes wrong throws, to be tried again.
+   */
+  async setCalendarColor(calendarUrl: string, color: string): Promise<'saved' | 'refused'> {
+    const hex = normalizeCalendarColor(color)
+    if (!hex) return 'refused'
+    const res = await this.request(
+      calendarUrl,
+      'PROPPATCH',
+      `<?xml version="1.0" encoding="utf-8" ?>
+<D:propertyupdate xmlns:D="DAV:" xmlns:I="http://apple.com/ns/ical/">
+  <D:set>
+    <D:prop>
+      <I:calendar-color>${hex.toUpperCase()}FF</I:calendar-color>
+    </D:prop>
+  </D:set>
+</D:propertyupdate>`,
+      { 'Content-Type': 'application/xml; charset=utf-8' }
+    )
+    if ([403, 405, 501].includes(res.status)) return 'refused'
+    if (res.status === 207) {
+      const xml = await readTextWithin(res, res.url || calendarUrl, MAX_DISCOVERY_BYTES)
+      const status = propstatStatus(xml, 'calendar-color')
+      if (status === undefined || (status >= 400 && status < 500)) return 'refused'
+      if (status >= 200 && status < 300) return 'saved'
+      throw new Error(`CalDAV PROPPATCH of calendar-color failed with ${status}`)
+    }
+    if (res.ok) return 'saved'
+    throw new Error(`CalDAV PROPPATCH failed with HTTP ${res.status}: ${await failureText(res)}`)
+  }
+
   /** The calendar's ctag as the server has it now (a Depth-0 PROPFIND), if it keeps one. */
   async readCtag(calendarUrl: string): Promise<string | undefined> {
     const res = await this.propfind(calendarUrl, '0', '<D:resourcetype/>\n    <CS:getctag/>')
@@ -416,6 +452,30 @@ function parseCalendarItems(xml: string, baseUrl: string): CalDavItem[] {
     })
   }
   return items
+}
+
+/**
+ * The status a multistatus gives `prop` in its propstat, e.g. 200 or 403.
+ * Each propstat is found from where the last one ended, as in
+ * multistatusResponses: a lazy pattern over the whole text would go back to
+ * the end for every opening tag that has no closing one.
+ */
+function propstatStatus(xml: string, prop: string): number | undefined {
+  const open = /<(?:[a-zA-Z0-9_-]+:)?propstat[\s>]/gi
+  const close = /<\/(?:[a-zA-Z0-9_-]+:)?propstat>/gi
+  const named = new RegExp(`<(?:[a-zA-Z0-9_-]+:)?${prop}[\\s/>]`, 'i')
+  for (let from = 0; ; ) {
+    open.lastIndex = from
+    const start = open.exec(xml)
+    if (!start) return undefined
+    close.lastIndex = open.lastIndex
+    if (!close.exec(xml)) return undefined
+    const block = xml.slice(start.index, close.lastIndex)
+    from = close.lastIndex
+    if (!named.test(block)) continue
+    const status = /<(?:[a-zA-Z0-9_-]+:)?status>\s*HTTP\/[\d.]+\s+(\d{3})/i.exec(block)
+    if (status) return Number(status[1])
+  }
 }
 
 function escapeXml(text: string): string {

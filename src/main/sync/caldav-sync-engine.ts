@@ -80,22 +80,69 @@ export class CalDavSyncEngine {
           )
           .run(calId, accountId, name, color, isReadOnly ? 1 : 0, now, now)
       } else {
+        // A calendar that can be written to takes the server's colour, so one
+        // changed on another device shows here too - unless a colour picked
+        // here is on its way there (calendar_color_push) or stays here
+        // (color_is_custom: the server would not take it). A read-only
+        // calendar keeps the colour it was first seen with, or one picked here.
+        const serverColor = !isReadOnly && desc.color ? desc.color : null
         this.db
           .prepare(
-            // Colour is local-only: the provider seeds it when the calendar is
-            // first discovered and never overwrites it again, so what you pick
-            // here stays picked.
             `UPDATE calendars
-             SET name = ?, is_read_only = ?, updated_at = ?
+             SET name = ?, is_read_only = ?, updated_at = ?,
+                 color = CASE
+                   WHEN ? IS NOT NULL AND color_is_custom = 0
+                     AND id NOT IN (SELECT calendar_id FROM calendar_color_push)
+                   THEN ? ELSE color END
              WHERE id = ?`
           )
-          .run(name, isReadOnly ? 1 : 0, now, calId)
+          .run(name, isReadOnly ? 1 : 0, now, serverColor, serverColor, calId)
       }
 
       syncedCalendars.push({ id: calId, ctag: desc.ctag })
     }
 
     return syncedCalendars
+  }
+
+  /**
+   * Send the colours picked here for this account's calendars
+   * (calendar_color_push) to the server, as calendar-color. A server that will
+   * not take one leaves it on this computer (color_is_custom), where syncs
+   * keep it; any other failure leaves it waiting, to be sent at the next sync,
+   * and is returned. A colour picked again while one was on its way is sent
+   * next time.
+   */
+  async pushCalendarColors(accountId: string, creds: CalDavCredentials): Promise<{ lastError?: string }> {
+    const waiting = this.db
+      .prepare(
+        `SELECT p.calendar_id AS id, p.color FROM calendar_color_push p
+         JOIN calendars c ON c.id = p.calendar_id WHERE c.account_id = ?`
+      )
+      .all<{ id: string; color: string }>(accountId)
+    if (waiting.length === 0) return {}
+
+    const adapter = new CalDavAdapter(creds)
+    let lastError: string | undefined
+    for (const cal of waiting) {
+      try {
+        // As in syncCalendarList: only a URL this account's password may go to.
+        const outcome = mayCarryCredentials(creds.url, cal.id) ? await adapter.setCalendarColor(cal.id, cal.color) : 'refused'
+        this.db.transaction(() => {
+          const sent = this.db
+            .prepare('DELETE FROM calendar_color_push WHERE calendar_id = ? AND color = ?')
+            .run(cal.id, cal.color).changes
+          if (sent > 0 && outcome === 'refused') {
+            this.db
+              .prepare('UPDATE calendars SET color_is_custom = 1, updated_at = ? WHERE id = ?')
+              .run(new Date().toISOString(), cal.id)
+          }
+        })()
+      } catch (err) {
+        lastError = describeError(err)
+      }
+    }
+    return { lastError }
   }
 
   /**
@@ -766,8 +813,10 @@ export class CalDavSyncEngine {
           throw new Error('The saved password could not be read: the system keyring is locked or unavailable')
         }
 
+        // Before the list is read, so it reads back what was sent.
+        const colors = await this.pushCalendarColors(acc.id, creds)
         const calendars = await this.syncCalendarList(acc.id, creds)
-        let firstFailure: string | undefined
+        let firstFailure: string | undefined = colors.lastError
         for (const { id: calId, ctag } of calendars) {
           // One calendar failing - a server error on one collection - no longer
           // skips the calendars after it.
