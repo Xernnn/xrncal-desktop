@@ -95,7 +95,10 @@ export function registerCalendarIpcHandlers(): void {
   ipcMain.handle(
     IPC_CHANNELS.CALENDAR.UPDATE,
     (_event, id: string, data: { name?: string; color?: string; isVisible?: boolean }) => {
-      return calendarsRepo.updateCalendar(id, data)
+      const updated = calendarsRepo.updateCalendar(id, data)
+      // A CalDAV calendar's colour goes to its server now, not at the next poll.
+      if (data.color !== undefined) nudgeSync()
+      return updated
     }
   )
 

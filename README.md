@@ -264,7 +264,7 @@ If something goes wrong, **Settings → Show log file** opens the folder with `x
 - Microsoft 365 / Outlook.com (Graph), including occurrences moved, edited or cancelled in Outlook
 - CalDAV: iCloud, Nextcloud, Synology, Fastmail, generic; one account per user per server
 - Single-occurrence edits push correctly too
-- Reminders and guest lists sync both ways
+- Reminders and guest lists sync both ways, and so do CalDAV calendars' colours
 - Reply Yes / Maybe / No to invitations
 - Subscribe to any `.ics` / `webcal://` link, refreshed every six hours
 - Adaptive polling: every 20 s while the window has focus, every 5 min otherwise

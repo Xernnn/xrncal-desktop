@@ -739,6 +739,36 @@ UPDATE settings SET value = '720', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', '
 WHERE key = 'defaultAllDayReminderMinutes' AND value = 'null';
 `
 
+/**
+ * A CalDAV calendar's colour is the server's now (Apple's calendar-color, which
+ * One Calendar and the phone app read): one picked here is written there with
+ * a PROPPATCH at the next sync, and one changed elsewhere arrives with the
+ * calendar list. `calendar_color_push` holds a colour picked here that the
+ * server does not have yet; the calendar list leaves it alone meanwhile.
+ * `color_is_custom` keeps its old effect - sync leaves the colour alone - for
+ * a colour that stays on this computer: a read-only calendar's, Google's or
+ * Outlook's (not written back), or one a CalDAV server refused.
+ *
+ * Colours picked here before were all kept here only. On a CalDAV calendar
+ * that can be written to, the one picked goes to the server at the next sync,
+ * so every device shows what this one has been showing.
+ */
+export const MIGRATION_033_SQL = `
+CREATE TABLE IF NOT EXISTS calendar_color_push (
+  calendar_id TEXT PRIMARY KEY REFERENCES calendars(id) ON DELETE CASCADE,
+  color TEXT NOT NULL
+);
+
+INSERT OR IGNORE INTO calendar_color_push (calendar_id, color)
+SELECT id, color FROM calendars
+WHERE color_is_custom = 1
+  AND is_read_only = 0
+  AND account_id IN (SELECT id FROM accounts WHERE type = 'caldav');
+
+UPDATE calendars SET color_is_custom = 0
+WHERE id IN (SELECT calendar_id FROM calendar_color_push);
+`
+
 /** Every migration in order: the one at index i is version i + 1. */
 const MIGRATIONS: readonly string[] = [
   MIGRATION_001_SQL,
@@ -772,7 +802,8 @@ const MIGRATIONS: readonly string[] = [
   MIGRATION_029_SQL,
   MIGRATION_030_SQL,
   MIGRATION_031_SQL,
-  MIGRATION_032_SQL
+  MIGRATION_032_SQL,
+  MIGRATION_033_SQL
 ]
 
 /** The newest migration this build knows: a restore refuses a backup made by

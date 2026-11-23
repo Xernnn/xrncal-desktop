@@ -27,8 +27,10 @@ export interface Calendar {
   isVisible: boolean
   isReadOnly: boolean
   isDefault: boolean
-  /** True once the user has picked this calendar's colour themselves; provider
-   *  syncs then stop overwriting it. */
+  /** True when the colour was picked here and is kept on this computer only,
+   *  where syncs leave it alone: a read-only calendar's, Google's or Outlook's,
+   *  or one a CalDAV server would not take. A CalDAV calendar that can be
+   *  written to keeps its colour on the server instead (calendar-color). */
   colorIsCustom?: boolean
   /** Reminders a timed event in this calendar gets when it names none of its
    *  own. Only Google publishes one; undefined everywhere else. */

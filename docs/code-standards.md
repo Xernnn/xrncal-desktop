@@ -225,6 +225,7 @@ rethrowing. Handlers that return a result object instead (`connectCalDav`, `impo
 - **Adaptive poll interval**: 20 seconds when the main window is focused; 5 minutes when blurred/minimized. Controlled via `SyncWorker.setFocusState()`.
 - **Guest lists**: push an event's attendees only when `attendees_synced = 1` or the event has never been pushed. An empty list that was simply never fetched would remove every guest from the meeting.
 - **Reminders**: a pull merges with `mergePulledReminders()` so the parts of a local list a provider cannot hold (Graph keeps one reminder) survive the round trip.
+- **Calendar colours**: a CalDAV calendar that can be written to keeps its colour on the server (Apple's `calendar-color`). One picked here waits in `calendar_color_push` until a sync sends it with a PROPPATCH, and the calendar list leaves it alone meanwhile; otherwise the list brings the server's. `color_is_custom` marks a colour kept on this computer only - a read-only calendar's, Google's, Outlook's, or one the server refused - which syncs never overwrite.
 - **Replies**: an invitation reply waits in `rsvp_pending` and travels on its own path (Google guest-list PATCH, Graph accept/decline, CalDAV PUT), not through `dirty`.
 
 ---

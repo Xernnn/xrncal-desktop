@@ -5,8 +5,9 @@ import { RADICALE_PASSWORD_3, RADICALE_USER_3 } from './radicale-server'
  * What a CalDAV calendar carries between xrncal, One Calendar and the phone
  * app, against a real Radicale (`npm run test:caldav`): a new event's default
  * reminders, as alarms on the server that every device rings, and nothing
- * rung for an event the server holds no alarm for. A second database plays
- * another device signed in to the same account.
+ * rung for an event the server holds no alarm for; and each calendar's
+ * colour, kept on the server. A second database plays another device signed
+ * in to the same account.
  */
 
 const handlers = new Map<string, (...args: unknown[]) => unknown>()
@@ -40,6 +41,7 @@ const { CalDavSyncEngine } = await import('../../src/main/sync/caldav-sync-engin
 const { SyncWorker } = await import('../../src/main/sync/sync-worker')
 const { ReminderScheduler } = await import('../../src/main/notifications/reminder-scheduler')
 const { registerAuthSyncIpcHandlers } = await import('../../src/main/ipc/auth-sync-ipc')
+const { registerCalendarIpcHandlers } = await import('../../src/main/ipc/calendar-ipc')
 const { IPC_CHANNELS } = await import('../../src/shared/ipc-contract')
 // What the editor fills a new event in with (see editorReminders).
 const { newEventReminders } = await import('../../src/shared/reminders')
@@ -74,6 +76,18 @@ async function makeCalendar(url: string, name: string, color: string): Promise<v
   expect(res.status, await res.text()).toBe(201)
 }
 
+/** The calendar-color the server holds for a calendar. */
+async function colorOnServer(calendar: string): Promise<string | undefined> {
+  const res = await dav(
+    'PROPFIND',
+    calendar,
+    '<?xml version="1.0"?><D:propfind xmlns:D="DAV:" xmlns:I="http://apple.com/ns/ical/"><D:prop><I:calendar-color/></D:prop></D:propfind>',
+    { Depth: '0', 'Content-Type': 'application/xml; charset=utf-8' }
+  )
+  expect(res.status).toBe(207)
+  return /<(?:\w+:)?calendar-color[^>]*>([^<]+)</.exec(await res.text())?.[1]
+}
+
 /** Each alarm of the resource at `href`, as "ACTION TRIGGER". */
 async function alarmsOnServer(href: string): Promise<string[]> {
   const res = await dav('GET', href)
@@ -103,6 +117,8 @@ function device(db: Db) {
       db
         .prepare('SELECT id, reminders, provider_event_id FROM events WHERE title = ?')
         .get<{ id: string; reminders: string | null; provider_event_id: string | null }>(title)!,
+    colorOf: (calendar: string) =>
+      db.prepare('SELECT color FROM calendars WHERE id = ?').get<{ color: string }>(calendar)?.color,
     /** The titles the reminder scheduler rings at `nowMs`. */
     ringsAt: (nowMs: number) => {
       const scheduler = new ReminderScheduler(db, () => undefined)
@@ -112,13 +128,14 @@ function device(db: Db) {
   }
 }
 
-describe('One Calendar’s reminders, against Radicale', () => {
+describe('One Calendar’s reminders and colours, against Radicale', () => {
   const laptop = device(initDatabase(':memory:'))
   let accountId = ''
 
   beforeAll(async () => {
     await makeCalendar(PERSONAL, 'Personal', '#4dab9a')
     registerAuthSyncIpcHandlers()
+    registerCalendarIpcHandlers()
     const connect = handlers.get(IPC_CHANNELS.AUTH.CONNECT_CALDAV)!
     const result = (await connect({}, {
       provider: 'generic',
@@ -211,5 +228,29 @@ describe('One Calendar’s reminders, against Radicale', () => {
     for (const minutesBefore of [900, 720, 60, 15, 10, 5, 0]) {
       expect(laptop.ringsAt(start - minutesBefore * MIN), `${minutesBefore} min before`).toEqual([])
     }
+  })
+
+  it('puts a colour picked here on the server, where another device reads it', async () => {
+    expect(laptop.colorOf(PERSONAL)).toBe('#4dab9a')
+    // As Calendars & accounts does it.
+    await handlers.get(IPC_CHANNELS.CALENDAR.UPDATE)!({}, PERSONAL, { color: '#529cca' })
+    await laptop.sync()
+
+    expect(await colorOnServer(PERSONAL)).toBe('#529CCAFF')
+    expect(laptop.colorOf(PERSONAL)).toBe('#529cca')
+    expect((await anotherDevice()).colorOf(PERSONAL)).toBe('#529cca')
+  })
+
+  it('takes a colour another device put on the server', async () => {
+    const res = await dav(
+      'PROPPATCH',
+      PERSONAL,
+      `<?xml version="1.0"?><D:propertyupdate xmlns:D="DAV:" xmlns:I="http://apple.com/ns/ical/"><D:set><D:prop><I:calendar-color>#EB5757FF</I:calendar-color></D:prop></D:set></D:propertyupdate>`,
+      { 'Content-Type': 'application/xml; charset=utf-8' }
+    )
+    expect(res.status).toBe(207)
+
+    await laptop.sync()
+    expect(laptop.colorOf(PERSONAL)).toBe('#eb5757')
   })
 })

@@ -264,7 +264,7 @@ Khi có sự cố, **Cài đặt → Mở tệp nhật ký** mở thư mục ch�
 - Microsoft 365 / Outlook.com (Graph), kể cả những lần xuất hiện bị dời, sửa hoặc huỷ trong Outlook
 - CalDAV: iCloud, Nextcloud, Synology, Fastmail, generic; mỗi người dùng trên một máy chủ là một tài khoản
 - Sửa một lần xuất hiện cũng được đẩy lên đúng
-- Nhắc nhở và danh sách khách đồng bộ hai chiều
+- Nhắc nhở và danh sách khách đồng bộ hai chiều, màu của lịch CalDAV cũng vậy
 - Trả lời lời mời: Có / Có thể / Không
 - Đăng ký lịch từ bất kỳ liên kết `.ics` / `webcal://`, làm mới mỗi sáu giờ
 - Poll thích ứng: 20 giây một lần khi cửa sổ đang được dùng, 5 phút một lần khi không
