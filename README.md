@@ -50,7 +50,7 @@ This is the reason the app exists.
 - **Giỗ / anniversaries that repeat by the lunar year** are a real event type. You declare *"the 12th day of the 8th lunar month"* and the app resolves the Gregorian date for **each year**, handling leap months and short 29-day months.
 - Google Calendar, Outlook and Apple Calendar have no lunar recurrence rule at all. There, the only option is to look each year up and create it by hand — miss one and the whole series drifts.
 - Those anniversaries are **materialised** into an ordinary event in a synced calendar, so your phone and your colleagues still see them even though they don't run xrncal.
-- A new anniversary **reminds you the day before at 09:00** - enough notice to buy the offerings - and the reminder syncs to your phone with it.
+- A new anniversary **reminds you the day before** - enough notice to buy the offerings - and the reminder syncs to your phone with it.
 
 ### 2. Offline is the default, not a degraded mode
 

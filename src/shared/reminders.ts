@@ -21,9 +21,9 @@ export const MAX_REMINDER_MINUTES = 40320
 
 export const TIMED_REMINDER_PRESETS = [0, 5, 10, 15, 30, 60, 120, 1440, 2880, 10080]
 
-/** The day before at 09:00 and at 18:00, two and three days before at 09:00,
- *  and a week before at 09:00. */
-export const ALL_DAY_REMINDER_PRESETS = [900, 360, 2340, 3780, 9540]
+/** The day before at 09:00, 12:00 (the default) and 18:00, two and three days
+ *  before at 09:00, and a week before at 09:00. */
+export const ALL_DAY_REMINDER_PRESETS = [900, 720, 360, 2340, 3780, 9540]
 
 /** What a new lunar anniversary starts with when no all-day default is set. A
  *  giỗ needs a day's notice - the offerings are bought the day before. */

@@ -724,6 +724,21 @@ DELETE FROM events
 WHERE calendar_id IN (SELECT id FROM calendars WHERE holiday_type = 'vietnam');
 `
 
+/**
+ * The default reminders become One Calendar's: 15 minutes before a timed
+ * event, 12 hours before an all-day one. A setting is stored only once it has
+ * been picked, so a profile without one follows the new defaults by itself;
+ * one that still holds the old values (10 minutes, none) is moved to the new
+ * ones, once. Any other choice stays. The defaults only fill in new events,
+ * so no event changes with them.
+ */
+export const MIGRATION_032_SQL = `
+UPDATE settings SET value = '15', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+WHERE key = 'defaultReminderMinutes' AND value = '10';
+UPDATE settings SET value = '720', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+WHERE key = 'defaultAllDayReminderMinutes' AND value = 'null';
+`
+
 /** Every migration in order: the one at index i is version i + 1. */
 const MIGRATIONS: readonly string[] = [
   MIGRATION_001_SQL,
@@ -756,7 +771,8 @@ const MIGRATIONS: readonly string[] = [
   MIGRATION_028_SQL,
   MIGRATION_029_SQL,
   MIGRATION_030_SQL,
-  MIGRATION_031_SQL
+  MIGRATION_031_SQL,
+  MIGRATION_032_SQL
 ]
 
 /** The newest migration this build knows: a restore refuses a backup made by

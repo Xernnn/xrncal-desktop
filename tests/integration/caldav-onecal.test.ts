@@ -165,14 +165,16 @@ describe('One Calendar’s reminders, against Radicale', () => {
     })
     expect((await laptop.sync()).pushedCount).toBe(2)
 
-    expect(await alarmsOnServer(laptop.row('Họp nhóm').provider_event_id!)).toEqual(['DISPLAY -PT10M'])
-    expect(await alarmsOnServer(laptop.row('Sinh nhật Minh').provider_event_id!)).toEqual([])
+    // One Calendar's defaults: 15 minutes, and 12 hours before an all-day event.
+    expect(await alarmsOnServer(laptop.row('Họp nhóm').provider_event_id!)).toEqual(['DISPLAY -PT15M'])
+    expect(await alarmsOnServer(laptop.row('Sinh nhật Minh').provider_event_id!)).toEqual(['DISPLAY -PT12H'])
 
     const other = await anotherDevice()
-    expect(JSON.parse(other.row('Họp nhóm').reminders!)).toEqual([{ minutesBefore: 10 }])
+    expect(JSON.parse(other.row('Họp nhóm').reminders!)).toEqual([{ minutesBefore: 15 }])
+    expect(JSON.parse(other.row('Sinh nhật Minh').reminders!)).toEqual([{ minutesBefore: 720 }])
     const start = Date.parse('2026-12-02T02:00:00.000Z')
-    expect(other.ringsAt(start - 11 * MIN)).toEqual([])
-    expect(other.ringsAt(start - 10 * MIN)).toEqual(['Họp nhóm'])
+    expect(other.ringsAt(start - 16 * MIN)).toEqual([])
+    expect(other.ringsAt(start - 15 * MIN)).toEqual(['Họp nhóm'])
   })
 
   it('rings nothing for an event the server holds no alarm for, or a "none" alarm', async () => {
