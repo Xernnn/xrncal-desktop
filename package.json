@@ -1,6 +1,6 @@
 {
   "name": "xrncal",
-  "version": "0.2.2",
+  "version": "1.2.0",
   "description": "Desktop Calendar for Windows and Linux with modern UX and multi-provider sync",
   "private": true,
   "license": "MIT",
