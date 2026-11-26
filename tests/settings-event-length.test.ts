@@ -42,8 +42,11 @@ describe('the "Length of a new event" setting', () => {
   }
 
   /** The label of the length button that is pressed. */
+  const lengthLabels = Object.values(resources.en.translation.settings.eventLengthOption)
   const pressed = (html: string): string[] =>
-    [...html.matchAll(/<button[^>]*aria-pressed="true"[^>]*>([^<]*)<\/button>/g)].map((m) => m[1])
+    [...html.matchAll(/<button[^>]*aria-pressed="true"[^>]*>([^<]*)<\/button>/g)]
+      .map((m) => m[1])
+      .filter((label) => lengthLabels.includes(label))
 
   it('offers every length, with an hour chosen until it is changed', () => {
     const html = panel(DEFAULT_APP_SETTINGS)
