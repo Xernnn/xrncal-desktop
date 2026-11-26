@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.2.0-5865F2?style=flat-square" alt="Phiên bản 1.2.0">
+  <img src="https://img.shields.io/badge/version-1.2.1-5865F2?style=flat-square" alt="Phiên bản 1.2.1">
   <img src="https://img.shields.io/badge/Windows-10%2F11-1A73E8?style=flat-square" alt="Windows">
   <img src="https://img.shields.io/badge/Linux-AppImage-34C77B?style=flat-square" alt="Linux">
   <img src="https://img.shields.io/badge/Electron-44-47848F?style=flat-square" alt="Electron">
@@ -142,11 +142,10 @@ Giao diện và cách dùng của xrncal theo One Calendar (Code Spark), app kh�
 
 ## Cài đặt
 
-Chưa có bản release nào: phiên bản 1.2.0 đã nằm trong `package.json`, và workflow release đã sẵn sàng. Trong lúc chờ, hãy [tự build](#tự-build).
-
 Bản release sẽ nằm ở **[Releases](https://github.com/Xernnn/xrncal-desktop/releases/latest)**, gồm:
 
 - **Windows 10/11:** `xrncal Setup <phiên bản>.exe`. Khi bộ cài chưa được ký số, SmartScreen sẽ hỏi trước: *More info → Run anyway*.
+- **Windows portable:** Giải nén toàn bộ `xrncal-<phiên bản>-windows-x64-portable.zip` vào thư mục có quyền ghi rồi chạy trực tiếp `xrncal.exe`. Giữ `portable.flag` và các tệp còn lại cạnh tệp EXE. Lần chạy đầu tạo `xrncal.sqlite` trong cùng thư mục.
 - **Linux:** `xrncal-<phiên bản>.AppImage`. Cho phép chạy (`chmod +x`, hoặc *Properties → Allow executing*) rồi mở.
 
 Lần mở đầu tiên có ba bước ngắn: ngôn ngữ, vài thiết lập cơ bản (âm lịch, ngày lễ, khởi động cùng máy) và các lịch muốn thêm vào. Bản đã cài tự cập nhật khi có release mới; tắt ở *Cài đặt → Chung → Kiểm tra bản cập nhật*.
