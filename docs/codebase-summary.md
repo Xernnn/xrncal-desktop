@@ -31,7 +31,7 @@ xrncal/
 │   │   ├── holidays/            # Generated holiday calendars, extended at startup
 │   │   ├── subscriptions/       # ics-subscription.ts: fetch, store and refresh feeds
 │   │   ├── sync/                # Provider sync engines
-│   │   │   ├── sync-worker.ts   # SyncWorker: poll loop, adaptive interval (20s focus / 5m blur)
+│   │   │   ├── sync-worker.ts   # SyncWorker: poll loop, adaptive interval (20s focus / 10m otherwise)
 │   │   │   ├── google-sync-engine.ts    # Google Calendar API v3 two-way sync
 │   │   │   ├── google-event-mapper.ts   # Google event JSON ↔ canonical CalendarEvent
 │   │   │   ├── microsoft-sync-engine.ts # Microsoft Graph two-way sync
@@ -164,7 +164,7 @@ xrncal/
 | `db/database.ts` | `initDatabase()`, `runMigrations()`, `seedDefaultData()` |
 | `db/sqlite-driver.ts` | `ISqliteDatabase` abstraction over `node:sqlite` / `better-sqlite3` |
 | `db/repos/` | Repository pattern: AccountsRepo, CalendarsRepo, EventsRepo, SettingsRepo, SyncStateRepo, detachAccount |
-| `sync/sync-worker.ts` | Poll loop; 20s interval on window focus, 5m when blurred; also refreshes due subscriptions |
+| `sync/sync-worker.ts` | Poll loop; 20s interval while a window has focus, 10m otherwise; also refreshes due subscriptions |
 | `sync/*-sync-engine.ts` | Google, Microsoft Graph, CalDAV two-way sync: events, reminders, guest lists, replies |
 | `subscriptions/ics-subscription.ts` | Read-only calendars fed from an .ics / webcal link, refreshed every 6 h |
 | `holidays/holiday-subscription.ts` | Generated holiday calendars; `refreshHolidayCalendars()` extends them at startup |

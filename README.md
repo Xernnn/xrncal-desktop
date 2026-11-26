@@ -267,7 +267,7 @@ If something goes wrong, **Settings → Show log file** opens the folder with `x
 - Reminders and guest lists sync both ways, and so do CalDAV calendars' colours
 - Reply Yes / Maybe / No to invitations
 - Subscribe to any `.ics` / `webcal://` link, refreshed every six hours
-- Adaptive polling: every 20 s while the window has focus, every 5 min otherwise
+- Adaptive polling: every 20 s while a window has focus, every 10 min otherwise
 - A resolution screen for 412 conflicts
 - CalDAV edits keep what other apps stored on the event
 - A new event whose create answer is lost is made once, not twice

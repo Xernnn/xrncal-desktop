@@ -59,7 +59,7 @@ All 10 planned phases are **complete**. The codebase ships R1 + R2 + R3 + Stretc
 ## Stretch Features (Complete)
 
 - ✅ Global keyboard shortcuts (T=today, 1–5=views, N/C=new, /=search, ?=help)
-- ✅ Adaptive sync polling (20s focused / 5m blurred)
+- ✅ Adaptive sync polling (20s focused / 10m otherwise)
 - ✅ Vietnamese and International holiday calendar subscriptions
 - ✅ Copy single recurring instance (separate from full-series copy)
 

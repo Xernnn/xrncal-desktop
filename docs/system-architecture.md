@@ -83,7 +83,7 @@ User saves in the editor (or drags, resizes, deletes)
 ### Sync loop
 
 ```
-SyncWorker: every 20 s while the window has focus, 5 min otherwise
+SyncWorker: every 20 s while a window has focus, 10 min otherwise
   → Google, Graph, CalDAV and due subscriptions run concurrently, each with its own .catch
   → per calendar: replies (rsvp_pending) → dirty pushes → pull
       Google: incremental via syncToken

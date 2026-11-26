@@ -267,7 +267,7 @@ Khi có sự cố, **Cài đặt → Mở tệp nhật ký** mở thư mục ch�
 - Nhắc nhở và danh sách khách đồng bộ hai chiều, màu của lịch CalDAV cũng vậy
 - Trả lời lời mời: Có / Có thể / Không
 - Đăng ký lịch từ bất kỳ liên kết `.ics` / `webcal://`, làm mới mỗi sáu giờ
-- Poll thích ứng: 20 giây một lần khi cửa sổ đang được dùng, 5 phút một lần khi không
+- Poll thích ứng: 20 giây một lần khi cửa sổ đang được dùng, 10 phút một lần khi không
 - Bảng xử lý xung đột 412
 - Sửa sự kiện CalDAV vẫn giữ những gì ứng dụng khác đã lưu
 - Sự kiện mới bị mất câu trả lời lúc tạo vẫn chỉ được tạo một lần, không thành hai
