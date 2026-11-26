@@ -1,7 +1,9 @@
 import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
+import { zhCN } from './zh-CN'
 
 export const resources = {
+  'zh-CN': { translation: zhCN },
   en: {
     translation: {
       appName: 'xrncal',
@@ -1347,6 +1349,10 @@ export const resources = {
     }
   }
 }
+
+i18n.on('languageChanged', (locale) => {
+  if (typeof document !== 'undefined') document.documentElement.lang = locale
+})
 
 i18n.use(initReactI18next).init({
   resources,

@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.2.0-5865F2?style=flat-square" alt="Version 1.2.0">
+  <img src="https://img.shields.io/badge/version-1.2.1-5865F2?style=flat-square" alt="Version 1.2.1">
   <img src="https://img.shields.io/badge/Windows-10%2F11-1A73E8?style=flat-square" alt="Windows">
   <img src="https://img.shields.io/badge/Linux-AppImage-34C77B?style=flat-square" alt="Linux">
   <img src="https://img.shields.io/badge/Electron-44-47848F?style=flat-square" alt="Electron">
@@ -142,11 +142,10 @@ The way xrncal looks and behaves follows One Calendar (Code Spark), which has no
 
 ## Install
 
-No release has been published yet: version 1.2.0 is in `package.json`, and the release workflow is ready. Until a release is out, [build it yourself](#build-it-yourself).
-
 A release will be at **[Releases](https://github.com/Xernnn/xrncal-desktop/releases/latest)**, with:
 
 - **Windows 10/11:** `xrncal Setup <version>.exe`. Until the installer is code-signed, SmartScreen asks first: *More info → Run anyway*.
+- **Windows portable:** Extract the entire `xrncal-<version>-windows-x64-portable.zip` to a writable folder and run `xrncal.exe` directly. Keep `portable.flag` and the other files beside it. The first launch creates `xrncal.sqlite` in the same folder.
 - **Linux:** `xrncal-<version>.AppImage`. Make it executable (`chmod +x`, or *Properties → Allow executing*) and open it.
 
 The first launch walks you through three steps: language, a few basics (lunar dates, holidays, starting with the computer), and the calendars to bring in. Installed copies update themselves from new releases; *Settings → General → Check for updates* turns that off.
@@ -252,7 +251,7 @@ If something goes wrong, **Settings → Show log file** opens the folder with `x
 - Lunar dates in every view; mùng 1, rằm and Tết marked
 - Anniversaries recurring by lunar year, leap months handled, with a reminder the day before - or just type "Giỗ ông 12/8 âm lịch"
 - Vietnamese and international holiday calendars, one click, extended by themselves as the years pass
-- Interface in Vietnamese and English - a new install follows your computer's language, clock and first day of the week
+- Interface in Vietnamese, English, and Simplified Chinese - a new install follows your computer's language, clock and first day of the week
 
 </td>
 </tr>

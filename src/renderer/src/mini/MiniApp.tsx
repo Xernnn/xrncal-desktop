@@ -4,7 +4,7 @@ import { ExternalLink, Pin, PinOff, Clock, MapPin, RotateCw } from 'lucide-react
 import { DateTime } from 'luxon'
 import type { ExpandedOccurrence } from '@shared/event-model'
 import { applyDocumentTheme, shouldUseDarkClass, type ThemeMode } from '@shared/theme-mode'
-import { DEFAULT_APP_SETTINGS } from '@shared/settings-contract'
+import { DEFAULT_APP_SETTINGS, isAppLocale } from '@shared/settings-contract'
 import { DEFAULT_EVENT_COLOR } from '@shared/mini-calendar-grid'
 import { formatClockTime, type TimeFormatPref } from '@shared/time-format'
 import i18n from '../i18n'
@@ -61,7 +61,7 @@ export const MiniApp: React.FC = () => {
         const mode = ((settings?.theme as ThemeMode) || DEFAULT_APP_SETTINGS.theme) as ThemeMode
         const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
         applyDocumentTheme(shouldUseDarkClass(mode, prefersDark))
-        const loc = settings?.locale === 'vi' || settings?.locale === 'en' ? settings.locale : 'en'
+        const loc = isAppLocale(settings?.locale) ? settings.locale : 'en'
         if (loc !== i18n.language) await i18n.changeLanguage(loc)
         setTimeFormat((settings?.timeFormat as TimeFormatPref) || DEFAULT_APP_SETTINGS.timeFormat)
       } catch {

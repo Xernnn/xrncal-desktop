@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { AppLocale } from '@shared/ipc-contract'
-import { DEFAULT_APP_SETTINGS, type AppSettings } from '@shared/settings-contract'
+import { DEFAULT_APP_SETTINGS, isAppLocale, type AppSettings } from '@shared/settings-contract'
 import { showFriendlyError } from '../components/ui/toast'
 
 /**
@@ -42,10 +42,6 @@ export function useSettings(): SettingsContextValue {
   return value
 }
 
-function asLocale(value: unknown): AppLocale {
-  return value === 'vi' ? 'vi' : 'en'
-}
-
 /** The state behind `SettingsProvider`: App calls this once and provides it. */
 export function useSettingsState(): SettingsContextValue {
   const { i18n } = useTranslation()
@@ -67,7 +63,7 @@ export function useSettingsState(): SettingsContextValue {
         const stored = await api.getAll()
         if (cancelled) return
         setSettings({ ...DEFAULT_APP_SETTINGS, ...stored })
-        const locale = asLocale(stored.locale)
+        const locale = isAppLocale(stored.locale) ? stored.locale : 'en'
         if (locale !== i18n.language) await i18n.changeLanguage(locale)
         await window.xrncal?.app?.setLocale?.(locale)
       } catch {

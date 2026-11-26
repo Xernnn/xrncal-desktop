@@ -29,6 +29,7 @@ import { ALL_DAY_REMINDER_PRESETS, TIMED_REMINDER_PRESETS } from '@shared/remind
 import { reminderLabel } from '../lib/reminder-labels'
 import { TIME_ZONE_NAMES, parseZoneList, serializeZoneList, zoneLabel, zoneOptions } from '../lib/time-zones'
 import { WEEK_START_CHOICES } from '@shared/week-start'
+import { APP_LANGUAGES, isAppLocale } from '@shared/settings-contract'
 import { parseZoneHistory, serializeZoneHistory, type ZonePeriod } from '@shared/zone-history'
 import { DateTime } from 'luxon'
 import AppearanceSettings from './AppearanceSettings'
@@ -128,7 +129,7 @@ export const RestoreBackupRow: React.FC<{ onRestore: () => void; initiallyAsking
 }
 
 export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const { settings, setSetting, setLanguage } = useSettings()
   const { ref: dialogRef, onKeyDown: onDialogKeyDown } = useDialogFocus<HTMLDivElement>(props.isOpen)
   if (!props.isOpen) return null
@@ -249,17 +250,19 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
                 ))}
               </div>
 
-              <button
-                type="button"
-                className="flex w-full items-center gap-2.5 rounded-[3px] px-2.5 py-2.5 text-left text-sm text-primary transition-colors hover:bg-hover"
-                onClick={() => void setLanguage(i18n.language === 'vi' ? 'en' : 'vi')}
-              >
+              <div className="flex w-full items-center gap-2.5 px-2.5 py-2.5 text-sm text-primary">
                 <Globe className="h-4 w-4 shrink-0 text-muted" />
                 <span className="flex-1 truncate">{t('settings.language')}</span>
-                <span className="shrink-0 text-xs text-muted">
-                  {i18n.language === 'vi' ? 'Tiếng Việt' : 'English'}
-                </span>
-              </button>
+                <CustomSelect
+                  label={t('settings.language')}
+                  value={settings.locale}
+                  options={Object.entries(APP_LANGUAGES).map(([value, label]) => ({ value, label }))}
+                  onChange={(value) => {
+                    if (isAppLocale(value)) void setLanguage(value)
+                  }}
+                  align="right"
+                />
+              </div>
 
               <button
                 type="button"
