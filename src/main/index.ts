@@ -28,6 +28,7 @@ import { icsPathsIn, queueOpenedFiles, setOpenedFileNotifier } from './opened-ic
 import { openDatabaseOrQuit } from './startup-database'
 import { setMainLocale } from './i18n-main'
 import { getPortableFolder } from './portable-folder'
+import { releaseVersion } from './release-version'
 
 // Set the portable profile before Electron creates a session.
 const portableExeDir = getPortableFolder()
@@ -202,7 +203,7 @@ if (!gotTheLock) {
     initLog(join(app.getPath('userData'), 'logs'))
     log(
       'info',
-      `xrncal ${app.getVersion()} starting (${process.platform} ${process.arch}, Electron ${process.versions.electron}${app.isPackaged ? '' : ', unpackaged'})`
+      `xrncal ${releaseVersion()} starting (${process.platform} ${process.arch}, Electron ${process.versions.electron}${app.isPackaged ? '' : ', unpackaged'})`
     )
     logCrashes()
 

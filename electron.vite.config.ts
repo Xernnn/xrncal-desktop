@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
@@ -16,7 +17,10 @@ const oauthDefines = {
 
 export default defineConfig({
   main: {
-    define: oauthDefines,
+    define: {
+      ...oauthDefines,
+      __XRNCAL_RELEASE_VERSION__: JSON.stringify(JSON.parse(readFileSync('package.json', 'utf8')).shortVersion ?? '')
+    },
     plugins: [externalizeDepsPlugin()],
     resolve: {
       alias: {

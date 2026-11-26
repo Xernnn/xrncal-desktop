@@ -1,8 +1,8 @@
 # Builds the Windows installer, Windows portable ZIP, and Linux AppImage.
 # The upstream release stays a draft for review. Forks publish after packaging.
 #
-# To cut a release: bump "version" in package.json, commit, then
-#   git tag v<version> && git push origin v<version>
+# Set the npm/updater SemVer in package.json and the public version in
+# shortVersion, then tag the commit with v<shortVersion>.
 name: Release
 
 on:
@@ -31,12 +31,11 @@ jobs:
           node-version: 24
           cache: npm
 
-      # electron-builder names the release after package.json, so a tag that
-      # disagrees with it would publish under the wrong version.
+      # The updater still uses package.json's SemVer in latest*.yml.
       - name: Resolve release version
         id: version
         run: |
-          expected="v$(node -p "require('./package.json').version")"
+          expected="v$(node -p "require('./package.json').shortVersion ?? require('./package.json').version")"
           if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "$expected" ]; then
             echo "Tag $GITHUB_REF_NAME does not match package.json ($expected)" >&2
             exit 1
@@ -69,8 +68,14 @@ jobs:
         include:
           - os: windows-latest
             target: --win --x64
+            prefix: xrncal-Setup
+            extension: exe
+            channel: latest.yml
           - os: ubuntu-latest
             target: --linux AppImage --x64
+            prefix: xrncal
+            extension: AppImage
+            channel: latest-linux.yml
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -92,7 +97,8 @@ jobs:
           XRNCAL_GOOGLE_CLIENT_SECRET: ${{ secrets.XRNCAL_GOOGLE_CLIENT_SECRET }}
           XRNCAL_MICROSOFT_CLIENT_ID: ${{ secrets.XRNCAL_MICROSOFT_CLIENT_ID }}
 
-      # Both jobs upload to the same draft, which electron-builder finds by version.
+      # Upload explicitly to the public tag. electron-builder otherwise looks
+      # for a release named after the internal SemVer.
       #
       # The Windows installer is signed when signing is set up (see "Code
       # signing" in docs/deployment-guide.md), and unsigned otherwise - a secret
@@ -112,10 +118,18 @@ jobs:
               -c.win.azureSignOptions.certificateProfileName="$AZURE_CERTIFICATE_PROFILE"
             )
           fi
-          npx electron-builder ${{ matrix.target }} --publish always "${signing[@]}" \
+          version="${RELEASE_TAG#v}"
+          artifact="${{ matrix.prefix }}-$version.${{ matrix.extension }}"
+          npx electron-builder ${{ matrix.target }} --publish never "${signing[@]}" \
+            "-c.artifactName=$artifact" "-c.buildVersion=$version" \
+            "-c.extraMetadata.shortVersionWindows=$version" \
             "-c.publish.owner=$GITHUB_REPOSITORY_OWNER" "-c.publish.repo=${GITHUB_REPOSITORY#*/}"
+          assets=("dist/$artifact" "dist/${{ matrix.channel }}")
+          if [ -f "dist/$artifact.blockmap" ]; then assets+=("dist/$artifact.blockmap"); fi
+          gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.verify.outputs.tag }}
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
@@ -148,10 +162,16 @@ jobs:
       - name: Publish verified release
         run: |
           assets="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
-          grep -Eq '\.exe$' <<< "$assets"
-          grep -Eq '\.AppImage$' <<< "$assets"
-          grep -Fxq "xrncal-${RELEASE_TAG#v}-windows-x64-portable.zip" <<< "$assets"
-          gh release edit "$RELEASE_TAG" --draft=false
+          version="${RELEASE_TAG#v}"
+          for asset in "xrncal-Setup-$version.exe" "xrncal-$version.AppImage" \
+            "xrncal-$version-windows-x64-portable.zip" latest.yml latest-linux.yml; do
+            grep -Fxq "$asset" <<< "$assets"
+          done
+          # Republishing an older commit must leave the update channel on main's release.
+          current="$(gh api "repos/$GH_REPO/contents/package.json" --jq .content | base64 --decode | jq -r '.shortVersion // .version')"
+          latest=false
+          if [ "$version" = "$current" ]; then latest=true; fi
+          gh release edit "$RELEASE_TAG" --draft=false "--latest=$latest"
         env:
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

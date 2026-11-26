@@ -108,7 +108,7 @@ elif command -v kbuildsycoca5 >/dev/null 2>&1; then
   kbuildsycoca5 --noincremental >/dev/null 2>&1 || true
 fi
 
-VERSION="$(node -p "require('./package.json').version")"
+VERSION="$(node -p "require('./package.json').shortVersion ?? require('./package.json').version")"
 echo
 echo "==> Installed '${APP_NAME}' v${VERSION}"
 echo "    App image : ${TARGET_APPIMAGE}"

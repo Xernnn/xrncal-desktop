@@ -18,6 +18,7 @@ import { refreshTrayMenu } from './tray'
 import { logDirectory, logFilePath } from './log'
 import { describeError } from './sync/http'
 import { backgroundImageDataUrl } from './background-image'
+import { releaseVersion } from './release-version'
 
 let currentLocale: AppLocale = 'en'
 
@@ -37,9 +38,7 @@ export function registerIpcHandlers(): void {
   ipcMain.removeHandler(IPC_CHANNELS.APP.QUIT)
 
   // Return current application version
-  ipcMain.handle(IPC_CHANNELS.APP.GET_VERSION, () => {
-    return app.getVersion()
-  })
+  ipcMain.handle(IPC_CHANNELS.APP.GET_VERSION, releaseVersion)
 
   // Return current app locale
   ipcMain.handle(IPC_CHANNELS.APP.GET_LOCALE, () => {

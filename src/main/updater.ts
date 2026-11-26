@@ -39,11 +39,12 @@ export function startAutoUpdates(): void {
   // Offline, rate-limited or no release yet: try again at the next interval.
   // Logged, because a download that fails its checksum lands here too.
   autoUpdater.on('error', (err) => log('warn', `Update check failed: ${describeError(err)}`))
-  autoUpdater.on('update-downloaded', (info) => log('info', `Update ${info.version} downloaded; installs on quit`))
   autoUpdater.on('update-downloaded', (info) => {
+    const version = info.releaseName?.replace(/^v(?=\d)/, '') || info.version
+    log('info', `Update ${version} downloaded; installs on quit`)
     if (!Notification.isSupported()) return
     new Notification({
-      title: mt('update.readyTitle', { version: info.version }),
+      title: mt('update.readyTitle', { version }),
       body: mt('update.readyBody')
     }).show()
   })
