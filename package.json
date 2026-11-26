@@ -1,6 +1,6 @@
 {
   "name": "xrncal",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Desktop Calendar for Windows and Linux with modern UX and multi-provider sync",
   "private": true,
   "license": "MIT",
@@ -57,7 +57,7 @@
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
     "@vitejs/plugin-react": "^6.1.2",
-    "electron": "^44.11.4",
+    "electron": "^44.11.6",
     "electron-builder": "^26.17.0",
     "electron-vite": "^6.0.0",
     "eslint": "^10.12.0",

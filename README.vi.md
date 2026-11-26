@@ -86,8 +86,9 @@ Năm view đều là component React tự viết, không dùng thư viện lịc
 Giao diện và cách dùng của xrncal theo One Calendar (Code Spark), app không có bản Linux và không có âm lịch Việt Nam. Phạm vi nằm trong [`docs/urd.md`](docs/urd.md).
 
 - **Giống:** bấm vào ô trống là mở cửa sổ sự kiện đầy đủ, không phải ô nhập tiêu đề; kéo-thả thì hỏi *Move*, *Copy* hay *Cancel*; thanh bên liệt kê từng tài khoản với các lịch của nó bên dưới; *Thêm tài khoản* đi từ loại tài khoản tới các lịch của nó.
+- **Trên điện thoại:** [xrncal-android](https://github.com/Xernnn/xrncal-android), một app riêng dùng chung tài khoản CalDAV.
 - **Riêng của xrncal:** âm lịch và giỗ theo năm âm, bản Linux, gõ ngày giờ vào tiêu đề bằng tiếng Việt hay tiếng Anh, bảng xử lý xung đột, và một file dữ liệu bạn tự sao lưu, khôi phục được. Không có gì nằm sau gói trả phí.
-- **Cố ý bỏ:** bản macOS và điện thoại, live tile và màn hình khoá, widget desktop, bản đồ, sự kiện Facebook, danh sách việc cần làm, và Exchange on-premises (tài khoản Microsoft chỉ đi qua Graph).
+- **Cố ý bỏ:** bản macOS, live tile và màn hình khoá, widget desktop, bản đồ, sự kiện Facebook, danh sách việc cần làm, và Exchange on-premises (tài khoản Microsoft chỉ đi qua Graph).
 
 ---
 
@@ -149,7 +150,7 @@ Bản release sẽ nằm ở **[Releases](https://github.com/Xernnn/xrncal-deskt
 - **Windows 10/11:** `xrncal Setup <phiên bản>.exe`. Khi bộ cài chưa được ký số, SmartScreen sẽ hỏi trước: *More info → Run anyway*.
 - **Linux:** `xrncal-<phiên bản>.AppImage`. Cho phép chạy (`chmod +x`, hoặc *Properties → Allow executing*) rồi mở.
 
-Lần mở đầu tiên có ba bước ngắn: ngôn ngữ, vài thiết lập cơ bản (âm lịch, ngày lễ, khởi động cùng máy) và các lịch muốn thêm vào. Bản đã cài tự cập nhật khi có release mới; tắt ở *Cài đặt → Chung → Kiểm tra bản cập nhật*.
+Lần mở đầu tiên có ba bước ngắn: ngôn ngữ, vài thiết lập cơ bản (âm lịch, ngày lễ, khởi động cùng máy) và các lịch muốn thêm vào. Bản đã cài có thể tự cập nhật khi có release mới, sau khi bật *Cài đặt → Chung → Kiểm tra bản cập nhật*; mặc định tắt.
 
 ### Tự build
 
@@ -169,7 +170,20 @@ npm run app:install
 
 Lệnh này build AppImage, đặt vào `~/Applications/xrncal.AppImage`, tạo launcher ở `~/.local/share/applications/xrncal.desktop` rồi refresh menu. Tìm "xrncal" trong app menu là ra. Chạy lại chính lệnh đó mỗi khi muốn cập nhật — nó ghi đè đúng các đường dẫn cũ, và ghi bằng cách `rename` nên **không làm hỏng app đang chạy** (bản đang mở vẫn dùng bản cũ cho tới khi bạn thoát và mở lại).
 
-Launcher chạy app từ một bản giải nén trong `~/.cache/xrncal` thay vì từ chỗ mount của AppImage (chỗ mount có thể biến mất khi app đang chạy), và chạy dưới X11 (`--ozone-platform=x11`) để cửa sổ mini tự đặt được vị trí và nằm trên cùng trên desktop Wayland. Mỗi lần cài lại sẽ xoá các bản giải nén cũ không còn ai dùng.
+Launcher chạy app từ một bản giải nén trong `~/.cache/xrncal` thay vì từ chỗ mount của AppImage (chỗ mount có thể biến mất khi app đang chạy). Mỗi lần cài lại sẽ xoá các bản giải nén cũ không còn ai dùng.
+
+Trên desktop Wayland, xrncal chạy như một cửa sổ Wayland gốc, nên chương trình khác không đọc được cửa sổ hay những gì bạn gõ vào đó, như bất kỳ chương trình X11 nào cũng làm được dưới XWayland. Wayland không cho cửa sổ tự nằm trên cùng hay tự chọn chỗ mở, nên cửa sổ mini ở khay (tên `xrncal Mini`) cần một rule của compositor. Trên Hyprland (cấu hình Lua):
+
+```lua
+hl.window_rule({
+  match = { class = "^xrncal$", title = "^xrncal Mini$" },
+  float = true,
+  pin = true,
+  move = { "(monitor_w-window_w-24)", "(monitor_h*0.04)" },
+})
+```
+
+`XRNCAL_X11=1 npm run app:install` thì chạy dưới XWayland (`--ozone-platform=x11`), nơi cửa sổ mini tự đặt vị trí và nằm trên cùng mà không cần rule.
 
 Muốn tự cầm file AppImage:
 
@@ -267,11 +281,12 @@ Khi có sự cố, **Cài đặt → Mở tệp nhật ký** mở thư mục ch�
 - Nhắc nhở và danh sách khách đồng bộ hai chiều, màu của lịch CalDAV cũng vậy
 - Trả lời lời mời: Có / Có thể / Không
 - Đăng ký lịch từ bất kỳ liên kết `.ics` / `webcal://`, làm mới mỗi sáu giờ
-- Poll thích ứng: 20 giây một lần khi cửa sổ đang được dùng, 5 phút một lần khi không
+- Poll thích ứng: 20 giây một lần khi cửa sổ đang được dùng, 10 phút một lần khi không
 - Bảng xử lý xung đột 412
 - Sửa sự kiện CalDAV vẫn giữ những gì ứng dụng khác đã lưu
 - Sự kiện mới bị mất câu trả lời lúc tạo vẫn chỉ được tạo một lần, không thành hai
 - Mỗi tài khoản cho biết vì sao lần đồng bộ trước lỗi (đăng nhập bị từ chối, không tìm thấy máy chủ, keyring bị khoá, …)
+- Lịch CalDAV bị xoá trên máy chủ thì cũng biến mất ở đây, trừ khi còn thay đổi chưa gửi
 
 </td>
 <td width="50%" valign="top">

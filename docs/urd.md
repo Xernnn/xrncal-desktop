@@ -100,7 +100,8 @@ Full product vision is One Calendar-class desktop. First installable build is **
 
 Explicit **out** for this product (do not sneak back in without a URD change):
 
-- macOS, iOS, Android
+- macOS, iOS
+- Android in this app: the phone side is a separate native app, xrncal-android, on the same CalDAV account
 - Lock screen / live tiles
 - Maps, routing, navigation
 - Facebook events

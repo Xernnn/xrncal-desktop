@@ -86,8 +86,9 @@ All five views are React components written for this app, with no third-party ca
 The way xrncal looks and behaves follows One Calendar (Code Spark), which has no Linux app and no Vietnamese lunar calendar. [`docs/urd.md`](docs/urd.md) holds the scope.
 
 - **The same:** a click on an empty slot opens the full editor, not a title-only popover; a drop asks *Move*, *Copy* or *Cancel*; the sidebar lists each account with its calendars underneath; *Add account* walks from the account type to its calendars.
+- **On the phone:** [xrncal-android](https://github.com/Xernnn/xrncal-android), a separate app on the same CalDAV account.
 - **Its own:** lunar dates and lunar-year anniversaries, a Linux build, dates typed into the title in Vietnamese or English, a conflict screen, and a database file you can back up and restore yourself. Nothing is behind a paid tier.
-- **Left out on purpose:** macOS and phone apps, live tiles and lock-screen entries, desktop widgets, maps, Facebook events, a task list, and Exchange on-premises (Microsoft accounts go through Graph only).
+- **Left out on purpose:** macOS, live tiles and lock-screen entries, desktop widgets, maps, Facebook events, a task list, and Exchange on-premises (Microsoft accounts go through Graph only).
 
 ---
 
@@ -149,7 +150,7 @@ A release will be at **[Releases](https://github.com/Xernnn/xrncal-desktop/relea
 - **Windows 10/11:** `xrncal Setup <version>.exe`. Until the installer is code-signed, SmartScreen asks first: *More info → Run anyway*.
 - **Linux:** `xrncal-<version>.AppImage`. Make it executable (`chmod +x`, or *Properties → Allow executing*) and open it.
 
-The first launch walks you through three steps: language, a few basics (lunar dates, holidays, starting with the computer), and the calendars to bring in. Installed copies update themselves from new releases; *Settings → General → Check for updates* turns that off.
+The first launch walks you through three steps: language, a few basics (lunar dates, holidays, starting with the computer), and the calendars to bring in. Installed copies can update themselves from new releases once *Settings → General → Check for updates* is turned on; it is off until then.
 
 ### Build it yourself
 
@@ -169,7 +170,20 @@ npm run app:install
 
 This builds the AppImage, puts it at `~/Applications/xrncal.AppImage`, writes a launcher to `~/.local/share/applications/xrncal.desktop` and refreshes the menu. Look for "xrncal" in your app list. Re-run the same command to update: it overwrites the same paths, and it writes by `rename`, so it **cannot corrupt a running app** (an open window keeps the build it started on until you quit and reopen it).
 
-The launcher runs the app from an unpacked copy in `~/.cache/xrncal` rather than from the AppImage's own mount, which can vanish under a running app, and under X11 (`--ozone-platform=x11`) so the mini window can place itself and stay on top on Wayland desktops. A reinstall removes the unpacked copies of older builds that nothing is using.
+The launcher runs the app from an unpacked copy in `~/.cache/xrncal` rather than from the AppImage's own mount, which can vanish under a running app. A reinstall removes the unpacked copies of older builds that nothing is using.
+
+On a Wayland desktop xrncal runs as a native Wayland window, so other programs cannot read its windows or what you type into them, as any X11 program can under XWayland. Wayland lets no window keep itself on top or choose where it opens, so the tray's mini window, titled `xrncal Mini`, needs a rule from the compositor. On Hyprland (Lua config):
+
+```lua
+hl.window_rule({
+  match = { class = "^xrncal$", title = "^xrncal Mini$" },
+  float = true,
+  pin = true,
+  move = { "(monitor_w-window_w-24)", "(monitor_h*0.04)" },
+})
+```
+
+`XRNCAL_X11=1 npm run app:install` runs it under XWayland (`--ozone-platform=x11`) instead, where the mini window places itself and stays on top with no rule.
 
 If you would rather hold the AppImage yourself:
 
@@ -267,11 +281,12 @@ If something goes wrong, **Settings → Show log file** opens the folder with `x
 - Reminders and guest lists sync both ways, and so do CalDAV calendars' colours
 - Reply Yes / Maybe / No to invitations
 - Subscribe to any `.ics` / `webcal://` link, refreshed every six hours
-- Adaptive polling: every 20 s while the window has focus, every 5 min otherwise
+- Adaptive polling: every 20 s while a window has focus, every 10 min otherwise
 - A resolution screen for 412 conflicts
 - CalDAV edits keep what other apps stored on the event
 - A new event whose create answer is lost is made once, not twice
 - Each account says why its last sync failed (sign-in refused, server not found, keyring locked, …)
+- A CalDAV calendar deleted on the server goes here too, unless it holds changes not yet sent
 
 </td>
 <td width="50%" valign="top">

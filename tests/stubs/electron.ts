@@ -44,6 +44,7 @@ export const ipcRenderer = {
 
 export const BrowserWindow = class {
   static getAllWindows = () => []
+  static getFocusedWindow = () => null
   webContents = { send: () => undefined, on: () => undefined }
   on = () => undefined
   loadURL = () => Promise.resolve()

@@ -106,6 +106,12 @@ export class CalDavAdapter {
     }
 
     const xml = await readTextWithin(res, res.url || this.creds.url, MAX_DISCOVERY_BYTES)
+    // What is not listed is removed here (CalDavSyncEngine.dropGoneCalendars),
+    // so only a whole multistatus is a listing: a captive portal's page, a
+    // proxy's, or an answer cut short would otherwise remove calendars.
+    if (!isCompleteMultistatus(xml)) {
+      throw new Error(`CalDAV discovery got HTTP ${res.status} without a whole multistatus answer`)
+    }
     return parseCalDavMultistatus(xml, this.creds.url)
   }
 
@@ -438,6 +444,11 @@ function resourceNameFor(uid: string): string {
 /** Whether a REPORT body is a WebDAV multistatus at all (an empty one included). */
 function isMultistatus(xml: string): boolean {
   return /<(?:[a-zA-Z0-9_-]+:)?multistatus[\s/>]/.test(xml)
+}
+
+/** A multistatus that ends as one: closed at the end of the body, or empty (`<multistatus/>`). */
+function isCompleteMultistatus(xml: string): boolean {
+  return isMultistatus(xml) && /(?:<\/(?:[a-zA-Z0-9_-]+:)?multistatus\s*>|<(?:[a-zA-Z0-9_-]+:)?multistatus[^>]*\/>)\s*$/.test(xml)
 }
 
 function parseCalendarItems(xml: string, baseUrl: string): CalDavItem[] {

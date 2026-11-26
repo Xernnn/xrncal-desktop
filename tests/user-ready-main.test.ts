@@ -144,10 +144,25 @@ describe('starting at login on Linux', () => {
     const entry = linuxAutostartEntry('/home/a "b"/Apps/xrncal.AppImage', '/home/a "b"/.cache/xrncal')
     expect(entry).toContain('[Desktop Entry]')
     expect(entry).toContain(
-      `Exec=env NO_CLEANUP=1 "TMPDIR=/home/a \\"b\\"/.cache/xrncal" "/home/a \\"b\\"/Apps/xrncal.AppImage" --appimage-extract-and-run --ozone-platform=x11 ${START_HIDDEN_ARG}`
+      `Exec=env NO_CLEANUP=1 "TMPDIR=/home/a \\"b\\"/.cache/xrncal" "/home/a \\"b\\"/Apps/xrncal.AppImage" --appimage-extract-and-run ${START_HIDDEN_ARG}`
     )
     expect(linuxAutostartEntry('/opt/$HOME`x`.AppImage', '/c/$x')).toContain(
       'Exec=env NO_CLEANUP=1 "TMPDIR=/c/\\$x" "/opt/\\$HOME\\`x\\`.AppImage"'
+    )
+  })
+
+  /**
+   * The entry always ran the app under XWayland, where every other X11 client
+   * - a sandboxed app given the X11 socket among them - can read its windows
+   * and keystrokes, the account dialog's password included. It runs as a
+   * native Wayland client now, and under X11 only when the app itself was
+   * started that way (XRNCAL_X11=1 npm run app:install).
+   */
+  it('starts it as a native Wayland client, and under XWayland only when asked to', () => {
+    const entry = linuxAutostartEntry('/a/xrncal.AppImage', '/a/cache')
+    expect(entry).not.toContain('ozone-platform')
+    expect(linuxAutostartEntry('/a/xrncal.AppImage', '/a/cache', true)).toContain(
+      `Exec=env NO_CLEANUP=1 XRNCAL_X11=1 "TMPDIR=/a/cache" "/a/xrncal.AppImage" --appimage-extract-and-run --ozone-platform=x11 ${START_HIDDEN_ARG}`
     )
   })
 
