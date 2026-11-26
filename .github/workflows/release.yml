@@ -18,6 +18,7 @@ permissions:
 
 jobs:
   verify:
+    if: github.event.deleted != true
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.version.outputs.tag }}
@@ -55,7 +56,9 @@ jobs:
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             echo "Release $RELEASE_TAG already exists"
           else
-            gh release create "$RELEASE_TAG" --draft --target "$GITHUB_SHA" --title "$RELEASE_TAG" --generate-notes
+            target=(--target "$GITHUB_SHA")
+            if [ "$GITHUB_REF_TYPE" = tag ]; then target=(--verify-tag); fi
+            gh release create "$RELEASE_TAG" --draft "${target[@]}" --title "$RELEASE_TAG" --generate-notes
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
