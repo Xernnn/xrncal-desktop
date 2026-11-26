@@ -21,7 +21,7 @@ export interface RunningApp {
  * own `profile` (from `newProfile()`), which closing leaves for it to remove.
  */
 export async function launchApp(
-  options: { welcome?: boolean; args?: string[]; profile?: string } = {}
+  options: { welcome?: boolean; args?: string[]; profile?: string; useDefaultView?: boolean } = {}
 ): Promise<RunningApp> {
   const profile = options.profile ?? newProfile()
   const app = await electron.launch({
@@ -51,6 +51,10 @@ export async function launchApp(
   if (!options.welcome) {
     await page.waitForFunction(() => Boolean(window.xrncal?.settings))
     await page.evaluate(() => window.xrncal.settings.set('welcomeDone', true))
+    if (!options.useDefaultView) {
+      // Older scenarios exercise the week grid; startup-view tests opt out.
+      await page.evaluate(() => window.xrncal.settings.set('defaultView', 'week'))
+    }
     await page.reload()
     await page.waitForLoadState('domcontentloaded')
   }
