@@ -1,9 +1,10 @@
 import { app, BrowserWindow, dialog } from 'electron'
+import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { passwordStoreSwitch } from './password-store'
 import { registerIpcHandlers } from './ipc'
 import { loadCredentialsFile } from './load-credentials'
-import { adoptLegacyUserDataForApp } from './adopt-legacy-userdata'
+import { adoptLegacyUserDataForApp, adoptPreviousPortableUserData } from './adopt-legacy-userdata'
 import { closeDatabase, getDatabase } from './db/database'
 import { SettingsRepo, setSystemDefaults } from './db/repos/settings-repo'
 import { hasTray, refreshTrayHost, setupTray } from './tray'
@@ -26,6 +27,23 @@ import { noticeRunningInTray, settleExistingProfile } from './first-run'
 import { icsPathsIn, queueOpenedFiles, setOpenedFileNotifier } from './opened-ics-files'
 import { openDatabaseOrQuit } from './startup-database'
 import { setMainLocale } from './i18n-main'
+
+// The portable launcher runs the application from a temporary directory.
+// Use the launcher directory for the profile before Electron creates a session.
+const portableExeDir = process.platform === 'win32' && app.isPackaged
+  ? process.env.PORTABLE_EXECUTABLE_DIR
+  : undefined
+if (portableExeDir) {
+  const session = join(portableExeDir, 'session')
+  try {
+    mkdirSync(session, { recursive: true })
+    app.setPath('userData', portableExeDir)
+    app.setPath('sessionData', session)
+  } catch (error) {
+    dialog.showErrorBox('Could not open the portable data folder', `${portableExeDir}\n\n${describeError(error)}`)
+    app.exit(1)
+  }
+}
 
 // The UI tests (e2e/) run the app on a throwaway profile. The single-instance
 // lock and the database both live in it, so a test run neither touches the real
@@ -190,7 +208,17 @@ if (!gotTheLock) {
     )
     logCrashes()
 
-    adoptLegacyUserDataForApp()
+    if (portableExeDir) {
+      try {
+        adoptPreviousPortableUserData(portableExeDir)
+      } catch (error) {
+        dialog.showErrorBox('Could not migrate the portable calendar', describeError(error))
+        app.exit(1)
+        return
+      }
+    } else {
+      adoptLegacyUserDataForApp()
+    }
     loadCredentialsFile()
     // A setting nobody has chosen follows the computer: its language when the
     // app has it, its clock, the day its weeks start on.
@@ -233,7 +261,7 @@ if (!gotTheLock) {
     queueOpenedFiles(icsPathsIn(process.argv.slice(1)))
 
     app.on('activate', () => showMainWindow())
-    startAutoUpdates()
+    if (!portableExeDir) startAutoUpdates()
     startAutoBackups(app.getPath('userData'))
   })
 

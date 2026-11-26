@@ -2,6 +2,7 @@ import { copyFileSync, existsSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { app } from 'electron'
 import { createSqliteDriver } from './db/sqlite-driver'
+import { backupDatabaseTo } from './db/backup'
 
 /**
  * The app used to be called "Gone Calendar", so Electron kept its profile in a
@@ -57,4 +58,22 @@ export function adoptLegacyUserData(userDataDir: string, dbName = 'xrncal.sqlite
 
 export function adoptLegacyUserDataForApp(): boolean {
   return adoptLegacyUserData(app.getPath('userData'))
+}
+
+/** Earlier portable builds stored the profile under data/ next to the launcher. */
+export function adoptPreviousPortableUserData(folder: string): void {
+  const oldFolder = join(folder, 'data')
+  const oldDb = join(oldFolder, 'xrncal.sqlite')
+  const newDb = join(folder, 'xrncal.sqlite')
+  if (existsSync(newDb) || !existsSync(oldDb)) return
+
+  const oldEnv = join(oldFolder, 'xrncal.env')
+  const newEnv = join(folder, 'xrncal.env')
+  if (existsSync(oldEnv) && !existsSync(newEnv)) copyFileSync(oldEnv, newEnv)
+  const database = createSqliteDriver(oldDb)
+  try {
+    backupDatabaseTo(database, newDb)
+  } finally {
+    database.close()
+  }
 }

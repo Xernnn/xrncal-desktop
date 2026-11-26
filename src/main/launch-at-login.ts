@@ -54,6 +54,8 @@ export function linuxAutostartEntry(appImagePath: string, unpackFolder: string):
  */
 export function applyLaunchAtLogin(enabled: boolean): void {
   if (!app.isPackaged) return
+  // The portable app executable is extracted to a temporary directory.
+  if (process.platform === 'win32' && process.env.PORTABLE_EXECUTABLE_DIR) return
   try {
     if (process.platform === 'linux') {
       const file = linuxAutostartFile()

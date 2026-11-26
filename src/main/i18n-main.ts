@@ -5,12 +5,11 @@
  */
 import { getDatabase } from './db/database'
 import { SettingsRepo } from './db/repos/settings-repo'
+import { isAppLocale, type AppLocale } from '@shared/settings-contract'
 
-type MainLocale = 'en' | 'vi'
+let currentLocale: AppLocale = 'en'
 
-let currentLocale: MainLocale = 'en'
-
-const STRINGS: Record<MainLocale, Record<string, string>> = {
+const STRINGS: Record<AppLocale, Record<string, string>> = {
   en: {
     'tray.openMain': 'Open xrncal',
     'tray.miniWindow': 'Mini window (upcoming events)',
@@ -78,14 +77,48 @@ const STRINGS: Record<MainLocale, Record<string, string>> = {
     'startup.dbFailedLog': 'Chi tiết có trong nhật ký: {path}',
     'startup.dbNewerBody':
       'Cơ sở dữ liệu {path} được dùng lần cuối bởi một phiên bản xrncal mới hơn (phiên bản dữ liệu {version}; phiên bản này chỉ đọc được đến {known}). Phiên bản này sẽ không mở nó, để không thay đổi gì bên trong. Hãy cài lại bản xrncal mới hơn để dùng tiếp.'
+  },
+  'zh-CN': {
+    'tray.openMain': '打开 xrncal',
+    'tray.miniWindow': '迷你窗口（即将到来的日程）',
+    'tray.quit': '退出',
+    'tray.stillRunningTitle': 'xrncal 仍在运行',
+    'tray.stillRunningBody': '提醒仍会响起。可从托盘图标或应用菜单重新打开，也可通过托盘菜单或 Ctrl+Q 退出。',
+    'notify.now': '现在开始',
+    'notify.inMinutes': '{n} 分钟后，{time}',
+    'notify.todayAt': '今天 {time}',
+    'notify.tomorrowAt': '明天 {time}',
+    'notify.onDateAt': '{date} {time}',
+    'notify.today': '今天',
+    'notify.tomorrow': '明天',
+    'notify.onDate': '{date}',
+    'update.readyTitle': 'xrncal {version} 已准备就绪',
+    'update.readyBody': '下次退出 xrncal 时将安装更新。',
+    'sync.done': '同步完成：下载 {pulled} 项，上传 {pushed} 项',
+    'oauth.google.success': '已连接 Google Calendar！',
+    'oauth.microsoft.success': '已连接 Microsoft Outlook / 365！',
+    'oauth.account': '账户：{detail}',
+    'oauth.canClose': '可以关闭此浏览器标签页并返回 xrncal。',
+    'oauth.stateError': '身份验证失败：状态或授权码无效',
+    'oauth.google.failed': 'Google 登录失败：{error}',
+    'oauth.microsoft.failed': 'Microsoft 登录失败：{error}',
+    'oauth.canCloseShort': '可以关闭此标签页。',
+    'oauth.profileFailed': '已登录，但无法读取账户信息（HTTP {status}）。请重试。',
+    'oauth.timeout.google': 'Google 身份验证已超时（5 分钟）。请重试。',
+    'oauth.timeout.microsoft': 'Microsoft 身份验证已超时（5 分钟）。请重试。',
+    'startup.dbFailedTitle': 'xrncal 无法打开你的日历',
+    'startup.dbFailedBody': '无法打开数据库 {path}，xrncal 将退出。',
+    'startup.dbFailedLog': '详情见日志：{path}',
+    'startup.dbNewerBody':
+      '数据库 {path} 上次由较新的 xrncal 使用（数据版本 {version}，当前仅支持到 {known}）。为保护数据，本版本不会打开它。请使用较新的 xrncal。'
   }
 }
 
 export function setMainLocale(locale: string): void {
-  if (locale === 'en' || locale === 'vi') currentLocale = locale
+  if (isAppLocale(locale)) currentLocale = locale
 }
 
-export function getMainLocale(): MainLocale {
+export function getMainLocale(): AppLocale {
   return currentLocale
 }
 
