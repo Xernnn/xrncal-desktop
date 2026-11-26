@@ -7,6 +7,7 @@ import type { ExpandedOccurrence } from '@shared/event-model'
 import { buildMiniCalendarDays, DEFAULT_EVENT_COLOR, TODAY_COLOR } from '@shared/mini-calendar-grid'
 import { weekdayShortLabels } from '../i18n/weekday-labels'
 import { useToday } from '../hooks/use-now'
+import { MonthYearPicker } from './MonthYearPicker'
 
 interface MiniCalendarProps {
   anchorDate: DateTime
@@ -25,7 +26,7 @@ export const MiniCalendar: React.FC<MiniCalendarProps> = ({
   onPrevMonth,
   onNextMonth
 }) => {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const today = useToday()
   const days = React.useMemo(
     () => buildMiniCalendarDays(anchorDate, firstDayOfWeek),
@@ -52,7 +53,7 @@ export const MiniCalendar: React.FC<MiniCalendarProps> = ({
     <div className="select-none">
       <div className="mb-2 flex items-center justify-between">
         <span className="text-sm font-semibold text-primary">
-          {anchorDate.setLocale(i18n.language).toFormat('MMMM yyyy')}
+          <MonthYearPicker date={anchorDate} onChange={onSelectDate} />
         </span>
         <div className="flex text-muted">
           <button type="button" className="gc-icon-btn p-1" onClick={onPrevMonth} aria-label="Previous month">

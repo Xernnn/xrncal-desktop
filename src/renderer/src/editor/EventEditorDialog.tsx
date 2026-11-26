@@ -192,6 +192,30 @@ const NO_RECURRENCE = {
   lunarLeap: false
 }
 
+function recurrenceFields(rule: string, shownIn: string) {
+  const parts = parseRruleParts(rule)
+  const simple = isSimpleRrule(rule)
+  const presetByFreq: Record<string, string> = { DAILY: 'daily', WEEKLY: 'weekly', MONTHLY: 'monthly', YEARLY: 'yearly' }
+  let end: Pick<EditorForm, 'recurrenceEnd' | 'recurrenceUntil' | 'recurrenceCount'> = {
+    recurrenceEnd: 'never',
+    recurrenceUntil: '',
+    recurrenceCount: 10
+  }
+  if (parts.UNTIL) {
+    const untilLocal = DateTime.fromFormat(parts.UNTIL, "yyyyMMdd'T'HHmmss'Z'", { zone: 'utc' }).setZone(shownIn)
+    end = { recurrenceEnd: 'onDate', recurrenceUntil: untilLocal.isValid ? untilLocal.toFormat('yyyy-MM-dd') : '', recurrenceCount: 10 }
+  } else if (parts.COUNT) {
+    end = { recurrenceEnd: 'afterCount', recurrenceUntil: '', recurrenceCount: Math.max(1, parseInt(parts.COUNT, 10) || 10) }
+  }
+  return {
+    recurrencePreset: (simple && presetByFreq[parts.FREQ]) || 'custom',
+    customRrule: rule,
+    recurrenceInterval: parts.INTERVAL ? Math.max(1, parseInt(parts.INTERVAL, 10) || 1) : 1,
+    recurrenceByDay: parts.BYDAY ? parts.BYDAY.split(',') : [],
+    ...end
+  }
+}
+
 const dateAndTime = (start: DateTime, end: DateTime) => ({
   startDateStr: start.toFormat('yyyy-MM-dd'),
   startTimeStr: start.toFormat('HH:mm'),
@@ -246,8 +270,7 @@ export function initialForm(
       tzid: occ.allDay || occ.isLunar ? occ.tzid || userTz : occZone,
       ...dateAndTime(startLocal, endLocal),
       ...NO_RECURRENCE,
-      // A series occurrence opens as "custom" with no rule typed, so a save
-      // leaves the series' own rule alone.
+      // Occurrences carry no rule. The controls are filled when their series loads.
       recurrencePreset: occ.isLunar ? 'lunar-yearly' : occ.isRecurring ? 'custom' : 'none',
       lunarLeap: occ.isLunar
         ? occ.lunarRule?.leap ?? lunarRuleForDate(startLocal.day, startLocal.month, startLocal.year, false).leap
@@ -285,29 +308,7 @@ export function initialForm(
     if (evt.lunarRule) return { ...base, ...NO_RECURRENCE, recurrencePreset: 'lunar-yearly', lunarLeap: evt.lunarRule.leap }
     if (!evt.rrule) return { ...base, ...NO_RECURRENCE }
 
-    const parts = parseRruleParts(evt.rrule)
-    const simple = isSimpleRrule(evt.rrule)
-    const presetByFreq: Record<string, string> = { DAILY: 'daily', WEEKLY: 'weekly', MONTHLY: 'monthly', YEARLY: 'yearly' }
-    let end: Pick<EditorForm, 'recurrenceEnd' | 'recurrenceUntil' | 'recurrenceCount'> = {
-      recurrenceEnd: 'never',
-      recurrenceUntil: '',
-      recurrenceCount: 10
-    }
-    if (parts.UNTIL) {
-      const untilLocal = DateTime.fromFormat(parts.UNTIL, "yyyyMMdd'T'HHmmss'Z'", { zone: 'utc' }).setZone(shownIn)
-      end = { recurrenceEnd: 'onDate', recurrenceUntil: untilLocal.isValid ? untilLocal.toFormat('yyyy-MM-dd') : '', recurrenceCount: 10 }
-    } else if (parts.COUNT) {
-      end = { recurrenceEnd: 'afterCount', recurrenceUntil: '', recurrenceCount: Math.max(1, parseInt(parts.COUNT, 10) || 10) }
-    }
-    return {
-      ...base,
-      ...NO_RECURRENCE,
-      recurrencePreset: (simple && presetByFreq[parts.FREQ]) || 'custom',
-      customRrule: evt.rrule,
-      recurrenceInterval: parts.INTERVAL ? Math.max(1, parseInt(parts.INTERVAL, 10) || 1) : 1,
-      recurrenceByDay: parts.BYDAY ? parts.BYDAY.split(',') : [],
-      ...end
-    }
+    return { ...base, ...NO_RECURRENCE, ...recurrenceFields(evt.rrule, shownIn) }
   }
 
   const start = data?.initialStart || DateTime.local().set({ hour: 9, minute: 0, second: 0 })
@@ -456,6 +457,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
   const [endDateStr, setEndDateStr] = useState<string>(initial.endDateStr)
   const [endTimeStr, setEndTimeStr] = useState<string>(initial.endTimeStr)
 
+  const repeatTouched = useRef(false)
   const [recurrencePreset, setRecurrencePreset] = useState<string>(initial.recurrencePreset)
   const [customRrule, setCustomRrule] = useState<string>(initial.customRrule)
   const [recurrenceInterval, setRecurrenceInterval] = useState<number>(initial.recurrenceInterval)
@@ -511,8 +513,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
     [readsTitle, title, entryContext]
   )
 
-  // The rest of an event opened from the grid (or handed over without its
-  // guest list): its guests and reminders.
+  // Read the full event behind an occurrence, including the series' rule.
   useEffect(() => {
     const eventId = data?.occurrence?.eventId ?? (data?.event?.attendees === undefined ? data?.event?.id : undefined)
     if (!eventId || !window.xrncal?.events?.getById) return
@@ -530,6 +531,16 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
             : loaded
         )
         if (!remindersTouchedRef.current) setReminders(res.event.reminders ?? null)
+        if (isRecurringOccurrence && res.event.rrule && !repeatTouched.current) {
+          const repeat = recurrenceFields(res.event.rrule, initial.allDay ? 'utc' : initial.tzid)
+          setRecurrencePreset(repeat.recurrencePreset)
+          setCustomRrule(repeat.customRrule)
+          setRecurrenceInterval(repeat.recurrenceInterval)
+          setRecurrenceByDay(repeat.recurrenceByDay)
+          setRecurrenceEnd(repeat.recurrenceEnd)
+          setRecurrenceUntil(repeat.recurrenceUntil)
+          setRecurrenceCount(repeat.recurrenceCount)
+        }
         setAttendeesLoaded(true)
         setStored(res.event)
       })
@@ -539,7 +550,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
     return () => {
       cancelled = true
     }
-  }, [data])
+  }, [data, initial.allDay, initial.tzid, isRecurringOccurrence])
 
   /**
    * The slot the title suggestions are being asked about, in the same shape the
@@ -730,6 +741,11 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
   const editSchedule = <T,>(setter: React.Dispatch<React.SetStateAction<T>>, val: NoInfer<T>): void => {
     handleFieldChange(setter, val)
     scheduleEdited()
+  }
+
+  const editRepeat = <T,>(setter: React.Dispatch<React.SetStateAction<T>>, val: NoInfer<T>): void => {
+    repeatTouched.current = true
+    editSchedule(setter, val)
   }
 
   /** The title is saved as typed, and the form goes back to what it was before the title changed it. */
@@ -997,7 +1013,10 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
       tzid,
       dtStartUtc: startIso,
       dtEndUtc: endIso,
-      rrule: repeatUpdate(buildRrule(), recurrencePreset, initial.recurrencePreset),
+      // Only a repeat edit replaces the series' stored rule.
+      rrule: !isEditing || repeatTouched.current
+        ? repeatUpdate(buildRrule(), recurrencePreset, initial.recurrencePreset)
+        : undefined,
       lunarRule: isLunarYearly ? lunarSpec! : null,
       // An edit sends guests only when they were changed here, and only once
       // the list has loaded. Sending the list untouched would overwrite
@@ -1355,7 +1374,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
               <CustomSelect
                 value={recurrencePreset}
                 onChange={(val) => {
-                  editSchedule(setRecurrencePreset, val)
+                  editRepeat(setRecurrencePreset, val)
                   if (val === 'lunar-yearly' && chineseLunar && recurrencePreset !== val) {
                     const date = DateTime.fromISO(startDateStr)
                     if (date.isValid) setLunarLeap(lunarRuleForDate(date.day, date.month, date.year, true).leap)
@@ -1386,7 +1405,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
                     <span className="text-xs text-muted">{t('editor.repeatEvery')}</span>
                     <NumberInput
                       value={recurrenceInterval}
-                      onChange={(v) => editSchedule(setRecurrenceInterval, Math.max(1, Math.round(v)))}
+                      onChange={(v) => editRepeat(setRecurrenceInterval, Math.max(1, Math.round(v)))}
                       min={1}
                       max={999}
                     />
@@ -1408,7 +1427,8 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
                         <button
                           key={code}
                           type="button"
-                          onClick={() => editSchedule(setRecurrenceByDay, toggleWeekday(recurrenceByDay, code))}
+                          onClick={() => editRepeat(setRecurrenceByDay, toggleWeekday(recurrenceByDay, code))}
+                          aria-pressed={recurrenceByDay.includes(code)}
                           className={`h-6 w-6 shrink-0 cursor-pointer rounded-full text-[10px] font-semibold transition-colors ${
                             recurrenceByDay.includes(code)
                               ? 'bg-accent text-white'
@@ -1425,7 +1445,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
                     <span className="w-[72px] shrink-0 text-xs text-muted">{t('editor.repeatEnds')}</span>
                     <CustomSelect
                       value={recurrenceEnd}
-                      onChange={(val) => handleFieldChange(setRecurrenceEnd, val as typeof recurrenceEnd)}
+                      onChange={(val) => editRepeat(setRecurrenceEnd, val as typeof recurrenceEnd)}
                       options={[
                         { value: 'never', label: t('editor.repeatEndsNever') },
                         { value: 'onDate', label: t('editor.repeatEndsOnDate') },
@@ -1437,7 +1457,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
                   {recurrenceEnd === 'onDate' && (
                     <DatePicker
                       value={recurrenceUntil}
-                      onChange={(val) => handleFieldChange(setRecurrenceUntil, val)}
+                      onChange={(val) => editRepeat(setRecurrenceUntil, val)}
                       minDate={startDateStr}
                       placeholder={t('editor.endDate')}
                     />
@@ -1447,7 +1467,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
                     <div className="flex items-center gap-2">
                       <NumberInput
                         value={recurrenceCount}
-                        onChange={(v) => handleFieldChange(setRecurrenceCount, Math.max(1, Math.round(v)))}
+                        onChange={(v) => editRepeat(setRecurrenceCount, Math.max(1, Math.round(v)))}
                         min={1}
                         max={999}
                       />
@@ -1462,7 +1482,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
               <FormRow label="" divider>
                 <TextInput
                   value={customRrule}
-                  onChange={(val) => handleFieldChange(setCustomRrule, val)}
+                  onChange={(val) => editRepeat(setCustomRrule, val)}
                   placeholder={t('editor.customRrulePlaceholder')}
                   inputClassName="font-mono text-xs"
                   variant="boxed"

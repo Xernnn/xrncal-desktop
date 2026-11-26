@@ -128,9 +128,9 @@ export class SyncWorker {
   }
 
   /** A manual request waits for the current round before starting its own. */
-  async syncNow(calendarId?: string): Promise<SyncResult> {
+  async syncNow(sourceId?: string): Promise<SyncResult> {
     while (this.activeSync) await this.activeSync
-    return this.startSync({ calendarId })
+    return this.startSync({ sourceId })
   }
 
   /** Trigger a regular round, keeping the subscription refresh interval. */
@@ -141,36 +141,36 @@ export class SyncWorker {
     return this.startSync()
   }
 
-  private startSync(manual?: { calendarId?: string }): Promise<SyncResult> {
+  private startSync(manual?: { sourceId?: string }): Promise<SyncResult> {
     this.activeSync = this.runSync(manual).finally(() => {
       this.activeSync = null
     })
     return this.activeSync
   }
 
-  private async syncCalendar(calendarId: string): Promise<SyncResult> {
-    const calendar = new CalendarsRepo(this.db).getCalendarById(calendarId)
+  private async syncSource(sourceId: string): Promise<SyncResult> {
+    const calendar = new CalendarsRepo(this.db).getCalendarById(sourceId)
     if (calendar?.subscriptionUrl) {
-      const { pulledCount, errorCount } = await refreshDueSubscriptions(this.db, undefined, { force: true, calendarId })
+      const { pulledCount, errorCount } = await refreshDueSubscriptions(this.db, undefined, { force: true, calendarId: sourceId })
       return { success: errorCount === 0, pulledCount, pushedCount: 0, errorCount }
     }
 
-    const account = calendar && new AccountsRepo(this.db).get(calendar.accountId)
-    if (!calendar || !account?.isActive || account.type === 'local') {
-      return { success: false, pulledCount: 0, pushedCount: 0, errorCount: 1, message: mt('sync.calendarUnavailable') }
+    const account = new AccountsRepo(this.db).get(sourceId)
+    if (!account?.isActive || account.type === 'local') {
+      return { success: false, pulledCount: 0, pushedCount: 0, errorCount: 1, message: mt('sync.sourceUnavailable') }
     }
 
     const { google, microsoft } = this.oauthClients()
     let result: SyncResult
     switch (account.type) {
       case 'caldav':
-        result = await this.caldavEngine.syncAll(calendar)
+        result = await this.caldavEngine.syncAll(account.id)
         break
       case 'google':
-        result = await this.googleEngine.syncAll(google?.clientId, google?.clientSecret, calendar)
+        result = await this.googleEngine.syncAll(google?.clientId, google?.clientSecret, account.id)
         break
       case 'graph':
-        result = await this.microsoftEngine.syncAll(microsoft?.clientId, microsoft?.clientSecret, calendar)
+        result = await this.microsoftEngine.syncAll(microsoft?.clientId, microsoft?.clientSecret, account.id)
         break
     }
     return { ...result, message: result.accountErrors?.[account.id] }
@@ -198,11 +198,11 @@ export class SyncWorker {
     return { success: errorCount === 0, pulledCount, pushedCount, errorCount }
   }
 
-  private async runSync(manual?: { calendarId?: string }): Promise<SyncResult> {
+  private async runSync(manual?: { sourceId?: string }): Promise<SyncResult> {
     try {
-      const result = manual?.calendarId === undefined
+      const result = manual?.sourceId === undefined
         ? await this.syncAll(manual !== undefined)
-        : await this.syncCalendar(manual.calendarId)
+        : await this.syncSource(manual.sourceId)
       this.lastSyncTime = new Date().toISOString()
 
       // Sync may discover calendars or change event IDs and subscriptions can
@@ -221,7 +221,7 @@ export class SyncWorker {
       return { ...result, message }
     } catch (err) {
       const message = describeError(err)
-      if (manual?.calendarId === undefined) this.lastError = message
+      if (manual?.sourceId === undefined) this.lastError = message
       log('error', `Sync failed: ${message}`)
       return { success: false, pulledCount: 0, pushedCount: 0, errorCount: 1, message }
     }

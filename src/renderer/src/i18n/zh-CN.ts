@@ -23,12 +23,14 @@ export const zhCN = {
   nav: {
     today: '今天',
     prev: '上一页',
-    next: '下一页'
+    next: '下一页',
+    selectYear: '选择年份',
+    selectMonth: '选择月份'
   },
   actions: {
     newEvent: '新建',
-    syncCalendar: '同步指定日历',
-    noSyncCalendars: '暂无已连接的日历或在线订阅',
+    syncSource: '同步指定账户或订阅',
+    noSyncSources: '暂无已连接的账户或在线订阅',
     openDay: '打开这一天',
     search: '搜索',
     toggleSidebar: '切换侧栏',

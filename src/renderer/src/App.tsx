@@ -284,12 +284,12 @@ const CalendarApp: React.FC = () => {
     else if (next) setAccountsDialog([{ name: 'list' }, { name: 'add' }, { name: 'connect', provider: next }])
   }
 
-  const syncNow = async (calendarId?: string): Promise<void> => {
+  const syncNow = async (sourceId?: string): Promise<void> => {
     if (manualSyncRunning.current || !window.xrncal?.sync?.triggerNow) return
     manualSyncRunning.current = true
     setSyncing(true)
     try {
-      const res = await window.xrncal.sync.triggerNow(calendarId)
+      const res = await window.xrncal.sync.triggerNow(sourceId)
       if (res.success) toast.success(t('toast.syncDone'), { description: res.message })
       else toast.error(t('toast.syncFailed'), { description: res.message })
     } catch (err) {
@@ -467,6 +467,8 @@ const CalendarApp: React.FC = () => {
             : visibleRange.label
       }
       currentView={currentView}
+      anchorDate={anchorDate}
+      onSelectDate={setAnchorDate}
       showSidebarToggle={settings.showMiniCalendar}
       onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
       onPrev={handlePrev}
@@ -474,7 +476,7 @@ const CalendarApp: React.FC = () => {
       calendars={calendars}
       accounts={accounts}
       syncing={syncing}
-      onSync={(calendarId) => void syncNow(calendarId)}
+      onSync={(sourceId) => void syncNow(sourceId)}
       onNewEvent={() => openEditorForDate(anchorDate)}
       onChangeView={setCurrentView}
       onSearch={() => setIsSearchPaletteOpen(true)}

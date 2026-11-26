@@ -211,10 +211,10 @@ export function registerAuthSyncIpcHandlers(): void {
     return result
   })
 
-  ipcMain.handle(IPC_CHANNELS.SYNC.TRIGGER_NOW, async (_event, calendarId?: unknown) => {
-    if (calendarId !== undefined && (typeof calendarId !== 'string' || !calendarId)) throw new Error('Invalid calendar ID')
+  ipcMain.handle(IPC_CHANNELS.SYNC.TRIGGER_NOW, async (_event, sourceId?: unknown) => {
+    if (sourceId !== undefined && (typeof sourceId !== 'string' || !sourceId)) throw new Error('Invalid sync source ID')
     if (syncWorkerInstance) {
-      return await syncWorkerInstance.syncNow(calendarId)
+      return await syncWorkerInstance.syncNow(sourceId)
     }
     return { success: false, pulledCount: 0, pushedCount: 0, errorCount: 1, message: 'Sync worker not initialized' }
   })

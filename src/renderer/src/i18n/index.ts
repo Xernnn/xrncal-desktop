@@ -30,12 +30,14 @@ export const resources = {
       nav: {
         today: 'Today',
         prev: 'Previous',
-        next: 'Next'
+        next: 'Next',
+        selectYear: 'Select year',
+        selectMonth: 'Select month'
       },
       actions: {
         newEvent: 'Create',
-        syncCalendar: 'Sync a calendar',
-        noSyncCalendars: 'No connected calendars or subscriptions',
+        syncSource: 'Sync an account or subscription',
+        noSyncSources: 'No connected accounts or subscriptions',
         openDay: 'Open this day',
         search: 'Search',
         toggleSidebar: 'Toggle sidebar',
@@ -707,12 +709,14 @@ export const resources = {
       nav: {
         today: 'Hôm nay',
         prev: 'Trước',
-        next: 'Sau'
+        next: 'Sau',
+        selectYear: 'Chọn năm',
+        selectMonth: 'Chọn tháng'
       },
       actions: {
         newEvent: 'Tạo',
-        syncCalendar: 'Đồng bộ một lịch',
-        noSyncCalendars: 'Không có lịch kết nối hoặc lịch đăng ký',
+        syncSource: 'Đồng bộ tài khoản hoặc lịch đăng ký',
+        noSyncSources: 'Không có tài khoản kết nối hoặc lịch đăng ký',
         openDay: 'Mở ngày này',
         search: 'Tìm kiếm',
         toggleSidebar: 'Thu gọn thanh bên',

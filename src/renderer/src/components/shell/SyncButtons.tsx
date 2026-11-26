@@ -2,13 +2,12 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, RefreshCw } from 'lucide-react'
 import type { Calendar, CalendarAccount } from '@shared/event-model'
-import { groupCalendars } from '../../lib/account-display'
 
 interface SyncButtonsProps {
   calendars: Calendar[]
   accounts: CalendarAccount[]
   syncing: boolean
-  onSync: (calendarId?: string) => void
+  onSync: (sourceId?: string) => void
 }
 
 export const SyncButtons: React.FC<SyncButtonsProps> = ({ calendars, accounts, syncing, onSync }) => {
@@ -26,15 +25,13 @@ export const SyncButtons: React.FC<SyncButtonsProps> = ({ calendars, accounts, s
     return () => document.removeEventListener('mousedown', closeOutside)
   }, [open])
 
-  const groups = open
-    ? groupCalendars(accounts, calendars).filter(
-        (group) => group.calendars.length > 0 &&
-          (group.kind === 'subscription' || (group.kind !== 'local' && group.account?.isActive))
-      )
-    : []
-  const sync = (calendarId?: string) => {
+  const sources = [
+    ...accounts.filter((account) => account.isActive && account.type !== 'local'),
+    ...calendars.filter((calendar) => calendar.subscriptionUrl)
+  ]
+  const sync = (sourceId?: string) => {
     setOpen(false)
-    onSync(calendarId)
+    onSync(sourceId)
   }
 
   return (
@@ -65,8 +62,8 @@ export const SyncButtons: React.FC<SyncButtonsProps> = ({ calendars, accounts, s
         type="button"
         ref={toggle}
         className="gc-btn rounded-l-none border-l-0 px-1.5"
-        title={t('actions.syncCalendar')}
-        aria-label={t('actions.syncCalendar')}
+        title={t('actions.syncSource')}
+        aria-label={t('actions.syncSource')}
         aria-expanded={open && !syncing}
         aria-controls={open && !syncing ? 'calendar-sync-options' : undefined}
         disabled={syncing}
@@ -76,25 +73,13 @@ export const SyncButtons: React.FC<SyncButtonsProps> = ({ calendars, accounts, s
       </button>
       {open && !syncing && (
         <div id="calendar-sync-options" className="gc-menu right-0 top-full mt-1 max-h-72 w-64 overflow-y-auto">
-          {groups.length === 0 && (
-            <p className="px-3 py-2 text-sm text-muted">{t('actions.noSyncCalendars')}</p>
+          {sources.length === 0 && (
+            <p className="px-3 py-2 text-sm text-muted">{t('actions.noSyncSources')}</p>
           )}
-          {groups.map((group) => (
-            <div key={group.key}>
-              <p className="truncate px-3 py-1 text-xs text-muted">{group.account?.name ?? t('subscriptions.title')}</p>
-              {group.calendars.map((calendar) => (
-                <button
-                  key={calendar.id}
-                  type="button"
-                  className="gc-menu-item"
-                  title={calendar.name}
-                  onClick={() => sync(calendar.id)}
-                >
-                  <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: calendar.color }} />
-                  <span className="truncate">{calendar.name}</span>
-                </button>
-              ))}
-            </div>
+          {sources.map(({ id, name }) => (
+            <button key={id} type="button" className="gc-menu-item" title={name} onClick={() => sync(id)}>
+              <span className="truncate">{name}</span>
+            </button>
           ))}
         </div>
       )}

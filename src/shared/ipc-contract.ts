@@ -260,7 +260,8 @@ export interface XrncalAPI {
     clearOAuthClient: (provider: OAuthProvider) => Promise<void>
   }
   sync: {
-    triggerNow: (calendarId?: string) => Promise<SyncResult>
+    /** Sync all configured sources, or one remote account or online subscription. */
+    triggerNow: (sourceId?: string) => Promise<SyncResult>
     getStatus: () => Promise<SyncStatus>
     /** Fires when a background sync changed the database. Returns an unsubscribe. */
     onChanged: (callback: () => void) => () => void

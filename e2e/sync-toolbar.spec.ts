@@ -27,7 +27,7 @@ test('the toolbar refreshes all configured feeds or just the selected calendar',
 
     const header = page.getByRole('banner')
     const sync = header.getByRole('button', { name: '立即同步', exact: true })
-    const choose = header.getByRole('button', { name: '同步指定日历', exact: true })
+    const choose = header.getByRole('button', { name: '同步指定账户或订阅', exact: true })
     await expect(sync).toBeEnabled()
     await choose.click()
     await expect(header.getByRole('button', { name: 'Second online calendar', exact: true })).toBeVisible()

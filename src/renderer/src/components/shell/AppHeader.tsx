@@ -1,15 +1,19 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
+import type { DateTime } from 'luxon'
 import { ChevronLeft, ChevronRight, Menu, Plus, Search, Settings } from 'lucide-react'
 import type { CalendarViewType } from '@shared/visible-range'
 import type { Calendar, CalendarAccount } from '@shared/event-model'
 import { SyncButtons } from './SyncButtons'
+import { MonthYearPicker } from '../MonthYearPicker'
 import ViewSwitcher from './ViewSwitcher'
 
 interface AppHeaderProps {
   onOpenMenu: () => void
   title: string
   currentView: CalendarViewType
+  anchorDate: DateTime
+  onSelectDate: (date: DateTime) => void
   showSidebarToggle?: boolean
   onToggleSidebar: () => void
   onPrev: () => void
@@ -17,7 +21,7 @@ interface AppHeaderProps {
   calendars: Calendar[]
   accounts: CalendarAccount[]
   syncing: boolean
-  onSync: (calendarId?: string) => void
+  onSync: (sourceId?: string) => void
   onNewEvent: () => void
   onChangeView: (view: CalendarViewType) => void
   onSearch: () => void
@@ -32,6 +36,8 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   onOpenMenu,
   title,
   currentView,
+  anchorDate,
+  onSelectDate,
   showSidebarToggle = true,
   onToggleSidebar,
   onPrev,
@@ -73,7 +79,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
         </div>
         {title && !isYearView && (
           <h1 className="truncate py-0.5 text-[28px] font-normal leading-snug tracking-tight text-primary">
-            {title}
+            {currentView === 'month' ? <MonthYearPicker date={anchorDate} onChange={onSelectDate} /> : title}
           </h1>
         )}
       </div>
