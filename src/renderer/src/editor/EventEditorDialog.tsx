@@ -16,7 +16,7 @@ import type {
 import { calendarMoveBlock, invitationSelf } from '@shared/event-model'
 import type { TitleSuggestion } from '@shared/title-suggestions'
 import { endDateForTimes, formatClockTime, formatClockTimeStr } from '@shared/time-format'
-import { convertSolarToLunar, nextLunarOccurrences } from '@shared/lunar-vietnam'
+import { lunarRuleForDate, nextCalendarLunarOccurrences, usesChineseLunar } from '@shared/lunar-calendar'
 import { DEFAULT_EVENT_COLOR } from '@shared/mini-calendar-grid'
 import { EVENT_COLORS } from '@shared/event-colors'
 import {
@@ -249,7 +249,9 @@ export function initialForm(
       // A series occurrence opens as "custom" with no rule typed, so a save
       // leaves the series' own rule alone.
       recurrencePreset: occ.isLunar ? 'lunar-yearly' : occ.isRecurring ? 'custom' : 'none',
-      lunarLeap: occ.isLunar ? convertSolarToLunar(startLocal.day, startLocal.month, startLocal.year).leap : false,
+      lunarLeap: occ.isLunar
+        ? occ.lunarRule?.leap ?? lunarRuleForDate(startLocal.day, startLocal.month, startLocal.year, false).leap
+        : false,
       // An occurrence carries no guest list; it is read after opening.
       attendees: [],
       attendeesLoaded: false,
@@ -379,6 +381,7 @@ interface ScheduleFields extends EntrySlot {
   recurrenceByDay: string[]
   recurrenceInterval: number
   lunarLeap: boolean
+  chineseLunar: boolean
   reminders: EventReminder[] | null
 }
 
@@ -461,6 +464,10 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
   const [recurrenceUntil, setRecurrenceUntil] = useState<string>(initial.recurrenceUntil)
   const [recurrenceCount, setRecurrenceCount] = useState<number>(initial.recurrenceCount)
   const [lunarLeap, setLunarLeap] = useState<boolean>(initial.lunarLeap)
+  const [chineseLunar, setChineseLunar] = useState(() => {
+    const rule = data?.event?.lunarRule ?? data?.occurrence?.lunarRule
+    return rule || data?.occurrence?.isLunar ? rule?.calendar === 'chinese' : usesChineseLunar(i18n.language)
+  })
   const [lunarBusy, setLunarBusy] = useState<boolean>(false)
   const [materializeTargetId, setMaterializeTargetId] = useState<string>('')
 
@@ -656,6 +663,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
     recurrenceByDay,
     recurrenceInterval,
     lunarLeap,
+    chineseLunar,
     reminders
   })
 
@@ -669,6 +677,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
     setRecurrenceByDay(next.recurrenceByDay)
     setRecurrenceInterval(next.recurrenceInterval)
     setLunarLeap(next.lunarLeap)
+    setChineseLunar(next.chineseLunar)
     // Reminders picked by hand are the user's, whatever the title says.
     if (!remindersTouchedRef.current) setReminders(next.reminders)
   }
@@ -682,7 +691,13 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
       // As when "lunar yearly" is picked from the list: a day's notice, unless
       // there is an all-day default.
       const reminders = defaultAllDayReminderMinutes === null ? [{ minutesBefore: LUNAR_ANNIVERSARY_REMINDER }] : base.reminders
-      return { ...next, recurrencePreset: 'lunar-yearly', lunarLeap: repeat.spec.leap, reminders }
+      return {
+        ...next,
+        recurrencePreset: 'lunar-yearly',
+        lunarLeap: repeat.spec.leap,
+        chineseLunar: repeat.spec.calendar === 'chinese',
+        reminders
+      }
     }
     const weekday = DateTime.fromISO(next.startDate).weekday
     return {
@@ -901,14 +916,15 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
 
   const lunarSpec: LunarRecurrenceSpec | null = (() => {
     if (!isLunarYearly || !startDateStr) return null
+    const existing = data?.event?.lunarRule ?? data?.occurrence?.lunarRule
+    if (existing && startDateStr === initial.startDateStr) return { ...existing, leap: lunarLeap }
     const d = DateTime.fromISO(startDateStr)
     if (!d.isValid) return null
-    const l = convertSolarToLunar(d.day, d.month, d.year)
-    return { day: l.day, month: l.month, leap: lunarLeap }
+    return { ...lunarRuleForDate(d.day, d.month, d.year, chineseLunar), leap: lunarLeap }
   })()
 
   const describeLunarSpec = (spec: LunarRecurrenceSpec): string =>
-    t('editor.lunarDescribe', {
+    t(spec.calendar === 'chinese' ? 'editor.lunarDescribeChinese' : 'editor.lunarDescribe', {
       day: spec.day,
       month: spec.month,
       name: LUNAR_MONTHS[spec.month] || String(spec.month),
@@ -917,7 +933,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
 
   // The dates still to come, from today: this year's is left out once it has gone by.
   const lunarPreview: string[] = lunarSpec
-    ? nextLunarOccurrences(lunarSpec, DateTime.local().toISODate()!, 4).map((iso) =>
+    ? nextCalendarLunarOccurrences(lunarSpec, DateTime.local().toISODate()!, 4).map((iso) =>
         DateTime.fromISO(iso).toFormat('EEE, dd LLL yyyy')
       )
     : []
@@ -1340,6 +1356,10 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
                 value={recurrencePreset}
                 onChange={(val) => {
                   editSchedule(setRecurrencePreset, val)
+                  if (val === 'lunar-yearly' && chineseLunar && recurrencePreset !== val) {
+                    const date = DateTime.fromISO(startDateStr)
+                    if (date.isValid) setLunarLeap(lunarRuleForDate(date.day, date.month, date.year, true).leap)
+                  }
                   // A new giỗ gets a day's notice unless there is an all-day
                   // default (or reminders were already picked).
                   if (

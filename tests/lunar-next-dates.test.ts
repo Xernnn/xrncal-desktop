@@ -4,6 +4,9 @@ import { renderToString } from 'react-dom/server'
 import EventEditorDialog from '../src/renderer/src/editor/EventEditorDialog'
 import { nextLunarOccurrences } from '../src/shared/lunar-vietnam'
 import type { Calendar, CalendarEvent } from '../src/shared/event-model'
+import i18n from '../src/renderer/src/i18n'
+import { LunarLabel } from '../src/renderer/src/components/LunarLabel'
+import { chineseLunarLabel, lunarRuleForDate, resolveCalendarLunarOccurrence } from '../src/shared/lunar-calendar'
 
 /**
  * A lunar anniversary's "Next:" line in the editor listed this year's date
@@ -81,5 +84,35 @@ describe('the lunar anniversary editor’s "Next:" line', () => {
     )
     const next = /Next: ([^<]*)</.exec(html)?.[1]
     expect(next).toBe('Wed, 10 Mar 2027 · Sun, 27 Feb 2028 · Sat, 17 Mar 2029 · Wed, 06 Mar 2030')
+  })
+})
+
+describe('localized lunar calendar', () => {
+  it('uses Chinese day names and solar terms in the reference month', () => {
+    expect([24, 26, 29, 30].map((day) => chineseLunarLabel(day, 11, 2026).label)).toEqual([
+      '十六', '十八', '廿一', '廿二'
+    ])
+    expect(chineseLunarLabel(1, 12, 2026).label).toBe('廿三')
+    expect(chineseLunarLabel(7, 11, 2026).label).toBe('立冬')
+    expect(chineseLunarLabel(22, 11, 2026).label).toBe('小雪')
+    expect(chineseLunarLabel(9, 11, 2026).label).toBe('十月')
+  })
+
+  it('renders the same day in the Chinese and Vietnamese modes', async () => {
+    try {
+      const label = () => renderToString(React.createElement(LunarLabel, { day: 24, month: 11, year: 2026 }))
+      await i18n.changeLanguage('zh-CN')
+      expect(label()).toContain('>十六</span>')
+      await i18n.changeLanguage('vi')
+      expect(label()).toContain('>16</span>')
+    } finally {
+      await i18n.changeLanguage('en')
+    }
+  })
+
+  it('keeps a Chinese leap month in a recurrence rule', () => {
+    const rule = lunarRuleForDate(25, 7, 2025, true)
+    expect(rule).toEqual({ day: 1, month: 6, leap: true, calendar: 'chinese' })
+    expect(resolveCalendarLunarOccurrence(rule, 2025)).toBe('2025-07-25')
   })
 })

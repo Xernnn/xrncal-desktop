@@ -30,6 +30,7 @@ import { reminderLabel } from '../lib/reminder-labels'
 import { TIME_ZONE_NAMES, parseZoneList, serializeZoneList, zoneLabel, zoneOptions } from '../lib/time-zones'
 import { WEEK_START_CHOICES } from '@shared/week-start'
 import { APP_LANGUAGES, isAppLocale } from '@shared/settings-contract'
+import { CALENDAR_VIEWS } from '@shared/visible-range'
 import { parseZoneHistory, serializeZoneHistory, type ZonePeriod } from '@shared/zone-history'
 import { DateTime } from 'luxon'
 import AppearanceSettings from './AppearanceSettings'
@@ -583,6 +584,22 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
                       ))}
                     </div>
                   </Row>
+                  <div className="border-b border-hairline py-3">
+                    <div className="mb-2 text-sm text-primary">{t('settings.defaultView')}</div>
+                    <div className="flex flex-wrap gap-1">
+                      {CALENDAR_VIEWS.map((view) => (
+                        <button
+                          key={view}
+                          type="button"
+                          aria-pressed={settings.defaultView === view}
+                          className={settings.defaultView === view ? 'gc-btn-primary' : 'gc-btn'}
+                          onClick={() => void setSetting('defaultView', view)}
+                        >
+                          {t(`settings.viewOption.${view}`)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   {/* Full width, and wrapping: six lengths do not fit beside a label. */}
                   <div className="border-b border-hairline py-3 last:border-b-0">
                     <div className="mb-2 text-sm text-primary">{t('settings.defaultEventLength')}</div>

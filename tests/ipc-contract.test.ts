@@ -45,6 +45,7 @@ describe('IPC Channels and Contracts', () => {
       settings: {
         getAll: async () => ({
           locale: 'en',
+          defaultView: 'month',
           showLunar: true,
           showWeekNumbers: true,
           showMiniCalendar: false,

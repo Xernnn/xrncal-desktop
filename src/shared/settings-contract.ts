@@ -1,3 +1,5 @@
+import type { CalendarViewType } from './visible-range'
+
 /**
  * Application Settings Interface & Defaults
  */
@@ -16,6 +18,8 @@ export function isAppLocale(value: unknown): value is AppLocale {
 
 export interface AppSettings {
   locale: AppLocale
+  /** View to show when the calendar window opens. */
+  defaultView: CalendarViewType
   showLunar: boolean
   showWeekNumbers: boolean
   showMiniCalendar: boolean
@@ -100,6 +104,7 @@ export interface AppSettings {
  */
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   locale: 'en',
+  defaultView: 'month',
   showLunar: true,
   showWeekNumbers: true,
   // The sidebar holds the calendar list now, not just the mini calendar, so it

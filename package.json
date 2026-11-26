@@ -1,6 +1,6 @@
 {
   "name": "xrncal",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Desktop Calendar for Windows and Linux with modern UX and multi-provider sync",
   "private": true,
   "license": "MIT",
@@ -41,6 +41,7 @@
     "i18next": "^26.4.7",
     "ical.js": "^2.2.1",
     "lucide-react": "^1.16.0",
+    "lunar-javascript": "1.7.8",
     "luxon": "^3.7.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

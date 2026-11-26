@@ -11,7 +11,7 @@ import {
   refindSelection,
   type CursorSelection
 } from '@shared/keyboard-nav'
-import { stepAnchor, weekTitle, type CalendarViewType } from '@shared/visible-range'
+import { isCalendarView, stepAnchor, weekTitle, type CalendarViewType } from '@shared/visible-range'
 import { startOfWeek } from '@shared/week-start'
 import { recordEmojiUse } from '@shared/title-emoji'
 import { useVisibleRange } from './hooks/use-visible-range'
@@ -84,7 +84,8 @@ const CalendarApp: React.FC = () => {
   const displayPreferences = useMemo(() => displayPreferencesOf(settings), [settings])
   const { firstDayOfWeek, dragSnapMinutes, defaultEventMinutes } = displayPreferences
 
-  const [currentView, setCurrentView] = useState<CalendarViewType>('week')
+  const [selectedView, setCurrentView] = useState<CalendarViewType>()
+  const currentView = selectedView ?? (isCalendarView(settings.defaultView) ? settings.defaultView : 'month')
   const [anchorDate, setAnchorDate] = useState<DateTime>(() => DateTime.local())
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [appInfo, setAppInfo] = useState({ version: '0.1.0', platform: 'win32' })

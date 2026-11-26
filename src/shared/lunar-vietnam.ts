@@ -333,9 +333,10 @@ function toIsoDate(d: { day: number; month: number; year: number }): string {
  */
 export function resolveLunarOccurrence(
   spec: LunarRecurrenceSpec,
-  gregorianYear: number
+  gregorianYear: number,
+  toSolar = convertLunarToSolar
 ): string | null {
-  const key = `${spec.day}-${spec.month}-${spec.leap ? 1 : 0}@${gregorianYear}`
+  const key = `${spec.calendar ?? 'vietnamese'}:${spec.day}-${spec.month}-${spec.leap ? 1 : 0}@${gregorianYear}`
   const cached = lunarOccurrenceCache.get(key)
   if (cached !== undefined) return cached
 
@@ -353,7 +354,7 @@ export function resolveLunarOccurrence(
   let result: string | null = null
   outer: for (const lunarYear of [gregorianYear, gregorianYear - 1]) {
     for (const c of candidates) {
-      const solar = convertLunarToSolar(c.day, c.month, lunarYear, c.leap)
+      const solar = toSolar(c.day, c.month, lunarYear, c.leap)
       if (solar && solar.year === gregorianYear) {
         result = toIsoDate(solar)
         break outer
@@ -373,14 +374,15 @@ export function resolveLunarOccurrence(
 export function nextLunarOccurrences(
   spec: LunarRecurrenceSpec,
   fromIsoDate: string,
-  count: number
+  count: number,
+  toSolar = convertLunarToSolar
 ): string[] {
   const out: string[] = []
   const firstYear = Number(fromIsoDate.slice(0, 4))
   // Each year has at most one date, and one that cannot place the date is
   // skipped (see resolveLunarOccurrence), so a few years past `count` is enough.
   for (let year = firstYear; out.length < count && year <= firstYear + count + 2; year++) {
-    const iso = resolveLunarOccurrence(spec, year)
+    const iso = resolveLunarOccurrence(spec, year, toSolar)
     if (iso && iso >= fromIsoDate) out.push(iso)
   }
   return out
