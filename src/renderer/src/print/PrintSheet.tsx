@@ -4,6 +4,7 @@ import { DateTime } from 'luxon'
 import type { ExpandedOccurrence } from '@shared/event-model'
 import { DEFAULT_EVENT_COLOR } from '@shared/mini-calendar-grid'
 import { convertSolarToLunar, formatLunarLabel } from '@shared/lunar-vietnam'
+import { chineseLunarLabel, usesChineseLunar } from '@shared/lunar-calendar'
 import { segmentDayMinutes, segmentTimedOccurrence } from '@shared/timed-event-segments'
 import { formatClockTime, type TimeFormatPref } from '@shared/time-format'
 import { getVisibleRange } from '@shared/visible-range'
@@ -95,7 +96,7 @@ export const PrintSheet: React.FC<PrintSheetProps> = (props) => {
 }
 
 const WeekPage: React.FC<PrintSheetProps> = ({ period, occurrences, timeFormat, showLunar, firstDayOfWeek }) => {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const days = period.weeks[0]
   const dayKeys = days.map((d) => d.toISODate()!)
   const labels = weekdayShortLabels(t, firstDayOfWeek)
@@ -116,15 +117,14 @@ const WeekPage: React.FC<PrintSheetProps> = ({ period, occurrences, timeFormat, 
       <div className="gc-print-days">
         <div />
         {days.map((day, i) => {
-          const lunar = showLunar ? convertSolarToLunar(day.day, day.month, day.year) : null
+          const lunar = showLunar && !usesChineseLunar(i18n.language) ? convertSolarToLunar(day.day, day.month, day.year) : null
           return (
             <div key={dayKeys[i]} className="gc-print-dayhead">
               <span className="gc-print-wd">{labels[i]}</span>
               <span className="gc-print-dn">{day.day}</span>
-              {lunar && (
+              {showLunar && (
                 <span className="gc-print-lunar">
-                  {lunar.day}/{lunar.month}
-                  {lunar.leap ? '*' : ''}
+                  {lunar ? `${lunar.day}/${lunar.month}${lunar.leap ? '*' : ''}` : chineseLunarLabel(day.day, day.month, day.year).label}
                 </span>
               )}
             </div>
@@ -237,7 +237,9 @@ const MonthPage: React.FC<PrintSheetProps> = ({ period, occurrences, timeFormat,
                 <span className="gc-print-dn">{day.day === 1 ? firstOfMonth(day, i18n.language) : day.day}</span>
                 {showLunar && (
                   <span className="gc-print-lunar">
-                    {formatLunarLabel(convertSolarToLunar(day.day, day.month, day.year)).label}
+                    {usesChineseLunar(i18n.language)
+                      ? chineseLunarLabel(day.day, day.month, day.year).label
+                      : formatLunarLabel(convertSolarToLunar(day.day, day.month, day.year)).label}
                   </span>
                 )}
               </div>
