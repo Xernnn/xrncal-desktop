@@ -46,4 +46,13 @@ describe('settings IPC', () => {
     expect(call(IPC_CHANNELS.SETTINGS.GET, 'timeFormat')).toBe('12h')
     call(IPC_CHANNELS.SETTINGS.SET, 'defaultAllDayReminderMinutes', null)
   })
+
+  it('defaults to month and persists the selected startup view', () => {
+    expect(call(IPC_CHANNELS.SETTINGS.GET, 'defaultView')).toBe('month')
+    call(IPC_CHANNELS.SETTINGS.SET, 'defaultView', 'list')
+    registerSettingsIpcHandlers()
+    expect(call(IPC_CHANNELS.SETTINGS.GET, 'defaultView')).toBe('list')
+    expect(() => call(IPC_CHANNELS.SETTINGS.SET, 'defaultView', 'other')).toThrow(/Invalid value/)
+    expect(db.prepare("SELECT value FROM settings WHERE key = 'defaultView'").get()).toEqual({ value: '"list"' })
+  })
 })
