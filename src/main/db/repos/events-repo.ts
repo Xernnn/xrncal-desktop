@@ -22,7 +22,7 @@ import { calendarMoveBlock, invitationSelf } from '@shared/event-model'
 import type { TitleSample } from '@shared/title-suggestions'
 import type { LocationSample } from '@shared/location-suggestions'
 import { parseRemindersJson, serializeReminders, type EventReminder } from '@shared/reminders'
-import { resolveLunarOccurrence } from '@shared/lunar-vietnam'
+import { resolveCalendarLunarOccurrence } from '@shared/lunar-calendar'
 import { expandOccurrences } from '@shared/expand-occurrences'
 import { nearestOccurrence } from '@shared/nearest-occurrence'
 import { CALENDAR_MAX_OCCURRENCES, calendarExpansionBudget, type ExpansionBudget } from '@shared/bounded-rrule'
@@ -100,7 +100,12 @@ function parseLunarRule(raw: string | null): LunarRecurrenceSpec | undefined {
       typeof parsed.month === 'number' &&
       typeof parsed.leap === 'boolean'
     ) {
-      return { day: parsed.day, month: parsed.month, leap: parsed.leap }
+      return {
+        day: parsed.day,
+        month: parsed.month,
+        leap: parsed.leap,
+        ...(parsed.calendar === 'chinese' ? { calendar: 'chinese' as const } : {})
+      }
     }
   } catch {
     // Ignore malformed spec
@@ -1523,7 +1528,7 @@ export class EventsRepo {
     this.db.transaction(() => {
       for (let year = fromYear; year <= input.throughYear; year++) {
         if (alreadyDone.has(year)) continue
-        const isoDate = resolveLunarOccurrence(spec, year)
+        const isoDate = resolveCalendarLunarOccurrence(spec, year)
         if (!isoDate) continue
 
         const id = `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${year}`
