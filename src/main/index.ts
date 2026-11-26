@@ -27,12 +27,10 @@ import { noticeRunningInTray, settleExistingProfile } from './first-run'
 import { icsPathsIn, queueOpenedFiles, setOpenedFileNotifier } from './opened-ics-files'
 import { openDatabaseOrQuit } from './startup-database'
 import { setMainLocale } from './i18n-main'
+import { getPortableFolder } from './portable-folder'
 
-// The portable launcher runs the application from a temporary directory.
-// Use the launcher directory for the profile before Electron creates a session.
-const portableExeDir = process.platform === 'win32' && app.isPackaged
-  ? process.env.PORTABLE_EXECUTABLE_DIR
-  : undefined
+// Set the portable profile before Electron creates a session.
+const portableExeDir = getPortableFolder()
 if (portableExeDir) {
   const session = join(portableExeDir, 'session')
   try {
