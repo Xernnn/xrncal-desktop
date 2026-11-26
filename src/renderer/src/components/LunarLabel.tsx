@@ -1,5 +1,6 @@
-import i18n from '../i18n'
 import React from 'react'
+import { useTranslation } from 'react-i18next'
+import { chineseLunarLabel, usesChineseLunar } from '@shared/lunar-calendar'
 import { convertSolarToLunar, formatLunarLabel } from '@shared/lunar-vietnam'
 
 interface LunarLabelProps {
@@ -49,6 +50,11 @@ export const LunarLabel: React.FC<LunarLabelProps> = ({
   full = false,
   variant = 'chip'
 }) => {
+  const { i18n } = useTranslation()
+  if (usesChineseLunar(i18n.language)) {
+    const { label, title } = chineseLunarLabel(day, month, year, full || forceMonth)
+    return <span className={`text-[10px] tracking-tight text-muted ${className}`} title={title}>{label}</span>
+  }
   const lunar = convertSolarToLunar(day, month, year)
   const info = formatLunarLabel(lunar)
   const phase: MoonPhase | null = info.isFirstDay ? 'new' : info.isFullMoon ? 'full' : null
