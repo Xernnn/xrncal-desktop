@@ -1,4 +1,4 @@
-import type { AppSettings } from './settings-contract'
+import { isAppLocale, type AppSettings } from './settings-contract'
 
 export type SystemDefaults = Partial<Pick<AppSettings, 'locale' | 'timeFormat' | 'firstDayOfWeek'>>
 
@@ -28,7 +28,10 @@ export function defaultsForSystem(language: string | undefined, region: string |
   const out: SystemDefaults = {}
 
   try {
-    if (language) out.locale = new Intl.Locale(language).language === 'vi' ? 'vi' : 'en'
+    if (language) {
+      const base = new Intl.Locale(language).language
+      out.locale = base === 'zh' ? 'zh-CN' : isAppLocale(base) ? base : 'en'
+    }
   } catch {
     // Not a language tag; keep the built-in default.
   }
