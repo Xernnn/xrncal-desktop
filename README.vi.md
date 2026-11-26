@@ -169,7 +169,20 @@ npm run app:install
 
 Lệnh này build AppImage, đặt vào `~/Applications/xrncal.AppImage`, tạo launcher ở `~/.local/share/applications/xrncal.desktop` rồi refresh menu. Tìm "xrncal" trong app menu là ra. Chạy lại chính lệnh đó mỗi khi muốn cập nhật — nó ghi đè đúng các đường dẫn cũ, và ghi bằng cách `rename` nên **không làm hỏng app đang chạy** (bản đang mở vẫn dùng bản cũ cho tới khi bạn thoát và mở lại).
 
-Launcher chạy app từ một bản giải nén trong `~/.cache/xrncal` thay vì từ chỗ mount của AppImage (chỗ mount có thể biến mất khi app đang chạy), và chạy dưới X11 (`--ozone-platform=x11`) để cửa sổ mini tự đặt được vị trí và nằm trên cùng trên desktop Wayland. Mỗi lần cài lại sẽ xoá các bản giải nén cũ không còn ai dùng.
+Launcher chạy app từ một bản giải nén trong `~/.cache/xrncal` thay vì từ chỗ mount của AppImage (chỗ mount có thể biến mất khi app đang chạy). Mỗi lần cài lại sẽ xoá các bản giải nén cũ không còn ai dùng.
+
+Trên desktop Wayland, xrncal chạy như một cửa sổ Wayland gốc, nên chương trình khác không đọc được cửa sổ hay những gì bạn gõ vào đó, như bất kỳ chương trình X11 nào cũng làm được dưới XWayland. Wayland không cho cửa sổ tự nằm trên cùng hay tự chọn chỗ mở, nên cửa sổ mini ở khay (tên `xrncal Mini`) cần một rule của compositor. Trên Hyprland (cấu hình Lua):
+
+```lua
+hl.window_rule({
+  match = { class = "^xrncal$", title = "^xrncal Mini$" },
+  float = true,
+  pin = true,
+  move = { "(monitor_w-window_w-24)", "(monitor_h*0.04)" },
+})
+```
+
+`XRNCAL_X11=1 npm run app:install` thì chạy dưới XWayland (`--ozone-platform=x11`), nơi cửa sổ mini tự đặt vị trí và nằm trên cùng mà không cần rule.
 
 Muốn tự cầm file AppImage:
 
