@@ -86,8 +86,9 @@ All five views are React components written for this app, with no third-party ca
 The way xrncal looks and behaves follows One Calendar (Code Spark), which has no Linux app and no Vietnamese lunar calendar. [`docs/urd.md`](docs/urd.md) holds the scope.
 
 - **The same:** a click on an empty slot opens the full editor, not a title-only popover; a drop asks *Move*, *Copy* or *Cancel*; the sidebar lists each account with its calendars underneath; *Add account* walks from the account type to its calendars.
+- **On the phone:** [xrncal-android](https://github.com/Xernnn/xrncal-android), a separate app on the same CalDAV account.
 - **Its own:** lunar dates and lunar-year anniversaries, a Linux build, dates typed into the title in Vietnamese or English, a conflict screen, and a database file you can back up and restore yourself. Nothing is behind a paid tier.
-- **Left out on purpose:** macOS and phone apps, live tiles and lock-screen entries, desktop widgets, maps, Facebook events, a task list, and Exchange on-premises (Microsoft accounts go through Graph only).
+- **Left out on purpose:** macOS, live tiles and lock-screen entries, desktop widgets, maps, Facebook events, a task list, and Exchange on-premises (Microsoft accounts go through Graph only).
 
 ---
 

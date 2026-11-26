@@ -1,7 +1,7 @@
 # xrncal — Project Roadmap
 
-**Last updated:** 2026-10-20  
-**Current version:** 0.2.0 (in package.json; not yet released)
+**Last updated:** 2026-11-27  
+**Current version:** 1.2.0 (in package.json; no release published yet)
 
 ---
 
@@ -178,6 +178,25 @@ add the `XRNCAL_GOOGLE_*` / `XRNCAL_MICROSOFT_CLIENT_ID` secrets, publish and ve
 consent screen, register the Microsoft public client, optionally set up Windows signing, then tag
 `v0.2.0` and publish the draft.
 
+## 1.x - the calendar the laptop uses every day (2026-11)
+
+1.0 means xrncal has replaced what it was built to replace and is used every day. Since 0.2.0:
+
+- ✅ **One Calendar's defaults:** new events start with 15-minute reminders (12 hours before an
+  all-day event); a CalDAV calendar's colour is kept on the server, so every device shows the same.
+- ✅ **The phone:** xrncal-android is the phone side, a separate native app on the same CalDAV
+  account; each reads the other's repeating events the same way, across daylight-saving changes.
+- ✅ **Lighter on the server (2026-11-27):** polls every 10 minutes while no window has focus,
+  even when the window was closed without a blur; a calendar whose ctag is unchanged costs one
+  PROPFIND and no REPORT.
+- ✅ **Calendars deleted on the server** are removed here too, only on a whole listing that still
+  names some of the account's calendars, and never while they hold unsent changes.
+- ✅ **Updates off by default:** no request to GitHub until *Check for updates* is turned on.
+- ✅ **Native Wayland on Linux:** no X11 switch in the launchers, so other X11 programs cannot read
+  the windows; the mini window's place and pin come from a compositor rule (README).
+  `XRNCAL_X11=1 npm run app:install` runs it under XWayland instead.
+- ✅ Electron 44.11.6.
+
 ## Open Items / Known Gaps
 
 These are non-blocking items that remain for post-0.1.0:
@@ -228,3 +247,4 @@ The following ideas are outside the current URD scope and require a URD change b
 | 0.2.0 | First published release: everything above plus the everyday-use work (tray, welcome, right-click menus, sign-in in official builds), live Google and Microsoft OAuth tested from the installers. "Daily driver" gate. |
 | 0.3.0 | iCloud CalDAV best-effort validated. Fedora AppImage. |
 | 1.0.0 | Stable release after daily driver validation on both OS targets. |
+| 1.2.0 | Now (2026-11): the number says how far along the app is - 1.0 once it has replaced what it was built to replace and is used every day. Not yet published as a release. |

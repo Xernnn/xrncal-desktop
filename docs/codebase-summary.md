@@ -1,8 +1,8 @@
 # xrncal — Codebase Summary
 
-**Last updated:** 2026-11-21  
-**Version:** 0.2.0  
-**Build status:** 1,341 tests in 140 files passing, 0 TypeScript errors, 0 lint errors, clean production build. CI (`.github/workflows/ci.yml`) runs lint + typecheck + tests + build on every push and PR; a `v*` tag runs `.github/workflows/release.yml`.
+**Last updated:** 2026-11-27  
+**Version:** 1.2.0  
+**Build status:** 1,420 tests in 153 files passing, 0 TypeScript errors, 0 lint errors, clean production build. CI (`.github/workflows/ci.yml`) runs lint + typecheck + tests + build on every push and PR; a `v*` tag runs `.github/workflows/release.yml`.
 
 ---
 
@@ -138,7 +138,7 @@ xrncal/
 │       ├── locale-defaults.ts   # A new profile's language, clock and week start from the computer's locale
 │       ├── zone-history.ts      # Where the user was, from when: the zone of an event saved without one; moves added as the computer's zone changes
 │       └── ipc-contract.ts      # IPC_CHANNELS constants and XrncalAPI interface
-├── tests/                       # Vitest unit tests (1,341 tests / 140 files); e2e/ drives the built app
+├── tests/                       # Vitest unit tests (1,420 tests / 153 files); e2e/ drives the built app
 │   ├── integration/             # CalDAV sync against a real Radicale (`npm run test:caldav`, not in `npm run test`)
 │   └── stubs/electron.ts        # `electron` module stub for main-process tests
 └── docs/
@@ -349,8 +349,8 @@ tests/
 └── undo-restore.test.ts           # Bringing a deleted event back, before and after its push
 ```
 
-**Total: 1,341 unit tests across 140 files, all passing**, plus 30 Playwright tests in `e2e/` that
-drive the built app and 25 in `tests/integration/` that sync with a real Radicale server
+**Total: 1,420 unit tests across 153 files, all passing**, plus 31 Playwright tests in `e2e/` that
+drive the built app and 33 in `tests/integration/` that sync with a real Radicale server
 (`docs/deployment-guide.md`, "Running Tests").
 
 Main-process tests run in plain Node; the `electron` module is aliased to

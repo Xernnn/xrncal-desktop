@@ -86,8 +86,9 @@ Năm view đều là component React tự viết, không dùng thư viện lịc
 Giao diện và cách dùng của xrncal theo One Calendar (Code Spark), app không có bản Linux và không có âm lịch Việt Nam. Phạm vi nằm trong [`docs/urd.md`](docs/urd.md).
 
 - **Giống:** bấm vào ô trống là mở cửa sổ sự kiện đầy đủ, không phải ô nhập tiêu đề; kéo-thả thì hỏi *Move*, *Copy* hay *Cancel*; thanh bên liệt kê từng tài khoản với các lịch của nó bên dưới; *Thêm tài khoản* đi từ loại tài khoản tới các lịch của nó.
+- **Trên điện thoại:** [xrncal-android](https://github.com/Xernnn/xrncal-android), một app riêng dùng chung tài khoản CalDAV.
 - **Riêng của xrncal:** âm lịch và giỗ theo năm âm, bản Linux, gõ ngày giờ vào tiêu đề bằng tiếng Việt hay tiếng Anh, bảng xử lý xung đột, và một file dữ liệu bạn tự sao lưu, khôi phục được. Không có gì nằm sau gói trả phí.
-- **Cố ý bỏ:** bản macOS và điện thoại, live tile và màn hình khoá, widget desktop, bản đồ, sự kiện Facebook, danh sách việc cần làm, và Exchange on-premises (tài khoản Microsoft chỉ đi qua Graph).
+- **Cố ý bỏ:** bản macOS, live tile và màn hình khoá, widget desktop, bản đồ, sự kiện Facebook, danh sách việc cần làm, và Exchange on-premises (tài khoản Microsoft chỉ đi qua Graph).
 
 ---
 
