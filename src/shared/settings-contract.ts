@@ -58,7 +58,8 @@ export interface AppSettings {
    *  720 is "the day before at 12:00". null: none. */
   defaultAllDayReminderMinutes: number | null
   /** Look for new releases on GitHub and install them on quit. The only
-   *  request the app makes that is not to a calendar provider. */
+   *  request the app makes that is not to a calendar provider. Off until
+   *  turned on (see DEFAULT_APP_SETTINGS). */
   checkForUpdates: boolean
   /** Once a week, copy the database into the profile's `backups` folder,
    *  keeping the last four (`src/main/auto-backup.ts`). */
@@ -115,7 +116,11 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   // were 10 minutes and none; migration 032 moves a profile still on those.
   defaultReminderMinutes: 15,
   defaultAllDayReminderMinutes: 720,
-  checkForUpdates: true,
+  // Off until turned on in Settings. A copy built from source and installed
+  // by hand - no release has been published - logged a failed check every six
+  // hours, and the first release published would have replaced it with the
+  // CI's build when the app quit, unasked.
+  checkForUpdates: false,
   autoBackup: true,
   closeToTray: true,
   launchAtLogin: false,

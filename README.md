@@ -149,7 +149,7 @@ A release will be at **[Releases](https://github.com/Xernnn/xrncal-desktop/relea
 - **Windows 10/11:** `xrncal Setup <version>.exe`. Until the installer is code-signed, SmartScreen asks first: *More info → Run anyway*.
 - **Linux:** `xrncal-<version>.AppImage`. Make it executable (`chmod +x`, or *Properties → Allow executing*) and open it.
 
-The first launch walks you through three steps: language, a few basics (lunar dates, holidays, starting with the computer), and the calendars to bring in. Installed copies update themselves from new releases; *Settings → General → Check for updates* turns that off.
+The first launch walks you through three steps: language, a few basics (lunar dates, holidays, starting with the computer), and the calendars to bring in. Installed copies can update themselves from new releases once *Settings → General → Check for updates* is turned on; it is off until then.
 
 ### Build it yourself
 

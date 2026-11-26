@@ -149,9 +149,10 @@ git tag v0.2.0 && git push origin main v0.2.0
 # then review and publish the draft on GitHub
 ```
 
-Installed builds check the published releases every six hours (`src/main/updater.ts`), download
-a newer one in the background and install it when the app quits. Only packaged builds update, and
-on Linux only the AppImage; the **Check for updates** setting turns it off.
+Once the **Check for updates** setting is turned on (it is off until then), installed builds check
+the published releases every six hours (`src/main/updater.ts`), download a newer one in the
+background and install it when the app quits. Only packaged builds update, and on Linux only the
+AppImage. A check that keeps failing the same way is logged once.
 
 ### OAuth for an official build
 

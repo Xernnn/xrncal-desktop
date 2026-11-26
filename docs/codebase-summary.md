@@ -168,7 +168,7 @@ xrncal/
 | `sync/*-sync-engine.ts` | Google, Microsoft Graph, CalDAV two-way sync: events, reminders, guest lists, replies |
 | `subscriptions/ics-subscription.ts` | Read-only calendars fed from an .ics / webcal link, refreshed every 6 h |
 | `holidays/holiday-subscription.ts` | Generated holiday calendars; `refreshHolidayCalendars()` extends them at startup |
-| `updater.ts` | Downloads new releases in the background and installs them on quit; follows `checkForUpdates` |
+| `updater.ts` | Downloads new releases in the background and installs them on quit; follows `checkForUpdates` (off by default) |
 | `ics/` | ICS file import (ical.js) and export (RFC 5545 writer) |
 | `secure-store.ts` | `safeStorage` wrapper; fail-closed on Linux if keyring unavailable |
 | `mini-window.ts` | Frameless 380×520 companion window; always-on-top toggle |

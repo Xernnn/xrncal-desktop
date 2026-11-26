@@ -149,7 +149,7 @@ Bản release sẽ nằm ở **[Releases](https://github.com/Xernnn/xrncal-deskt
 - **Windows 10/11:** `xrncal Setup <phiên bản>.exe`. Khi bộ cài chưa được ký số, SmartScreen sẽ hỏi trước: *More info → Run anyway*.
 - **Linux:** `xrncal-<phiên bản>.AppImage`. Cho phép chạy (`chmod +x`, hoặc *Properties → Allow executing*) rồi mở.
 
-Lần mở đầu tiên có ba bước ngắn: ngôn ngữ, vài thiết lập cơ bản (âm lịch, ngày lễ, khởi động cùng máy) và các lịch muốn thêm vào. Bản đã cài tự cập nhật khi có release mới; tắt ở *Cài đặt → Chung → Kiểm tra bản cập nhật*.
+Lần mở đầu tiên có ba bước ngắn: ngôn ngữ, vài thiết lập cơ bản (âm lịch, ngày lễ, khởi động cùng máy) và các lịch muốn thêm vào. Bản đã cài có thể tự cập nhật khi có release mới, sau khi bật *Cài đặt → Chung → Kiểm tra bản cập nhật*; mặc định tắt.
 
 ### Tự build
 
