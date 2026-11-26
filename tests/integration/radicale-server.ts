@@ -6,9 +6,9 @@ import { join } from 'node:path'
 
 /**
  * Vitest global setup for `npm run test:caldav`: a real Radicale on a free
- * local port, with three users (`alice` / `wonderland`, `bob` / `builder`,
- * `alex` / `correct-horse`) and an empty store that is thrown away afterwards.
- * The tests get its address from `inject('radicaleUrl')`.
+ * local port, with four users (`alice` / `wonderland`, `bob` / `builder`,
+ * `alex` / `correct-horse`, `dana` / `tea-and-toast`) and an empty store
+ * that is thrown away afterwards. The tests get its address from `inject('radicaleUrl')`.
  *
  * Radicale is a Python program: `pip install radicale`, or point
  * XRNCAL_RADICALE at the `radicale` executable (a virtualenv's, say).
@@ -30,6 +30,9 @@ export const RADICALE_PASSWORD_2 = 'builder'
 /** A third, for a third file. */
 export const RADICALE_USER_3 = 'alex'
 export const RADICALE_PASSWORD_3 = 'correct-horse'
+/** A fourth, for a fourth. */
+export const RADICALE_USER_4 = 'dana'
+export const RADICALE_PASSWORD_4 = 'tea-and-toast'
 
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -62,7 +65,17 @@ async function waitUntilUp(url: string, child: ChildProcess, log: () => string):
 export default async function setup({ provide }: { provide: (key: 'radicaleUrl', value: string) => void }) {
   const dir = mkdtempSync(join(tmpdir(), 'xrncal-radicale-'))
   const port = await freePort()
-  writeFileSync(join(dir, 'users'), `${RADICALE_USER}:${RADICALE_PASSWORD}\n${RADICALE_USER_2}:${RADICALE_PASSWORD_2}\n${RADICALE_USER_3}:${RADICALE_PASSWORD_3}\n`)
+  writeFileSync(
+    join(dir, 'users'),
+    [
+      [RADICALE_USER, RADICALE_PASSWORD],
+      [RADICALE_USER_2, RADICALE_PASSWORD_2],
+      [RADICALE_USER_3, RADICALE_PASSWORD_3],
+      [RADICALE_USER_4, RADICALE_PASSWORD_4]
+    ]
+      .map(([user, password]) => `${user}:${password}\n`)
+      .join('')
+  )
   writeFileSync(
     join(dir, 'config'),
     [

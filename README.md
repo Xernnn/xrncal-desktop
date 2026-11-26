@@ -272,6 +272,7 @@ If something goes wrong, **Settings → Show log file** opens the folder with `x
 - CalDAV edits keep what other apps stored on the event
 - A new event whose create answer is lost is made once, not twice
 - Each account says why its last sync failed (sign-in refused, server not found, keyring locked, …)
+- A CalDAV calendar deleted on the server goes here too, unless it holds changes not yet sent
 
 </td>
 <td width="50%" valign="top">

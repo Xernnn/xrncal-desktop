@@ -91,6 +91,9 @@ SyncWorker: every 20 s while a window has focus, 10 min otherwise
               a changed series (and every series each 6 h) is read for its changed and
               cancelled occurrences
       CalDAV: skipped when the ctag is unchanged and nothing was pushed
+  → CalDAV calendar list (one PROPFIND on the home): a calendar it no longer names is removed,
+    unless it holds unsent changes; a listing that is not a whole 207 multistatus, or names
+    none of the account's calendars, fails the sync and removes nothing
   → SYNC.CHANGED to every window when rows changed
 ```
 

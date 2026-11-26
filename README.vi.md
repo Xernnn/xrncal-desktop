@@ -272,6 +272,7 @@ Khi có sự cố, **Cài đặt → Mở tệp nhật ký** mở thư mục ch�
 - Sửa sự kiện CalDAV vẫn giữ những gì ứng dụng khác đã lưu
 - Sự kiện mới bị mất câu trả lời lúc tạo vẫn chỉ được tạo một lần, không thành hai
 - Mỗi tài khoản cho biết vì sao lần đồng bộ trước lỗi (đăng nhập bị từ chối, không tìm thấy máy chủ, keyring bị khoá, …)
+- Lịch CalDAV bị xoá trên máy chủ thì cũng biến mất ở đây, trừ khi còn thay đổi chưa gửi
 
 </td>
 <td width="50%" valign="top">
