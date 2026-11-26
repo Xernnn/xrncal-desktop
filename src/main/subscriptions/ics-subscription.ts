@@ -151,7 +151,23 @@ export async function addSubscription(db: ISqliteDatabase, rawUrl: string, name?
  * request and no writes; the stored hash of the last copy decides.
  * Returns how many events were stored, 0 when nothing changed.
  */
-export async function refreshSubscription(db: ISqliteDatabase, calendarId: string): Promise<number> {
+export function refreshSubscription(db: ISqliteDatabase, calendarId: string): Promise<number> {
+  let pending = pendingRefreshes.get(db)
+  if (!pending) {
+    pending = new Map()
+    pendingRefreshes.set(db, pending)
+  }
+  const previous = pending.get(calendarId)
+  if (previous) return previous
+  const active = pending
+  const refresh = fetchSubscription(db, calendarId).finally(() => active.delete(calendarId))
+  active.set(calendarId, refresh)
+  return refresh
+}
+
+const pendingRefreshes = new WeakMap<ISqliteDatabase, Map<string, Promise<number>>>()
+
+async function fetchSubscription(db: ISqliteDatabase, calendarId: string): Promise<number> {
   const calendar = new CalendarsRepo(db).getCalendarById(calendarId)
   if (!calendar?.subscriptionUrl) throw new Error(`Not a subscribed calendar: ${calendarId}`)
   const syncState = new SyncStateRepo(db)
@@ -181,14 +197,16 @@ export async function refreshSubscription(db: ISqliteDatabase, calendarId: strin
  *  ago. Run from the sync loop; one feed failing does not stop the rest. */
 export async function refreshDueSubscriptions(
   db: ISqliteDatabase,
-  nowMs = Date.now()
+  nowMs = Date.now(),
+  options: { force?: boolean; calendarId?: string } = {}
 ): Promise<{ pulledCount: number; errorCount: number }> {
   const due = new CalendarsRepo(db)
     .listCalendars()
     .filter(
       (c) =>
         c.subscriptionUrl &&
-        (!c.subscriptionRefreshedAt || nowMs - Date.parse(c.subscriptionRefreshedAt) >= SUBSCRIPTION_REFRESH_MS)
+        (options.calendarId === undefined || c.id === options.calendarId) &&
+        (options.force || !c.subscriptionRefreshedAt || nowMs - Date.parse(c.subscriptionRefreshedAt) >= SUBSCRIPTION_REFRESH_MS)
     )
 
   let pulledCount = 0

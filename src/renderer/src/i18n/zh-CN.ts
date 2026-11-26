@@ -27,6 +27,8 @@ export const zhCN = {
   },
   actions: {
     newEvent: '新建',
+    syncCalendar: '同步指定日历',
+    noSyncCalendars: '暂无已连接的日历或在线订阅',
     openDay: '打开这一天',
     search: '搜索',
     toggleSidebar: '切换侧栏',

@@ -99,6 +99,8 @@ const CalendarApp: React.FC = () => {
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false)
   const [isPrintOpen, setIsPrintOpen] = useState(false)
   const [isConflictsModalOpen, setIsConflictsModalOpen] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const manualSyncRunning = useRef(false)
   const welcomeOpen = ready && !settings.welcomeDone
 
   const [isEditorOpen, setIsEditorOpen] = useState(false)
@@ -282,14 +284,19 @@ const CalendarApp: React.FC = () => {
     else if (next) setAccountsDialog([{ name: 'list' }, { name: 'add' }, { name: 'connect', provider: next }])
   }
 
-  const syncNow = async (): Promise<void> => {
-    if (!window.xrncal?.sync?.triggerNow) return
+  const syncNow = async (calendarId?: string): Promise<void> => {
+    if (manualSyncRunning.current || !window.xrncal?.sync?.triggerNow) return
+    manualSyncRunning.current = true
+    setSyncing(true)
     try {
-      const res = await window.xrncal.sync.triggerNow()
-      await reload()
-      toast.success(t('toast.syncDone'), { description: res.message || undefined })
+      const res = await window.xrncal.sync.triggerNow(calendarId)
+      if (res.success) toast.success(t('toast.syncDone'), { description: res.message })
+      else toast.error(t('toast.syncFailed'), { description: res.message })
     } catch (err) {
       showFriendlyError(err, t('toast.syncFailed'))
+    } finally {
+      manualSyncRunning.current = false
+      setSyncing(false)
     }
   }
 
@@ -464,6 +471,10 @@ const CalendarApp: React.FC = () => {
       onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
       onPrev={handlePrev}
       onNext={handleNext}
+      calendars={calendars}
+      accounts={accounts}
+      syncing={syncing}
+      onSync={(calendarId) => void syncNow(calendarId)}
       onNewEvent={() => openEditorForDate(anchorDate)}
       onChangeView={setCurrentView}
       onSearch={() => setIsSearchPaletteOpen(true)}

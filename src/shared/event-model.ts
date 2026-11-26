@@ -314,6 +314,9 @@ export interface SyncStatus {
   accountErrors?: Record<string, string>
 }
 
+/** A calendar selected for a targeted provider sync. */
+export type SyncTarget = Pick<Calendar, 'accountId' | 'id'>
+
 export interface SyncResult {
   success: boolean
   pulledCount: number

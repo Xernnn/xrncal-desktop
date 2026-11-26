@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createSqliteDriver, type ISqliteDatabase } from '../src/main/db/sqlite-driver'
 import { runMigrations, seedDefaultData } from '../src/main/db/database'
+import { AccountsRepo } from '../src/main/db/repos/accounts-repo'
+import { CalendarsRepo } from '../src/main/db/repos/calendars-repo'
 import { EventsRepo } from '../src/main/db/repos/events-repo'
 import { CalDavSyncEngine } from '../src/main/sync/caldav-sync-engine'
 import type { CalDavCredentials } from '../src/main/sync/caldav-adapter'
@@ -188,6 +190,26 @@ describe('CalDAV sync', () => {
     db
       .prepare('SELECT id, uid, title, provider_event_id FROM events WHERE calendar_id = ? ORDER BY id')
       .all<{ id: string; uid: string; title: string; provider_event_id: string | null }>(CAL)
+
+  it('syncs just the selected collection without discovering or touching its siblings', async () => {
+    const accountId = 'selected-caldav-account'
+    const siblingId = 'https://dav.example/alex/work/'
+    const accounts = new AccountsRepo(db)
+    accounts.upsert({ id: accountId, type: 'caldav', name: 'Alex' })
+    db.prepare('UPDATE calendars SET account_id = ? WHERE id = ?').run(accountId, CAL)
+    new CalendarsRepo(db).createCalendar({ id: siblingId, accountId, name: 'Work', color: '#112233' })
+    db.prepare('INSERT INTO calendar_color_push (calendar_id, color) VALUES (?, ?)').run(siblingId, '#112233')
+    vi.spyOn(SecureStore.prototype, 'getToken').mockReturnValue(CREDS)
+    const calls = stubServer([{ name: 'reminder.ics', uid: 'uid-1', title: 'Reminder', etag: 'one' }])
+
+    const result = await engine.syncAll({ accountId, id: CAL })
+
+    expect(result).toMatchObject({ success: true })
+    expect(rows().map((row) => row.title)).toEqual(['Reminder'])
+    expect(calls.length).toBeGreaterThan(0)
+    expect(calls.every((call) => call.url === CAL)).toBe(true)
+    expect(db.prepare('SELECT color FROM calendar_color_push WHERE calendar_id = ?').get(siblingId)).toBeDefined()
+  })
 
   it('updates an event xrncal pushed instead of inserting a copy', async () => {
     const created = repo.createEvent({

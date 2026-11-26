@@ -10,7 +10,7 @@ import { AccountsRepo } from '../db/repos/accounts-repo'
 import { EventsRepo, type EventRow } from '../db/repos/events-repo'
 import { CalendarsRepo } from '../db/repos/calendars-repo'
 import { SyncStateRepo } from '../db/repos/sync-state-repo'
-import type { Attendee, AttendeeResponseStatus, SyncResult } from '@shared/event-model'
+import type { Attendee, AttendeeResponseStatus, SyncResult, SyncTarget } from '@shared/event-model'
 import { markSelfAttendee } from '@shared/event-model'
 import { mergePulledReminders, parseRemindersJson, serializeReminders } from '@shared/reminders'
 
@@ -113,13 +113,13 @@ export class CalDavSyncEngine {
    * and is returned. A colour picked again while one was on its way is sent
    * next time.
    */
-  async pushCalendarColors(accountId: string, creds: CalDavCredentials): Promise<{ lastError?: string }> {
+  async pushCalendarColors(accountId: string, creds: CalDavCredentials, calendarId?: string): Promise<{ lastError?: string }> {
     const waiting = this.db
       .prepare(
         `SELECT p.calendar_id AS id, p.color FROM calendar_color_push p
-         JOIN calendars c ON c.id = p.calendar_id WHERE c.account_id = ?`
+         JOIN calendars c ON c.id = p.calendar_id WHERE c.account_id = ? AND (? IS NULL OR p.calendar_id = ?)`
       )
-      .all<{ id: string; color: string }>(accountId)
+      .all<{ id: string; color: string }>(accountId, calendarId ?? null, calendarId ?? null)
     if (waiting.length === 0) return {}
 
     const adapter = new CalDavAdapter(creds)
@@ -792,8 +792,8 @@ export class CalDavSyncEngine {
   /**
    * Sync all connected CalDAV accounts
    */
-  async syncAll(): Promise<SyncResult> {
-    const activeAccounts = new AccountsRepo(this.db).listActive('caldav')
+  async syncAll(target?: SyncTarget): Promise<SyncResult> {
+    const activeAccounts = new AccountsRepo(this.db).listActive('caldav').filter((acc) => !target || acc.id === target.accountId)
 
     if (activeAccounts.length === 0) {
       return { success: true, pulledCount: 0, pushedCount: 0, errorCount: 0, message: 'No CalDAV accounts connected' }
@@ -814,9 +814,13 @@ export class CalDavSyncEngine {
         }
 
         // Before the list is read, so it reads back what was sent.
-        const colors = await this.pushCalendarColors(acc.id, creds)
-        const calendars = await this.syncCalendarList(acc.id, creds)
-        let firstFailure: string | undefined = colors.lastError
+        if (target && !mayCarryCredentials(creds.url, target.id)) throw new Error('Calendar URL is outside this account')
+        const colors = await this.pushCalendarColors(acc.id, creds, target?.id)
+        const calendars = target
+          ? [{ id: target.id, ctag: await new CalDavAdapter(creds).readCtag(target.id).catch(() => undefined) }]
+          : await this.syncCalendarList(acc.id, creds)
+        let firstFailure = colors.lastError
+        if (firstFailure && target) totalErrors++
         for (const { id: calId, ctag } of calendars) {
           // One calendar failing - a server error on one collection - no longer
           // skips the calendars after it.
@@ -831,7 +835,7 @@ export class CalDavSyncEngine {
             // unchanged ctag, with nothing pushed since it was read, means the
             // server has nothing new. The ctag stored is the one read before the
             // pull, so a change landing mid-pull is fetched again next time.
-            if (ctag && pushRes.pushedCount === 0 && ctag === this.syncStateRepo.getSyncToken(calId)) {
+            if (!target && ctag && pushRes.pushedCount === 0 && ctag === this.syncStateRepo.getSyncToken(calId)) {
               this.recordOutcome(calId, pushRes, 0)
               continue
             }

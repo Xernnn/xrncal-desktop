@@ -14,7 +14,7 @@ import { mergePulledReminders, parseRemindersJson, serializeReminders } from '@s
 import { AccountsRepo } from '../db/repos/accounts-repo'
 import { EventsRepo, type EventRow } from '../db/repos/events-repo'
 import { SyncStateRepo } from '../db/repos/sync-state-repo'
-import type { CalendarEvent, EventException, SyncResult } from '@shared/event-model'
+import type { CalendarEvent, EventException, SyncResult, SyncTarget } from '@shared/event-model'
 
 /**
  * Start/end payload for an occurrence override, falling back to the master's
@@ -866,8 +866,8 @@ export class GoogleSyncEngine {
   /**
    * Sync all Google accounts
    */
-  async syncAll(clientId?: string, clientSecret?: string): Promise<SyncResult> {
-    const activeGoogleAccounts = new AccountsRepo(this.db).listActive('google')
+  async syncAll(clientId?: string, clientSecret?: string, target?: SyncTarget): Promise<SyncResult> {
+    const activeGoogleAccounts = new AccountsRepo(this.db).listActive('google').filter((acc) => !target || acc.id === target.accountId)
 
     if (activeGoogleAccounts.length === 0) {
       return { success: true, pulledCount: 0, pushedCount: 0, errorCount: 0, message: 'No Google accounts connected' }
@@ -881,7 +881,7 @@ export class GoogleSyncEngine {
     for (const acc of activeGoogleAccounts) {
       try {
         const token = await this.oauthManager.getValidAccessToken(acc.id, clientId || '', clientSecret)
-        const calendarIds = await this.syncCalendarList(acc.id, token)
+        const calendarIds = target ? [target.id] : await this.syncCalendarList(acc.id, token)
 
         for (const calId of calendarIds) {
           // Isolate each calendar. Some entries the calendar list returns are not

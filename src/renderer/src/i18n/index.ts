@@ -34,6 +34,8 @@ export const resources = {
       },
       actions: {
         newEvent: 'Create',
+        syncCalendar: 'Sync a calendar',
+        noSyncCalendars: 'No connected calendars or subscriptions',
         openDay: 'Open this day',
         search: 'Search',
         toggleSidebar: 'Toggle sidebar',
@@ -709,6 +711,8 @@ export const resources = {
       },
       actions: {
         newEvent: 'Tạo',
+        syncCalendar: 'Đồng bộ một lịch',
+        noSyncCalendars: 'Không có lịch kết nối hoặc lịch đăng ký',
         openDay: 'Mở ngày này',
         search: 'Tìm kiếm',
         toggleSidebar: 'Thu gọn thanh bên',

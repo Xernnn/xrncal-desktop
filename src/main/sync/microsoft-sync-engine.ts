@@ -15,7 +15,7 @@ import { AccountsRepo } from '../db/repos/accounts-repo'
 import { EventsRepo, type EventRow } from '../db/repos/events-repo'
 import { mergePulledReminders, parseRemindersJson, serializeReminders } from '@shared/reminders'
 import { SyncStateRepo } from '../db/repos/sync-state-repo'
-import type { RsvpResponse, SyncResult } from '@shared/event-model'
+import type { RsvpResponse, SyncResult, SyncTarget } from '@shared/event-model'
 
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0'
 /** Events requested per page. */
@@ -888,8 +888,8 @@ export class MicrosoftSyncEngine {
   /**
    * Sync all Microsoft Graph accounts
    */
-  async syncAll(clientId?: string, clientSecret?: string): Promise<SyncResult> {
-    const activeAccounts = new AccountsRepo(this.db).listActive('graph')
+  async syncAll(clientId?: string, clientSecret?: string, target?: SyncTarget): Promise<SyncResult> {
+    const activeAccounts = new AccountsRepo(this.db).listActive('graph').filter((acc) => !target || acc.id === target.accountId)
 
     if (activeAccounts.length === 0) {
       return { success: true, pulledCount: 0, pushedCount: 0, errorCount: 0, message: 'No Microsoft accounts connected' }
@@ -903,7 +903,7 @@ export class MicrosoftSyncEngine {
     for (const acc of activeAccounts) {
       try {
         const token = await this.oauthManager.getValidAccessToken(acc.id, clientId || '', clientSecret)
-        const calendarIds = await this.syncCalendarList(acc.id, token)
+        const calendarIds = target ? [target.id] : await this.syncCalendarList(acc.id, token)
 
         for (const calId of calendarIds) {
           // Isolate each calendar. Some entries the calendar list returns are not
