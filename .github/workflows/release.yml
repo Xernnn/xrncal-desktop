@@ -1,6 +1,5 @@
-# Builds the Windows installer and the Linux AppImage for a version tag and
-# uploads them, with the latest*.yml files the in-app updater reads, to a
-# draft GitHub release. Nothing reaches users until that draft is published.
+# Builds the Windows installer, Windows portable ZIP, and Linux AppImage.
+# The upstream release stays a draft for review. Forks publish after packaging.
 #
 # To cut a release: bump "version" in package.json, commit, then
 #   git tag v<version> && git push origin v<version>
@@ -9,6 +8,10 @@ name: Release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.sha }}
 
 permissions:
   contents: write
@@ -16,6 +19,8 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
     steps:
@@ -28,13 +33,15 @@ jobs:
 
       # electron-builder names the release after package.json, so a tag that
       # disagrees with it would publish under the wrong version.
-      - name: Tag matches package.json
+      - name: Resolve release version
+        id: version
         run: |
           expected="v$(node -p "require('./package.json').version")"
-          if [ "$GITHUB_REF_NAME" != "$expected" ]; then
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "$expected" ]; then
             echo "Tag $GITHUB_REF_NAME does not match package.json ($expected)" >&2
             exit 1
           fi
+          echo "tag=$expected" >> "$GITHUB_OUTPUT"
 
       - run: npm ci
       - run: npm run lint
@@ -43,16 +50,17 @@ jobs:
 
       # Both packaging jobs upload to this one draft. Left to electron-builder,
       # two jobs reaching the upload together could each create their own.
-      # `gh release list` shows drafts too, so a re-run reuses the first one.
+      # A re-run reuses that release.
       - name: Create the draft release
         run: |
-          if gh release list --limit 100 --json tagName --jq '.[].tagName' | grep -qx "$GITHUB_REF_NAME"; then
-            echo "Release $GITHUB_REF_NAME already exists"
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists"
           else
-            gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "$GITHUB_REF_NAME" --generate-notes
+            gh release create "$RELEASE_TAG" --draft --target "$GITHUB_SHA" --title "$RELEASE_TAG" --generate-notes
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
 
   package:
     needs: verify
@@ -104,7 +112,8 @@ jobs:
               -c.win.azureSignOptions.certificateProfileName="$AZURE_CERTIFICATE_PROFILE"
             )
           fi
-          npx electron-builder ${{ matrix.target }} --publish always "${signing[@]}"
+          npx electron-builder ${{ matrix.target }} --publish always "${signing[@]}" \
+            "-c.publish.owner=$GITHUB_REPOSITORY_OWNER" "-c.publish.repo=${GITHUB_REPOSITORY#*/}"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
@@ -116,3 +125,34 @@ jobs:
           AZURE_ENDPOINT: ${{ vars.AZURE_ENDPOINT }}
           AZURE_CODE_SIGNING_ACCOUNT: ${{ vars.AZURE_CODE_SIGNING_ACCOUNT }}
           AZURE_CERTIFICATE_PROFILE: ${{ vars.AZURE_CERTIFICATE_PROFILE }}
+
+      - name: Package and upload Windows portable ZIP
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $version = $env:RELEASE_TAG.TrimStart('v')
+          $name = "xrncal-$version-windows-x64-portable"
+          # Mark the unpacked app only after the installer has been built.
+          New-Item -Path dist/win-unpacked/portable.flag -ItemType File -Force | Out-Null
+          Compress-Archive -Path 'dist/win-unpacked/*' -DestinationPath "dist/$name.zip" -Force
+          gh release upload $env:RELEASE_TAG "dist/$name.zip" --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.verify.outputs.tag }}
+
+  publish:
+    if: github.event.repository.fork
+    needs: [verify, package]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish verified release
+        run: |
+          assets="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
+          grep -Eq '\.exe$' <<< "$assets"
+          grep -Eq '\.AppImage$' <<< "$assets"
+          grep -Fxq "xrncal-${RELEASE_TAG#v}-windows-x64-portable.zip" <<< "$assets"
+          gh release edit "$RELEASE_TAG" --draft=false
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.verify.outputs.tag }}

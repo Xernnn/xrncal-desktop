@@ -2,8 +2,20 @@
  * Application Settings Interface & Defaults
  */
 
+export const APP_LANGUAGES = {
+  en: 'English',
+  vi: 'Tiếng Việt',
+  'zh-CN': '简体中文'
+} as const
+
+export type AppLocale = keyof typeof APP_LANGUAGES
+
+export function isAppLocale(value: unknown): value is AppLocale {
+  return typeof value === 'string' && Object.hasOwn(APP_LANGUAGES, value)
+}
+
 export interface AppSettings {
-  locale: 'en' | 'vi'
+  locale: AppLocale
   showLunar: boolean
   showWeekNumbers: boolean
   showMiniCalendar: boolean

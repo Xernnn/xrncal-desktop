@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { extname, join } from 'node:path'
 import { IPC_CHANNELS, type AppLocale, type BackupResult } from '@shared/ipc-contract'
+import { isAppLocale } from '@shared/settings-contract'
 import { registerCalendarIpcHandlers } from './ipc/calendar-ipc'
 import { registerSettingsIpcHandlers } from './ipc/settings-ipc'
 import { registerAuthSyncIpcHandlers } from './ipc/auth-sync-ipc'
@@ -47,7 +48,7 @@ export function registerIpcHandlers(): void {
 
   // Update current app locale
   ipcMain.handle(IPC_CHANNELS.APP.SET_LOCALE, (_event, locale: AppLocale) => {
-    if (locale === 'vi' || locale === 'en') {
+    if (isAppLocale(locale)) {
       currentLocale = locale
       setMainLocale(locale)
       refreshTrayMenu()

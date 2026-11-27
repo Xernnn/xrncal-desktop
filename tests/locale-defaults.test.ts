@@ -2,6 +2,10 @@ import { describe, it, expect } from 'vitest'
 import { defaultsForSystem } from '../src/shared/locale-defaults'
 
 describe('defaults from the computer', () => {
+  it('uses Simplified Chinese for a Chinese system language', () => {
+    expect(defaultsForSystem('zh-Hans-CN', 'zh-CN')).toMatchObject({ locale: 'zh-CN', timeFormat: '24h' })
+  })
+
   it('starts a Vietnamese computer in Vietnamese, 24-hour, weeks from Monday', () => {
     expect(defaultsForSystem('vi-VN', 'vi-VN')).toEqual({ locale: 'vi', timeFormat: '24h', firstDayOfWeek: 1 })
   })
