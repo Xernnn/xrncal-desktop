@@ -50,7 +50,8 @@ export const SyncButtons: React.FC<SyncButtonsProps> = ({ calendars, accounts, s
     >
       <button
         type="button"
-        className="gc-btn rounded-r-none"
+        className={`gc-btn rounded-r-none ${syncing ? 'disabled:opacity-100 dark:text-white' : ''}`}
+        aria-busy={syncing}
         title={`${t('accounts.syncNow')} (R)`}
         disabled={syncing}
         onClick={() => sync()}

@@ -26,7 +26,7 @@ import { resolveCalendarLunarOccurrence } from '@shared/lunar-calendar'
 import { expandOccurrences } from '@shared/expand-occurrences'
 import { nearestOccurrence } from '@shared/nearest-occurrence'
 import { CALENDAR_MAX_OCCURRENCES, calendarExpansionBudget, type ExpansionBudget } from '@shared/bounded-rrule'
-import { namedDays, occurrenceShift, ruleForMovedStart, seriesZone, wallTime } from '@shared/series-update'
+import { namedDays, occurrenceShift, ruleForMovedStart, ruleWithMovedEnd, seriesZone, wallTime } from '@shared/series-update'
 import { DateTime } from 'luxon'
 import { log } from '../../log'
 
@@ -229,10 +229,13 @@ function ruleFollowingStart<T extends string | null | undefined>(
   rule: T,
   stored: string | undefined,
   from: DateTime,
-  to: DateTime
+  to: DateTime,
+  fromZone: string,
+  toZone: string
 ): T | string {
-  if (!rule || !stored || namedDays(rule) !== namedDays(stored)) return rule
-  return ruleForMovedStart(rule, from, to)
+  if (!rule || !stored) return rule
+  const dates = namedDays(rule) === namedDays(stored) ? ruleForMovedStart(rule, from, to) : rule
+  return ruleWithMovedEnd(dates, stored, from, to, fromZone, toZone)
 }
 
 /**
@@ -558,7 +561,9 @@ export class EventsRepo {
       input.rrule !== undefined ? input.rrule || null : (existing.rrule || null),
       existing.rrule,
       from,
-      to
+      to,
+      fromZone,
+      toZone
     )
     // A series' deleted and changed dates are keyed by the dates it gave them,
     // so they move with its dates (see occurrenceShift). Left where they were,
@@ -1839,23 +1844,26 @@ export class EventsRepo {
       ) {
         this.updateEvent(input.masterEventId, { attendees: input.updateInput.attendees })
       }
-      // The editor leaves out a text field that was empty when it opened and
-      // still is; on an occurrence that had it removed, that is still removed.
       const own = master.exceptions.find((ex) => ex.originalStartUtc === input.originalStartUtc)
+      const title = input.updateInput.title ?? own?.title
+      const notes = input.updateInput.notes ?? own?.notes
+      const location = input.updateInput.location ?? own?.location
+      // A value still equal to the series should keep inheriting it. Saving
+      // another field on one date must not pin the old series title or notes.
       this.upsertException({
         masterEventId: input.masterEventId,
         originalStartUtc: input.originalStartUtc,
         isCancelled: false,
-        title: input.updateInput.title,
-        notes: input.updateInput.notes ?? own?.notes,
-        location: input.updateInput.location ?? own?.location,
-        dtStartUtc: input.updateInput.dtStartUtc,
-        dtEndUtc: input.updateInput.dtEndUtc,
-        tzid: input.updateInput.tzid,
+        title: title === master.event.title ? undefined : title,
+        notes: notes === master.event.notes ? undefined : notes,
+        location: location === master.event.location ? undefined : location,
+        dtStartUtc: input.updateInput.dtStartUtc ?? own?.dtStartUtc,
+        dtEndUtc: input.updateInput.dtEndUtc ?? own?.dtEndUtc,
+        tzid: input.updateInput.tzid ?? own?.tzid,
         // Dropping one occurrence of an all-day series onto the time grid (or
         // vice versa) changes only that occurrence's all-day-ness.
-        allDay: input.updateInput.allDay,
-        color: input.updateInput.color
+        allDay: input.updateInput.allDay ?? own?.allDay,
+        color: input.updateInput.color ?? own?.color
       })
       return true
     }
@@ -1894,17 +1902,19 @@ export class EventsRepo {
         const allDay = input.updateInput.allDay ?? master.event.allDay
         const fromZone = seriesZone(master.event.allDay, master.event.tzid)
         const from = wallTime(input.originalStartUtc, fromZone)
-        const to = wallTime(dtStartUtc, seriesZone(allDay, tzid))
+        const toZone = seriesZone(allDay, tzid)
+        const to = wallTime(dtStartUtc, toZone)
         // A rule picked in the editor is the new series' own. Otherwise it
-        // repeats as the series did: to the same end date, or for as many
-        // dates as the series had left - not for ever, which is what
-        // dropping the COUNT and UNTIL with the cap above used to give it.
+        // repeats as the series did, keeping the end or remaining count.
+        // Moving the schedule carries its unchanged end along.
         // Either way, days named after the occurrence's move with it.
         const rrule = ruleFollowingStart(
           input.updateInput.rrule ?? remainingRule(master.event, split),
           master.event.rrule,
           from,
-          to
+          to,
+          fromZone,
+          toZone
         )
         const tail = this.createEvent({
           calendarId: toCalendarId ?? master.event.calendarId,

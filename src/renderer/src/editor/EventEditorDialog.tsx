@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useEffectEvent, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { DateTime, IANAZone } from 'luxon'
-import { Trash2, X, Share2, Link as LinkIcon, Users, Check, Sparkles } from 'lucide-react'
+import { DateTime, IANAZone, Info } from 'luxon'
+import { Trash2, X, Share2, Link as LinkIcon, Users, Check, Sparkles, Repeat } from 'lucide-react'
 import type {
   Calendar,
   CalendarAccount,
@@ -43,6 +43,7 @@ import { TitleSuggestInput } from './TitleSuggestInput'
 import { LocationSuggestInput } from './LocationSuggestInput'
 import { EmojiPicker } from './EmojiPicker'
 import { ReminderListField } from './ReminderListField'
+import { reminderLabel } from '../lib/reminder-labels'
 import { useDisplayPreferences } from '../context/DisplayPreferencesContext'
 import { zoneForEditing, zonePickerOptions } from '../lib/time-zones'
 import { zoneAt, type ZonePeriod } from '@shared/zone-history'
@@ -112,6 +113,7 @@ interface EventEditorDialogProps {
   }) => void
   onDelete: (eventId: string, occurrenceStartUtc?: string, isRecurring?: boolean) => void
   onDataChanged?: () => void
+  onEditSeries?: (event: CalendarEvent) => void
   onClose: () => void
   /** Fired whenever the draft's slot/color changes while creating a NEW event (null
    *  once it's no longer relevant - editing, closed, or the fields don't parse yet). */
@@ -127,20 +129,40 @@ const LUNAR_MONTHS = [
 ]
 
 const WEEKDAY_CODES = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'] as const
-const RRULE_KNOWN_KEYS = new Set(['FREQ', 'INTERVAL', 'BYDAY', 'COUNT', 'UNTIL'])
+const RRULE_KNOWN_KEYS = new Set(['FREQ', 'INTERVAL', 'BYDAY', 'BYMONTHDAY', 'BYSETPOS', 'COUNT', 'UNTIL'])
 
 function parseRruleParts(rrule: string): Record<string, string> {
   const out: Record<string, string> = {}
-  for (const part of rrule.split(';')) {
-    const [key, val] = part.split('=')
+  for (const part of rrule.replace(/^RRULE:/i, '').split(';')) {
+    const [key, val] = part.toUpperCase().split('=')
     if (key && val !== undefined) out[key] = val
   }
   return out
 }
 
-/** True when the rrule only uses controls the friendly editor understands (no BYMONTHDAY etc.). */
-function isSimpleRrule(rrule: string): boolean {
-  return rrule.split(';').every((part) => RRULE_KNOWN_KEYS.has(part.split('=')[0]))
+function monthlyDay(parts: Record<string, string>): string | undefined {
+  if (parts.FREQ === 'MONTHLY' && /^(?:[1-9]|[12]\d|3[01])$/.test(parts.BYMONTHDAY ?? '')) return parts.BYMONTHDAY
+  return undefined
+}
+
+interface MonthlyOrdinal {
+  position: string
+  weekday: string
+}
+
+function monthlyOrdinal(parts: Record<string, string>): MonthlyOrdinal | undefined {
+  const { FREQ, BYSETPOS, BYDAY, BYMONTHDAY } = parts
+  if (FREQ !== 'MONTHLY' || BYMONTHDAY || !/^[1-5]$/.test(BYSETPOS ?? '')) return undefined
+  if (WEEKDAY_CODES.some((weekday) => weekday === BYDAY)) return { position: BYSETPOS, weekday: BYDAY }
+  return undefined
+}
+
+/** Compound rules outside the available repeat controls stay in the RRULE editor. */
+function isSimpleRrule(parts: Record<string, string>): boolean {
+  if (!Object.keys(parts).every((key) => RRULE_KNOWN_KEYS.has(key))) return false
+  if (parts.BYSETPOS) return Boolean(monthlyOrdinal(parts))
+  if (parts.BYMONTHDAY && !monthlyDay(parts)) return false
+  return !parts.BYDAY || (parts.FREQ === 'WEEKLY' && parts.BYDAY.split(',').every((day) => WEEKDAY_CODES.some((code) => day === code)))
 }
 
 function toggleWeekday(days: string[], code: string): string[] {
@@ -194,7 +216,7 @@ const NO_RECURRENCE = {
 
 function recurrenceFields(rule: string, shownIn: string) {
   const parts = parseRruleParts(rule)
-  const simple = isSimpleRrule(rule)
+  const simple = isSimpleRrule(parts)
   const presetByFreq: Record<string, string> = { DAILY: 'daily', WEEKLY: 'weekly', MONTHLY: 'monthly', YEARLY: 'yearly' }
   let end: Pick<EditorForm, 'recurrenceEnd' | 'recurrenceUntil' | 'recurrenceCount'> = {
     recurrenceEnd: 'never',
@@ -202,7 +224,7 @@ function recurrenceFields(rule: string, shownIn: string) {
     recurrenceCount: 10
   }
   if (parts.UNTIL) {
-    const untilLocal = DateTime.fromFormat(parts.UNTIL, "yyyyMMdd'T'HHmmss'Z'", { zone: 'utc' }).setZone(shownIn)
+    const untilLocal = DateTime.fromISO(parts.UNTIL, { zone: shownIn })
     end = { recurrenceEnd: 'onDate', recurrenceUntil: untilLocal.isValid ? untilLocal.toFormat('yyyy-MM-dd') : '', recurrenceCount: 10 }
   } else if (parts.COUNT) {
     end = { recurrenceEnd: 'afterCount', recurrenceUntil: '', recurrenceCount: Math.max(1, parseInt(parts.COUNT, 10) || 10) }
@@ -270,7 +292,7 @@ export function initialForm(
       tzid: occ.allDay || occ.isLunar ? occ.tzid || userTz : occZone,
       ...dateAndTime(startLocal, endLocal),
       ...NO_RECURRENCE,
-      // Occurrences carry no rule. The controls are filled when their series loads.
+      // Repeat controls belong to the separate series form.
       recurrencePreset: occ.isLunar ? 'lunar-yearly' : occ.isRecurring ? 'custom' : 'none',
       lunarLeap: occ.isLunar
         ? occ.lunarRule?.leap ?? lunarRuleForDate(startLocal.day, startLocal.month, startLocal.year, false).leap
@@ -413,6 +435,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
   onSave,
   onDelete,
   onDataChanged,
+  onEditSeries,
   onClose,
   onDraftChange,
   onEmojiPicked
@@ -429,11 +452,9 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
     favoriteEmojis
   } = useDisplayPreferences()
   const isEditing = Boolean(data?.occurrence || data?.event)
-  // Lunar anniversaries have no per-instance RRULE semantics — edits always apply
-  // to the whole series, so they skip the recurring-scope prompt.
-  const isRecurringOccurrence = Boolean(
-    data?.occurrence?.isRecurring && !data?.occurrence?.isLunar
-  )
+  const isRecurringOccurrence = Boolean(data?.occurrence?.isRecurring)
+  const isSeries = Boolean(data?.event?.rrule || data?.event?.lunarRule)
+  const editorTitle = t(isSeries ? 'editor.editSeries' : isEditing ? 'editor.editEvent' : 'editor.newEvent')
 
   // Form states (location / notes / meetingUrl / attendees / tzid / color are kept
   // so edits to synced events preserve those fields, but they are not shown in the UI)
@@ -461,6 +482,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
   const [recurrencePreset, setRecurrencePreset] = useState<string>(initial.recurrencePreset)
   const [customRrule, setCustomRrule] = useState<string>(initial.customRrule)
   const [recurrenceInterval, setRecurrenceInterval] = useState<number>(initial.recurrenceInterval)
+  const [ordinalEdit, setOrdinalEdit] = useState<MonthlyOrdinal>()
   const [recurrenceByDay, setRecurrenceByDay] = useState<string[]>(initial.recurrenceByDay)
   const [recurrenceEnd, setRecurrenceEnd] = useState<'never' | 'onDate' | 'afterCount'>(initial.recurrenceEnd)
   const [recurrenceUntil, setRecurrenceUntil] = useState<string>(initial.recurrenceUntil)
@@ -484,9 +506,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
   // The event as stored - whether a provider has it, and its guests - which
   // decides where it may move (see calendarOptions). An occurrence's is read
   // with its guest list.
-  const [stored, setStored] = useState<Pick<CalendarEvent, 'etag' | 'providerEventId' | 'attendees'> | null>(
-    data?.event ?? null
-  )
+  const [stored, setStored] = useState<CalendarEvent | null>(data?.event ?? null)
 
   // null: none picked here yet (see editorReminders).
   const [reminders, setReminders] = useState<EventReminder[] | null>(initial.reminders)
@@ -495,7 +515,8 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
   const [rsvpBusy, setRsvpBusy] = useState(false)
 
   const [isDirty, setIsDirty] = useState<boolean>(false)
-  const [showDiscardConfirm, setShowDiscardConfirm] = useState<boolean>(false)
+  const [discardAction, setDiscardAction] = useState<'close' | 'series' | null>(null)
+  const [openingSeries, setOpeningSeries] = useState(false)
   const [shareSuccess, setShareSuccess] = useState<boolean>(false)
 
   // A new event's title is read for when it is ("Họp 3h chiều thứ 6"): the
@@ -513,7 +534,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
     [readsTitle, title, entryContext]
   )
 
-  // Read the full event behind an occurrence, including the series' rule.
+  // Read the full event behind an occurrence for its shared fields and the series editor.
   useEffect(() => {
     const eventId = data?.occurrence?.eventId ?? (data?.event?.attendees === undefined ? data?.event?.id : undefined)
     if (!eventId || !window.xrncal?.events?.getById) return
@@ -531,16 +552,6 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
             : loaded
         )
         if (!remindersTouchedRef.current) setReminders(res.event.reminders ?? null)
-        if (isRecurringOccurrence && res.event.rrule && !repeatTouched.current) {
-          const repeat = recurrenceFields(res.event.rrule, initial.allDay ? 'utc' : initial.tzid)
-          setRecurrencePreset(repeat.recurrencePreset)
-          setCustomRrule(repeat.customRrule)
-          setRecurrenceInterval(repeat.recurrenceInterval)
-          setRecurrenceByDay(repeat.recurrenceByDay)
-          setRecurrenceEnd(repeat.recurrenceEnd)
-          setRecurrenceUntil(repeat.recurrenceUntil)
-          setRecurrenceCount(repeat.recurrenceCount)
-        }
         setAttendeesLoaded(true)
         setStored(res.event)
       })
@@ -550,7 +561,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
     return () => {
       cancelled = true
     }
-  }, [data, initial.allDay, initial.tzid, isRecurringOccurrence])
+  }, [data])
 
   /**
    * The slot the title suggestions are being asked about, in the same shape the
@@ -785,7 +796,13 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
     setStartDateStr(newStart)
     setIsDirty(true)
     scheduleEdited()
-    if (!endDateStr || endDateStr < newStart) setEndDateStr(newStart)
+    const from = DateTime.fromISO(startDateStr, { zone: 'utc' })
+    const to = DateTime.fromISO(newStart, { zone: 'utc' })
+    const end = DateTime.fromISO(endDateStr, { zone: 'utc' })
+    const moved = from.isValid && to.isValid && end.isValid
+      ? end.plus({ days: to.diff(from, 'days').days }).toISODate()
+      : null
+    setEndDateStr(moved && moved >= newStart ? moved : newStart)
   }
 
   /**
@@ -835,8 +852,27 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
   }
 
   const handleCloseAttempt = () => {
-    if (isDirty) setShowDiscardConfirm(true)
+    if (isDirty) setDiscardAction('close')
     else onClose()
+  }
+
+  const openSeries = async () => {
+    if (!onEditSeries || !data?.occurrence || openingSeries) return
+    setOpeningSeries(true)
+    try {
+      const event = (await window.xrncal?.events.getById(data.occurrence.eventId))?.event
+      if (!event?.rrule && !event?.lunarRule) throw new Error(t('editor.seriesUnavailable'))
+      onEditSeries(event)
+    } catch (err) {
+      showFriendlyError(err, t('editor.seriesUnavailable'))
+    } finally {
+      setOpeningSeries(false)
+    }
+  }
+
+  const handleEditSeries = () => {
+    if (isDirty) setDiscardAction('series')
+    else void openSeries()
   }
 
   const inviteSelf = invitationSelf(attendees)
@@ -909,6 +945,10 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
     yearly: 'YEARLY'
   }
 
+  const storedRuleParts = parseRruleParts(customRrule)
+  const storedMonthDay = monthlyDay(storedRuleParts)
+  const ordinal = ordinalEdit ?? monthlyOrdinal(storedRuleParts)
+
   const buildRrule = (): string | undefined => {
     if (recurrencePreset === 'custom') return customRrule.trim() || undefined
     const freq = RECURRENCE_FREQ[recurrencePreset]
@@ -919,11 +959,22 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
     if (recurrencePreset === 'weekly' && recurrenceByDay.length > 0) {
       parts.push(`BYDAY=${recurrenceByDay.join(',')}`)
     }
+    if (recurrencePreset === 'monthly' && storedMonthDay) parts.push(`BYMONTHDAY=${storedMonthDay}`)
+    if (recurrencePreset === 'monthly' && ordinal) {
+      parts.push(`BYSETPOS=${ordinal.position}`, `BYDAY=${ordinal.weekday}`)
+    }
     if (recurrenceEnd === 'onDate' && recurrenceUntil) {
-      // The series' last day ends in its own zone; an all-day one's dates are UTC.
-      const untilZone = allDay || isLunarYearly ? 'utc' : editZone(tzid)
-      const untilUtc = DateTime.fromISO(recurrenceUntil, { zone: untilZone }).endOf('day').toUTC()
-      if (untilUtc.isValid) parts.push(`UNTIL=${untilUtc.toFormat("yyyyMMdd'T'HHmmss'Z'")}`)
+      const untilZone = allDay ? 'utc' : editZone(tzid)
+      const storedUntil = storedRuleParts.UNTIL
+      if (storedUntil && DateTime.fromISO(storedUntil, { zone: untilZone }).toISODate() === recurrenceUntil) {
+        parts.push(`UNTIL=${storedUntil}`)
+      } else {
+        const until = DateTime.fromISO(recurrenceUntil, { zone: untilZone })
+        if (until.isValid) {
+          const value = allDay ? until.toFormat('yyyyMMdd') : until.endOf('day').toUTC().toFormat("yyyyMMdd'T'HHmmss'Z'")
+          parts.push(`UNTIL=${value}`)
+        }
+      }
     } else if (recurrenceEnd === 'afterCount' && recurrenceCount > 0) {
       parts.push(`COUNT=${recurrenceCount}`)
     }
@@ -1006,7 +1057,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
       title: parsedTitle?.title ?? title.trim(),
       notes: textFieldUpdate(notes, initial.notes),
       location: textFieldUpdate(location, initial.location),
-      meetingUrl: textFieldUpdate(meetingUrl, initial.meetingUrl),
+      meetingUrl: isRecurringOccurrence ? undefined : textFieldUpdate(meetingUrl, initial.meetingUrl),
       // '' clears an event's own colour; undefined would keep it.
       color,
       allDay: isLunarYearly ? true : allDay,
@@ -1014,19 +1065,21 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
       dtStartUtc: startIso,
       dtEndUtc: endIso,
       // Only a repeat edit replaces the series' stored rule.
-      rrule: !isEditing || repeatTouched.current
+      rrule: !isRecurringOccurrence && (!isEditing || repeatTouched.current)
         ? repeatUpdate(buildRrule(), recurrencePreset, initial.recurrencePreset)
         : undefined,
-      lunarRule: isLunarYearly ? lunarSpec! : null,
+      lunarRule: isRecurringOccurrence ? undefined : isLunarYearly ? lunarSpec! : null,
       // An edit sends guests only when they were changed here, and only once
       // the list has loaded. Sending the list untouched would overwrite
       // whatever a sync brought in meanwhile - on an invitation, possibly the
       // reply given on another device.
-      attendees: !isEditing || (attendeesTouchedRef.current && attendeesLoaded) ? attendees : undefined,
+      attendees: !isRecurringOccurrence && (!isEditing || (attendeesTouchedRef.current && attendeesLoaded))
+        ? attendees
+        : undefined,
       // An edit that leaves reminders alone does not send them, so a sync
       // that changed them meanwhile is not undone. A new event is saved with
       // what it shows: the defaults, unless others were picked.
-      reminders: isEditing && !remindersTouched ? undefined : shownReminders
+      reminders: isRecurringOccurrence || (isEditing && !remindersTouched) ? undefined : shownReminders
     }
 
     onSave({
@@ -1053,9 +1106,8 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
     if (e.key === 'Escape') {
       // A picker popover stops its own Escape from reaching this handler, so
       // arriving here means nothing smaller is open.
-      if (showDiscardConfirm) setShowDiscardConfirm(false)
-      else if (isDirty) setShowDiscardConfirm(true)
-      else onClose()
+      if (discardAction) setDiscardAction(null)
+      else handleCloseAttempt()
       return
     }
 
@@ -1063,7 +1115,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
     // and a bare letter belongs to whichever one has focus.
     const command = editorCommandForKey(
       { key: e.key, ctrl: e.ctrlKey || e.metaKey, inTextField: isTextField(e.target as HTMLElement | null) },
-      showDiscardConfirm
+      Boolean(discardAction)
     )
     if (!command) return
     e.preventDefault()
@@ -1182,7 +1234,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
         }`}
         role="dialog"
         aria-modal="true"
-        aria-label={isEditing ? t('editor.editEvent') : t('editor.newEvent')}
+        aria-label={editorTitle}
         tabIndex={-1}
         onKeyDown={onDialogKeyDown}
       >
@@ -1193,13 +1245,21 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
               style={{ backgroundColor: selectedCalendar?.color || '#4A90E2' }}
             />
             <h3 className="text-sm font-semibold text-primary">
-              {isEditing ? t('editor.editEvent') : t('editor.newEvent')}
+              {editorTitle}
             </h3>
           </div>
 
-          <button onClick={handleCloseAttempt} className="gc-icon-btn">
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-1.5">
+            {isRecurringOccurrence && onEditSeries && (
+              <button type="button" onClick={handleEditSeries} disabled={openingSeries} className="gc-btn">
+                <Repeat className="h-3.5 w-3.5" />
+                {t('editor.editSeries')}
+              </button>
+            )}
+            <button onClick={handleCloseAttempt} className="gc-icon-btn">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         <form
@@ -1252,7 +1312,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
           </div>
 
           <div className="space-y-0">
-            {inviteSelf && (
+            {inviteSelf && !isRecurringOccurrence && (
               <FormRow label={t('editor.rsvpLabel')} divider>
                 <div className="flex items-center gap-1 px-2.5 py-1">
                   {(
@@ -1369,182 +1429,216 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
               </FormRow>
             )}
 
-            {/* Repeat sits right under the dates it repeats, not at the foot of the form. */}
-            <FormRow label={t('editor.repeat')} divider={recurrencePreset === 'none' || recurrencePreset === 'custom'}>
-              <CustomSelect
-                value={recurrencePreset}
-                onChange={(val) => {
-                  editRepeat(setRecurrencePreset, val)
-                  if (val === 'lunar-yearly' && chineseLunar && recurrencePreset !== val) {
-                    const date = DateTime.fromISO(startDateStr)
-                    if (date.isValid) setLunarLeap(lunarRuleForDate(date.day, date.month, date.year, true).leap)
-                  }
-                  // A new giỗ gets a day's notice unless there is an all-day
-                  // default (or reminders were already picked).
-                  if (
-                    val === 'lunar-yearly' &&
-                    !isEditing &&
-                    !remindersTouched &&
-                    defaultAllDayReminderMinutes === null
-                  ) {
-                    changeReminders([{ minutesBefore: LUNAR_ANNIVERSARY_REMINDER }])
-                  }
-                  if (val === 'weekly' && recurrenceByDay.length === 0 && startDateStr) {
-                    const d = DateTime.fromISO(startDateStr)
-                    if (d.isValid) setRecurrenceByDay([WEEKDAY_CODES[d.weekday - 1]])
-                  }
-                }}
-                options={recurrenceOptions}
-              />
-            </FormRow>
-
-            {(['daily', 'weekly', 'monthly', 'yearly'] as string[]).includes(recurrencePreset) && (
-              <FormRow label="" divider alignTop>
-                <div className="w-full space-y-2.5 py-1.5">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted">{t('editor.repeatEvery')}</span>
-                    <NumberInput
-                      value={recurrenceInterval}
-                      onChange={(v) => editRepeat(setRecurrenceInterval, Math.max(1, Math.round(v)))}
-                      min={1}
-                      max={999}
-                    />
-                    <span className="text-xs text-muted">
-                      {t(
-                        {
-                          daily: 'editor.repeatUnitDaily',
-                          weekly: 'editor.repeatUnitWeekly',
-                          monthly: 'editor.repeatUnitMonthly',
-                          yearly: 'editor.repeatUnitYearly'
-                        }[recurrencePreset] as string
-                      )}
-                    </span>
-                  </div>
-
-                  {recurrencePreset === 'weekly' && (
-                    <div className="flex items-center gap-1">
-                      {WEEKDAY_CODES.map((code) => (
-                        <button
-                          key={code}
-                          type="button"
-                          onClick={() => editRepeat(setRecurrenceByDay, toggleWeekday(recurrenceByDay, code))}
-                          aria-pressed={recurrenceByDay.includes(code)}
-                          className={`h-6 w-6 shrink-0 cursor-pointer rounded-full text-[10px] font-semibold transition-colors ${
-                            recurrenceByDay.includes(code)
-                              ? 'bg-accent text-white'
-                              : 'bg-hover text-muted hover:text-primary'
-                          }`}
-                        >
-                          {t(`editor.weekdayShort.${code.toLowerCase()}`)}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="flex items-center gap-2">
-                    <span className="w-[72px] shrink-0 text-xs text-muted">{t('editor.repeatEnds')}</span>
-                    <CustomSelect
-                      value={recurrenceEnd}
-                      onChange={(val) => editRepeat(setRecurrenceEnd, val as typeof recurrenceEnd)}
-                      options={[
-                        { value: 'never', label: t('editor.repeatEndsNever') },
-                        { value: 'onDate', label: t('editor.repeatEndsOnDate') },
-                        { value: 'afterCount', label: t('editor.repeatEndsAfter') }
-                      ]}
-                    />
-                  </div>
-
-                  {recurrenceEnd === 'onDate' && (
-                    <DatePicker
-                      value={recurrenceUntil}
-                      onChange={(val) => editRepeat(setRecurrenceUntil, val)}
-                      minDate={startDateStr}
-                      placeholder={t('editor.endDate')}
-                    />
-                  )}
-
-                  {recurrenceEnd === 'afterCount' && (
-                    <div className="flex items-center gap-2">
-                      <NumberInput
-                        value={recurrenceCount}
-                        onChange={(v) => editRepeat(setRecurrenceCount, Math.max(1, Math.round(v)))}
-                        min={1}
-                        max={999}
-                      />
-                      <span className="text-xs text-muted">{t('editor.repeatOccurrences')}</span>
-                    </div>
-                  )}
-                </div>
-              </FormRow>
-            )}
-
-            {recurrencePreset === 'custom' && (
-              <FormRow label="" divider>
-                <TextInput
-                  value={customRrule}
-                  onChange={(val) => editRepeat(setCustomRrule, val)}
-                  placeholder={t('editor.customRrulePlaceholder')}
-                  inputClassName="font-mono text-xs"
-                  variant="boxed"
-                />
-              </FormRow>
-            )}
-
-            {isLunarYearly && (
-              <FormRow label={t('editor.lunarDate')} divider alignTop>
-                <div className="px-2.5 py-2 space-y-2 w-full">
-                  <div className="text-xs text-primary">
-                    {lunarSpec ? describeLunarSpec(lunarSpec) : t('editor.lunarPickDate')}
-                  </div>
-                  <label className="flex items-center gap-2 text-xs text-muted cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={lunarLeap}
-                      onChange={(e) => editSchedule(setLunarLeap, e.target.checked)}
-                    />
-                    {t('editor.lunarLeapCheckbox')}
-                  </label>
-                  {lunarPreview.length > 0 && (
-                    <div className="text-[11px] text-muted leading-relaxed">
-                      {t('editor.lunarNext', { dates: lunarPreview.join(' · ') })}
-                    </div>
-                  )}
-                </div>
-              </FormRow>
-            )}
-
-            {isLunarYearly && isEditing && writableCalendars.length > 0 && (
-              <FormRow label={t('editor.addToCalendar')} divider alignTop>
-                <div className="px-2.5 py-2 space-y-2 w-full">
+            {isRecurringOccurrence ? (
+              <p className="border-b border-hairline py-3 text-sm text-muted">{t('editor.seriesOccurrence')}</p>
+            ) : (
+              <>
+                {/* Repeat sits right under the dates it repeats, not at the foot of the form. */}
+                <FormRow label={t('editor.repeat')} divider={recurrencePreset === 'none' || recurrencePreset === 'custom'}>
                   <CustomSelect
-                    value={materializeTargetId || writableCalendars[0].id}
-                    onChange={setMaterializeTargetId}
-                    options={writableCalendars.map((c) => ({
-                      value: c.id,
-                      label: c.name,
-                      color: c.color
-                    }))}
+                    value={recurrencePreset}
+                    onChange={(val) => {
+                      editRepeat(setRecurrencePreset, val)
+                      if (val === 'lunar-yearly' && chineseLunar && recurrencePreset !== val) {
+                        const date = DateTime.fromISO(startDateStr)
+                        if (date.isValid) setLunarLeap(lunarRuleForDate(date.day, date.month, date.year, true).leap)
+                      }
+                      // A new giỗ gets a day's notice unless there is an all-day
+                      // default (or reminders were already picked).
+                      if (
+                        val === 'lunar-yearly' &&
+                        !isEditing &&
+                        !remindersTouched &&
+                        defaultAllDayReminderMinutes === null
+                      ) {
+                        changeReminders([{ minutesBefore: LUNAR_ANNIVERSARY_REMINDER }])
+                      }
+                      if (val === 'weekly' && recurrenceByDay.length === 0 && startDateStr) {
+                        const d = DateTime.fromISO(startDateStr)
+                        if (d.isValid) setRecurrenceByDay([WEEKDAY_CODES[d.weekday - 1]])
+                      }
+                    }}
+                    options={recurrenceOptions}
                   />
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleMaterializeLunar}
-                      disabled={lunarBusy}
-                      className="gc-btn text-xs disabled:opacity-50"
-                    >
-                      {t('editor.generateThrough', { year: DateTime.local().year + 10 })}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleDetachLunar}
-                      disabled={lunarBusy}
-                      className="px-2.5 py-1.5 text-xs text-today hover:opacity-80 transition-opacity cursor-pointer disabled:opacity-50"
-                    >
-                      {t('editor.removeSyncedCopies')}
-                    </button>
-                  </div>
-                </div>
-              </FormRow>
+                </FormRow>
+
+                {(['daily', 'weekly', 'monthly', 'yearly'] as string[]).includes(recurrencePreset) && (
+                  <FormRow label="" divider alignTop>
+                    <div className="w-full space-y-2.5 py-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted">{t('editor.repeatEvery')}</span>
+                        <NumberInput
+                          value={recurrenceInterval}
+                          onChange={(v) => editRepeat(setRecurrenceInterval, Math.max(1, Math.round(v)))}
+                          min={1}
+                          max={999}
+                        />
+                        <span className="text-xs text-muted">
+                          {t(
+                            {
+                              daily: 'editor.repeatUnitDaily',
+                              weekly: 'editor.repeatUnitWeekly',
+                              monthly: 'editor.repeatUnitMonthly',
+                              yearly: 'editor.repeatUnitYearly'
+                            }[recurrencePreset] as string
+                          )}
+                        </span>
+                      </div>
+
+                      {recurrencePreset === 'monthly' && ordinal && (
+                        <div className="grid grid-cols-2 gap-2">
+                          <CustomSelect
+                            label={t('editor.repeatOrdinal')}
+                            value={ordinal.position}
+                            options={['1', '2', '3', '4', '5'].map((position) => ({
+                              value: position,
+                              label: t('editor.repeatOrdinalValue', { position })
+                            }))}
+                            onChange={(position) => editRepeat(setOrdinalEdit, { ...ordinal, position })}
+                          />
+                          <CustomSelect
+                            label={t('editor.repeatWeekday')}
+                            value={ordinal.weekday}
+                            options={Info.weekdays('long', { locale: i18n.language }).map((label, index) => ({
+                              value: WEEKDAY_CODES[index],
+                              label
+                            }))}
+                            onChange={(weekday) => editRepeat(setOrdinalEdit, { ...ordinal, weekday })}
+                          />
+                        </div>
+                      )}
+                      {recurrencePreset === 'monthly' && !ordinal && (
+                        <p className="text-xs text-muted">
+                          {t('editor.repeatMonthDay', { day: storedMonthDay ?? DateTime.fromISO(startDateStr).day })}
+                        </p>
+                      )}
+
+                      {recurrencePreset === 'weekly' && (
+                        <div className="flex items-center gap-1">
+                          {WEEKDAY_CODES.map((code) => (
+                            <button
+                              key={code}
+                              type="button"
+                              onClick={() => editRepeat(setRecurrenceByDay, toggleWeekday(recurrenceByDay, code))}
+                              aria-pressed={recurrenceByDay.includes(code)}
+                              className={`h-6 w-6 shrink-0 cursor-pointer rounded-full text-[10px] font-semibold transition-colors ${
+                                recurrenceByDay.includes(code)
+                                  ? 'bg-accent text-white'
+                                  : 'bg-hover text-muted hover:text-primary'
+                              }`}
+                            >
+                              {t(`editor.weekdayShort.${code.toLowerCase()}`)}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-2">
+                        <span className="w-[72px] shrink-0 text-xs text-muted">{t('editor.repeatEnds')}</span>
+                        <CustomSelect
+                          value={recurrenceEnd}
+                          onChange={(val) => editRepeat(setRecurrenceEnd, val as typeof recurrenceEnd)}
+                          options={[
+                            { value: 'never', label: t('editor.repeatEndsNever') },
+                            { value: 'onDate', label: t('editor.repeatEndsOnDate') },
+                            { value: 'afterCount', label: t('editor.repeatEndsAfter') }
+                          ]}
+                        />
+                      </div>
+
+                      {recurrenceEnd === 'onDate' && (
+                        <DatePicker
+                          value={recurrenceUntil}
+                          onChange={(val) => editRepeat(setRecurrenceUntil, val)}
+                          minDate={startDateStr}
+                          placeholder={t('editor.endDate')}
+                        />
+                      )}
+
+                      {recurrenceEnd === 'afterCount' && (
+                        <div className="flex items-center gap-2">
+                          <NumberInput
+                            value={recurrenceCount}
+                            onChange={(v) => editRepeat(setRecurrenceCount, Math.max(1, Math.round(v)))}
+                            min={1}
+                            max={999}
+                          />
+                          <span className="text-xs text-muted">{t('editor.repeatOccurrences')}</span>
+                        </div>
+                      )}
+                    </div>
+                  </FormRow>
+                )}
+
+                {recurrencePreset === 'custom' && (
+                  <FormRow label="" divider>
+                    <TextInput
+                      value={customRrule}
+                      onChange={(val) => editRepeat(setCustomRrule, val)}
+                      placeholder={t('editor.customRrulePlaceholder')}
+                      inputClassName="font-mono text-xs"
+                      variant="boxed"
+                    />
+                  </FormRow>
+                )}
+
+                {isLunarYearly && (
+                  <FormRow label={t('editor.lunarDate')} divider alignTop>
+                    <div className="px-2.5 py-2 space-y-2 w-full">
+                      <div className="text-xs text-primary">
+                        {lunarSpec ? describeLunarSpec(lunarSpec) : t('editor.lunarPickDate')}
+                      </div>
+                      <label className="flex items-center gap-2 text-xs text-muted cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={lunarLeap}
+                          onChange={(e) => editSchedule(setLunarLeap, e.target.checked)}
+                        />
+                        {t('editor.lunarLeapCheckbox')}
+                      </label>
+                      {lunarPreview.length > 0 && (
+                        <div className="text-[11px] text-muted leading-relaxed">
+                          {t('editor.lunarNext', { dates: lunarPreview.join(' · ') })}
+                        </div>
+                      )}
+                    </div>
+                  </FormRow>
+                )}
+
+                {isLunarYearly && isEditing && writableCalendars.length > 0 && (
+                  <FormRow label={t('editor.addToCalendar')} divider alignTop>
+                    <div className="px-2.5 py-2 space-y-2 w-full">
+                      <CustomSelect
+                        value={materializeTargetId || writableCalendars[0].id}
+                        onChange={setMaterializeTargetId}
+                        options={writableCalendars.map((c) => ({
+                          value: c.id,
+                          label: c.name,
+                          color: c.color
+                        }))}
+                      />
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleMaterializeLunar}
+                          disabled={lunarBusy}
+                          className="gc-btn text-xs disabled:opacity-50"
+                        >
+                          {t('editor.generateThrough', { year: DateTime.local().year + 10 })}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleDetachLunar}
+                          disabled={lunarBusy}
+                          className="px-2.5 py-1.5 text-xs text-today hover:opacity-80 transition-opacity cursor-pointer disabled:opacity-50"
+                        >
+                          {t('editor.removeSyncedCopies')}
+                        </button>
+                      </div>
+                    </div>
+                  </FormRow>
+                )}
+              </>
             )}
 
             {!allDay && !isLunarYearly && (
@@ -1566,16 +1660,22 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
             )}
 
             <FormRow label={t('reminders.label')} divider alignTop>
-              <ReminderListField
-                reminders={shownReminders}
-                allDay={allDay || isLunarYearly}
-                onChange={changeReminders}
-                // Fills the defaults in, as they would be on a new event; the
-                // event keeps them as its own list from then on.
-                onUseDefault={
-                  remindersEqual(shownReminders, defaultReminderList) ? undefined : () => changeReminders(defaultReminderList)
-                }
-              />
+              {isRecurringOccurrence ? (
+                <span className="px-2.5 py-1 text-xs text-muted">
+                  {shownReminders.map((reminder) => reminderLabel(t, reminder, allDay, timeFormat)).join(' · ') || t('reminders.none')}
+                </span>
+              ) : (
+                <ReminderListField
+                  reminders={shownReminders}
+                  allDay={allDay || isLunarYearly}
+                  onChange={changeReminders}
+                  // Fills the defaults in, as they would be on a new event; the
+                  // event keeps them as its own list from then on.
+                  onUseDefault={
+                    remindersEqual(shownReminders, defaultReminderList) ? undefined : () => changeReminders(defaultReminderList)
+                  }
+                />
+              )}
             </FormRow>
 
             <FormRow label={t('editor.location')} divider>
@@ -1589,6 +1689,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
             <FormRow label={t('editor.meetingUrl')} divider>
               <TextInput
                 value={meetingUrl}
+                disabled={isRecurringOccurrence}
                 onChange={(val) => handleFieldChange(setMeetingUrl, val)}
                 placeholder={t('editor.meetingUrlPlaceholder')}
                 type="url"
@@ -1632,7 +1733,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
                           )}
                         </span>
                         {/* A guest cannot change the guest list, only answer. */}
-                        {!inviteSelf && (
+                        {!inviteSelf && !isRecurringOccurrence && (
                           <button
                             type="button"
                             onClick={() => handleRemoveAttendee(a.email)}
@@ -1645,7 +1746,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
                     ))}
                   </div>
                 )}
-                {!inviteSelf && (
+                {!inviteSelf && !isRecurringOccurrence && (
                   <div className="flex items-center gap-1.5">
                     <TextInput
                       value={attendeeInput}
@@ -1730,7 +1831,7 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
           </div>
         </div>
 
-        {showDiscardConfirm && (
+        {discardAction && (
           <div className="absolute inset-0 bg-black/70 flex items-center justify-center p-6 z-60">
             <div
               className="bg-dialog border border-hairline p-5 max-w-xs w-full"
@@ -1739,13 +1840,14 @@ export const EventEditorDialog: React.FC<EventEditorDialogProps> = ({
               <h4 className="text-sm font-semibold text-primary mb-1.5">{t('editor.discardTitle')}</h4>
               <p className="text-xs text-muted mb-4">{t('editor.discardBody')}</p>
               <div className="flex justify-end gap-2">
-                <button onClick={() => setShowDiscardConfirm(false)} className="gc-btn text-xs">
+                <button onClick={() => setDiscardAction(null)} className="gc-btn text-xs">
                   {t('editor.keepEditing')}
                 </button>
                 <button
                   onClick={() => {
-                    setShowDiscardConfirm(false)
-                    onClose()
+                    setDiscardAction(null)
+                    if (discardAction === 'series') void openSeries()
+                    else onClose()
                   }}
                   className="px-3 py-1.5 text-xs text-today hover:opacity-80 transition-opacity cursor-pointer font-medium"
                 >

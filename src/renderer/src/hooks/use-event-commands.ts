@@ -61,6 +61,28 @@ function occurrenceAsUpdate(occ: ExpandedOccurrence): UpdateEventInput {
   }
 }
 
+function recurringMove(
+  occ: ExpandedOccurrence,
+  start: DateTime,
+  end: DateTime,
+  allDay = occ.allDay,
+  calendarId?: string
+): PendingRecurringScope & { input: UpdateEventInput } {
+  return {
+    action: 'edit',
+    title: occ.title,
+    eventId: occ.eventId,
+    occurrenceStartUtc: occ.originalStartUtc || occ.startUtc,
+    input: {
+      ...occurrenceAsUpdate(occ),
+      dtStartUtc: start.toUTC().toISO()!,
+      dtEndUtc: end.toUTC().toISO()!,
+      allDay,
+      calendarId
+    }
+  }
+}
+
 /** The inverse of deleting one, this-and-future, or all occurrences of a series. */
 function undoForScopedDelete(
   events: XrncalAPI['events'],
@@ -132,22 +154,16 @@ export function useEventCommands(deps: EventCommandDeps) {
           })
           pushUndo(() => events.delete(copied.id))
         } else if (occ.isRecurring) {
+          const move = recurringMove(occ, targetStart, targetEnd, targetAllDay)
+          if (!occ.isLunar) {
+            setPendingScope(move)
+            return
+          }
           await events.updateScope({
-            masterEventId: occ.eventId,
-            originalStartUtc: occ.originalStartUtc || occ.startUtc,
+            masterEventId: move.eventId,
+            originalStartUtc: move.occurrenceStartUtc,
             scope: 'this',
-            updateInput: {
-              title: occ.title,
-              dtStartUtc: targetStart.toUTC().toISO()!,
-              dtEndUtc: targetEnd.toUTC().toISO()!,
-              tzid: occ.tzid,
-              // Dropping one occurrence of an all-day series onto the hourly grid
-              // detaches just that occurrence as a timed event, like Google does.
-              allDay: targetAllDay === undefined ? occ.allDay : targetAllDay,
-              notes: occ.notes,
-              location: occ.location,
-              meetingUrl: occ.meetingUrl
-            }
+            updateInput: move.input
           })
           pushUndo(() =>
             events.updateScope({
@@ -202,19 +218,17 @@ export function useEventCommands(deps: EventCommandDeps) {
         await reload()
       } else if (payload.eventId) {
         if (payload.isRecurringOccurrence && payload.occurrenceStartUtc) {
-          closeEditor()
-          setPendingScope({
-            action: 'edit',
-            title: (payload.input as UpdateEventInput).title || '',
-            eventId: payload.eventId,
-            occurrenceStartUtc: payload.occurrenceStartUtc,
-            input: payload.input as UpdateEventInput
+          await window.xrncal.events.updateScope({
+            masterEventId: payload.eventId,
+            originalStartUtc: payload.occurrenceStartUtc,
+            scope: 'this',
+            updateInput: payload.input
           })
         } else {
-          await window.xrncal.events.update(payload.eventId, payload.input as UpdateEventInput)
-          closeEditor()
-          await reload()
+          await window.xrncal.events.update(payload.eventId, payload.input)
         }
+        closeEditor()
+        await reload()
       }
     } catch (err) {
       showFriendlyError(err, t('toast.saveFailed'))
@@ -369,18 +383,13 @@ export function useEventCommands(deps: EventCommandDeps) {
 
     try {
       if (drop.occurrence.isRecurring) {
-        close()
-        setPendingScope({
-          action: 'edit',
-          title: drop.occurrence.title,
-          eventId: drop.occurrence.eventId,
-          occurrenceStartUtc: drop.occurrence.originalStartUtc || drop.occurrence.startUtc,
-          input: {
-            dtStartUtc: drop.targetStart.toUTC().toISO()!,
-            dtEndUtc: drop.targetEnd.toUTC().toISO()!,
-            title: drop.occurrence.title
-          }
-        })
+        if (!drop.occurrence.isLunar) {
+          close()
+          setPendingScope(recurringMove(drop.occurrence, drop.targetStart, drop.targetEnd, undefined, targetCalId))
+        } else {
+          await moveOccurrence(drop.occurrence, drop.targetStart, drop.targetEnd, false)
+          close()
+        }
         return
       }
 

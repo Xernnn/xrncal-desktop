@@ -769,6 +769,19 @@ UPDATE calendars SET color_is_custom = 0
 WHERE id IN (SELECT calendar_id FROM calendar_color_push);
 `
 
+/** The ICS parser now resolves named zones whose VTIMEZONE has no rules.
+ *  Re-read unchanged CalDAV resources and subscribed feeds on the next sync. */
+const MIGRATION_034_SQL = `
+UPDATE sync_state SET sync_token = NULL
+WHERE calendar_id IN (
+  SELECT c.id FROM calendars c JOIN accounts a ON a.id = c.account_id
+  WHERE a.type = 'caldav' OR c.subscription_url IS NOT NULL
+);
+
+UPDATE calendars SET subscription_refreshed_at = NULL
+WHERE subscription_url IS NOT NULL;
+`
+
 /** Every migration in order: the one at index i is version i + 1. */
 const MIGRATIONS: readonly string[] = [
   MIGRATION_001_SQL,
@@ -803,7 +816,8 @@ const MIGRATIONS: readonly string[] = [
   MIGRATION_030_SQL,
   MIGRATION_031_SQL,
   MIGRATION_032_SQL,
-  MIGRATION_033_SQL
+  MIGRATION_033_SQL,
+  MIGRATION_034_SQL
 ]
 
 /** The newest migration this build knows: a restore refuses a backup made by

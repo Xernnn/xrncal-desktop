@@ -5,8 +5,13 @@ import { launchApp, type RunningApp } from './app'
 
 test('the toolbar refreshes all configured feeds or just the selected calendar', async () => {
   const requests: string[] = []
-  const server = createServer((req, res) => {
+  let responseStatus = 200
+  let waitForRelease: Promise<void> | undefined
+  let releaseResponse: (() => void) | undefined
+  const server = createServer(async (req, res) => {
     requests.push(req.url ?? '')
+    await waitForRelease
+    res.statusCode = responseStatus
     res.end('BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR\r\n')
   })
   let running: RunningApp | undefined
@@ -20,6 +25,7 @@ test('the toolbar refreshes all configured feeds or just the selected calendar',
     const { page } = running
     await page.evaluate(async (url) => {
       await window.xrncal.settings.set('locale', 'zh-CN')
+      await window.xrncal.settings.set('theme', 'dark')
       await window.xrncal.subscriptions.add(`${url}/first.ics`, 'First online calendar')
       await window.xrncal.subscriptions.add(`${url}/second.ics`, 'Second online calendar')
     }, base)
@@ -34,14 +40,31 @@ test('the toolbar refreshes all configured feeds or just the selected calendar',
     requests.length = 0
     await header.getByRole('button', { name: 'First online calendar', exact: true }).click()
     await expect(page.getByText('同步完成', { exact: true })).toBeVisible()
+    const success = page.locator('[data-sonner-toast][data-type="success"]')
+    await expect(success.locator('[data-title]')).toHaveCSS('color', 'rgb(219, 222, 225)')
+    await expect(success.locator('[data-description]')).toHaveCSS('color', 'rgb(232, 232, 232)')
     expect(requests).toEqual(['/first.ics'])
 
     requests.length = 0
+    waitForRelease = new Promise<void>((resolve) => { releaseResponse = resolve })
     await sync.click()
+    const syncing = header.getByRole('button', { name: '正在同步…', exact: true })
+    await expect(syncing).toBeDisabled()
+    await expect(syncing).toHaveCSS('opacity', '1')
+    await expect(syncing).toHaveCSS('color', 'rgb(255, 255, 255)')
+    releaseResponse?.()
     await expect.poll(() => [...requests].sort()).toEqual(['/first.ics', '/second.ics'])
     await expect(sync).toBeEnabled()
+
+    responseStatus = 503
+    await sync.click()
+    await expect(page.getByText('同步失败', { exact: true })).toBeVisible()
+    const error = page.locator('[data-sonner-toast][data-type="error"]')
+    await expect(error.locator('[data-title]')).toHaveCSS('color', 'rgb(219, 222, 225)')
+    await expect(error.locator('[data-description]')).toHaveCSS('color', 'rgb(232, 232, 232)')
     expect(running.errors).toEqual([])
   } finally {
+    releaseResponse?.()
     try {
       await running?.close()
     } finally {

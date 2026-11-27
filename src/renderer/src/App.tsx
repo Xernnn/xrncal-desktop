@@ -80,7 +80,7 @@ export const App: React.FC = () => {
 const CalendarApp: React.FC = () => {
   const { t, i18n } = useTranslation()
   const { settings, ready, setSetting, setLanguage } = useSettings()
-  const { themeConfig } = useTheme()
+  const { themeConfig, isDark } = useTheme()
   const displayPreferences = useMemo(() => displayPreferencesOf(settings), [settings])
   const { firstDayOfWeek, dragSnapMinutes, defaultEventMinutes } = displayPreferences
 
@@ -716,6 +716,7 @@ const CalendarApp: React.FC = () => {
           onSave={commands.saveEvent}
           onDelete={commands.deleteEvent}
           onDataChanged={reload}
+          onEditSeries={(event) => openEditor({ event, initialClientX: editorData?.initialClientX })}
           onClose={closeEditor}
           onDraftChange={onDraftChange}
           onEmojiPicked={(emoji) =>
@@ -728,6 +729,8 @@ const CalendarApp: React.FC = () => {
         isOpen={Boolean(commands.pendingScope)}
         title={commands.pendingScope?.title || ''}
         action={commands.pendingScope?.action || 'edit'}
+        scopes={commands.pendingScope?.input?.lunarRule ? ['all'] :
+          commands.pendingScope?.input?.rrule !== undefined ? ['future', 'all'] : undefined}
         onConfirm={commands.confirmScope}
         onCancel={commands.cancelScope}
       />
@@ -824,7 +827,7 @@ const CalendarApp: React.FC = () => {
         }}
       />
 
-      <NotionToaster />
+      <NotionToaster theme={isDark ? 'dark' : 'light'} />
     </div>
     </DisplayPreferencesProvider>
   )

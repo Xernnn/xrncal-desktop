@@ -140,6 +140,28 @@ describe('a change to one occurrence applied to all events', () => {
     expect(stored.dtEndUtc).toBe('2026-08-03T09:30:00.000Z')
   })
 
+  it('moves a monthly series across months by the same calendar dates and carries its unchanged cutoff', () => {
+    const master = repo.createEvent({
+      calendarId: calId,
+      title: 'Monthly expiry',
+      dtStartUtc: '2026-06-09T00:00:00.000Z',
+      dtEndUtc: '2026-06-09T23:59:59.999Z',
+      tzid: 'floating',
+      allDay: true,
+      rrule: 'FREQ=MONTHLY;BYMONTHDAY=9;UNTIL=20270609T000000Z'
+    })
+
+    applyToAll(master.id, '2027-02-09T00:00:00.000Z', {
+      dtStartUtc: '2027-03-10T00:00:00.000Z',
+      dtEndUtc: '2027-03-10T23:59:59.999Z'
+    })
+
+    const saved = repo.getEventById(master.id)!.event
+    expect(saved.dtStartUtc).toBe('2026-07-10T00:00:00.000Z')
+    expect(saved.rrule).toBe('FREQ=MONTHLY;BYMONTHDAY=10;UNTIL=20270710T000000Z')
+    expect(repo.queryEventsByRange([calId], '2027-07-10T00:00:00.000Z', '2027-07-11T00:00:00.000Z')).toHaveLength(1)
+  })
+
   it('keeps an all-day series on whole days', () => {
     const master = repo.createEvent({
       calendarId: calId,

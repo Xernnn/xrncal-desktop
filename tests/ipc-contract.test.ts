@@ -51,6 +51,7 @@ describe('IPC Channels and Contracts', () => {
           showMiniCalendar: false,
           firstDayOfWeek: 1,
           timeFormat: '24h',
+          dateFormat: 'yyyy/MM/dd',
           theme: 'light',
           autoHideHeader: true,
           dayStartHour: 7,

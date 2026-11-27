@@ -11,6 +11,7 @@ import {
 import { DateTime } from 'luxon'
 import type { Calendar, EventSearchResult } from '@shared/event-model'
 import { formatClockTime, type TimeFormatPref } from '@shared/time-format'
+import { DEFAULT_APP_SETTINGS } from '@shared/settings-contract'
 import { useDisplayPreferences } from '../context/DisplayPreferencesContext'
 import { useDialogFocus } from '../hooks/use-dialog-focus'
 
@@ -27,14 +28,19 @@ function resultSpan(event: EventSearchResult): { startUtc: string; endUtc: strin
  * floating date parked at UTC midnight, so its date is read in UTC: in this
  * computer's zone it was the day before west of GMT.
  */
-export function resultWhen(event: EventSearchResult, timeFormat: TimeFormatPref, allDaySuffix: string): string {
+export function resultWhen(
+  event: EventSearchResult,
+  timeFormat: TimeFormatPref,
+  allDaySuffix: string,
+  dateFormat = DEFAULT_APP_SETTINGS.dateFormat
+): string {
   const span = resultSpan(event)
   if (span.allDay) {
-    return `${DateTime.fromISO(span.startUtc, { zone: 'utc' }).toFormat('dd/MM/yyyy')} (${allDaySuffix})`
+    return `${DateTime.fromISO(span.startUtc, { zone: 'utc' }).toFormat(dateFormat)} (${allDaySuffix})`
   }
   const dt = DateTime.fromISO(span.startUtc)
   const endDt = DateTime.fromISO(span.endUtc)
-  return `${dt.toFormat('dd/MM/yyyy')} ${formatClockTime(dt, timeFormat)} – ${formatClockTime(endDt, timeFormat)}`
+  return `${dt.toFormat(dateFormat)} ${formatClockTime(dt, timeFormat)} – ${formatClockTime(endDt, timeFormat)}`
 }
 
 /** The day the calendar goes to for a result: the date it shows (see resultWhen). */
@@ -59,7 +65,7 @@ export const SearchPaletteModal: React.FC<SearchPaletteModalProps> = ({
   onSelectEvent
 }) => {
   const { t } = useTranslation()
-  const { timeFormat } = useDisplayPreferences()
+  const { timeFormat, dateFormat } = useDisplayPreferences()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<EventSearchResult[]>([])
   const [selectedIndex, setSelectedIndex] = useState(0)
@@ -231,7 +237,7 @@ export const SearchPaletteModal: React.FC<SearchPaletteModalProps> = ({
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
                     <span className="flex items-center gap-1">
                       <Clock className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
-                      {resultWhen(evt, timeFormat, t('search.allDaySuffix'))}
+                      {resultWhen(evt, timeFormat, t('search.allDaySuffix'), dateFormat)}
                     </span>
 
                     {evt.location && (

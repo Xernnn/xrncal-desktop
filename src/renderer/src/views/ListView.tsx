@@ -232,8 +232,6 @@ export const ListView: React.FC<ListViewProps> = ({
               {items.map((occ, idx) => {
                 const startDt = DateTime.fromISO(occ.startUtc, { zone: 'utc' }).setZone('local')
                 const endDt = DateTime.fromISO(occ.endUtc, { zone: 'utc' }).setZone('local')
-                const bg = occ.color || DEFAULT_EVENT_COLOR
-
                 return (
                   <button
                     type="button"
@@ -241,13 +239,15 @@ export const ListView: React.FC<ListViewProps> = ({
                     onClick={() => onSelectOccurrence?.(occ)}
                     data-selected-occurrence={selectedOccurrenceId === occ.id || undefined}
                     data-occurrence-id={occ.id}
-                    className={`gc-event gc-stack-card-3d flex w-full cursor-pointer flex-col gap-1 rounded-[3px] px-3.5 py-3 text-left text-white shadow-xs sm:flex-row sm:items-center sm:justify-between ${
+                    className={`gc-event gc-stack-card-3d relative flex w-full cursor-pointer flex-col gap-1 rounded-[3px] px-3.5 py-3 text-left shadow-xs sm:flex-row sm:items-center sm:justify-between ${
+                      occ.allDay ? 'gc-event-all-day' : 'gc-event-timed bg-surface hover:bg-hover'
+                    } ${
                       selectedOccurrenceId === occ.id ? 'is-key-selected' : ''
                     }`}
                     style={{
-                      backgroundColor: bg,
+                      '--gc-event-color': occ.color || DEFAULT_EVENT_COLOR,
                       animationDelay: `${idx * 20}ms`
-                    }}
+                    } as React.CSSProperties}
                   >
                     <div>
                       <div className="flex items-center gap-2">

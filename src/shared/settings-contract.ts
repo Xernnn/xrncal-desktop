@@ -27,6 +27,8 @@ export interface AppSettings {
    *  chosen it follows the computer's region (see `defaultsForSystem`). */
   firstDayOfWeek: number
   timeFormat: '12h' | '24h'
+  /** Short date pattern from the system's regional settings. */
+  dateFormat: string
   theme: 'system' | 'dark' | 'light'
   themeAccent?: string
   themeCustomBg?: string
@@ -98,9 +100,8 @@ export interface AppSettings {
 }
 
 /**
- * What a setting is until the user picks something. `locale`, `timeFormat` and
- * `firstDayOfWeek` are overridden in the main process by what the computer is
- * set up for (`defaultsForSystem`), so these three are only the fallback.
+ * Language, date and time formats, and the start of the week follow the
+ * computer until they have been set explicitly.
  */
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   locale: 'en',
@@ -112,6 +113,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   showMiniCalendar: true,
   firstDayOfWeek: 1, // ISO standard Monday
   timeFormat: '24h',
+  dateFormat: 'dd/MM/yyyy',
   theme: 'system',
   themeAccent: '#5865f2',
   themeCustomBg: '',

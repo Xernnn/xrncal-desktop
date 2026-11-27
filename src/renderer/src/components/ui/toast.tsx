@@ -76,12 +76,10 @@ function copyAction(text: string): { label: string; onClick: () => void } {
 /**
  * Notion-styled Toaster component
  */
-export const NotionToaster: React.FC = () => {
+export const NotionToaster: React.FC<{ theme: 'light' | 'dark' }> = ({ theme }) => {
   return (
     <SonnerToaster
-      // Errors and warnings are the only toasts left, and both want to be read
-      // rather than glanced at. Top centre is where the eye already is, and it
-      // does not sit over the day's last hours the way bottom-right did.
+      theme={theme}
       position="top-center"
       expand={false}
       richColors={false}
@@ -94,7 +92,7 @@ export const NotionToaster: React.FC = () => {
       }}
       toastOptions={{
         style: {
-          background: 'var(--color-bg-surface)',
+          background: 'var(--color-bg-dialog)',
           color: 'var(--color-text-main)',
           border: '1px solid var(--color-border)',
           borderRadius: 'var(--radius-dialog)',

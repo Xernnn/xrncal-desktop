@@ -18,6 +18,7 @@ import { denyUnusedPermissions, devServerUrl, guardIpcSenders, lockDownContents 
 import { refreshHolidayCalendars } from './holidays/holiday-subscription'
 import { startAutoUpdates } from './updater'
 import { defaultsForSystem } from '@shared/locale-defaults'
+import { windowsShortDateFormat } from './system-date-format'
 import { IPC_CHANNELS } from '@shared/ipc-contract'
 import { applySavedSettingEffects } from './setting-effects'
 import { windowBackground } from './window-background'
@@ -222,6 +223,8 @@ if (!gotTheLock) {
     // A setting nobody has chosen follows the computer: its language when the
     // app has it, its clock, the day its weeks start on.
     const systemDefaults = defaultsForSystem(app.getPreferredSystemLanguages()[0], app.getSystemLocale())
+    const dateFormat = await windowsShortDateFormat()
+    if (dateFormat) systemDefaults.dateFormat = dateFormat
     setSystemDefaults(systemDefaults)
 
     // Without a database there is no app to open (every IPC handler reads it):

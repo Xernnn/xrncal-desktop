@@ -330,6 +330,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = (props) => {
 
               <div className="px-2.5 pt-3 pb-1 font-mono text-[11px] text-muted">
                 v{props.appVersion} ({props.platform})
+                <p className="mt-1">{t('settings.fontCredit')}</p>
               </div>
             </div>
           ) : (

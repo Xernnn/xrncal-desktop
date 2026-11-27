@@ -209,6 +209,66 @@ describe('CalDAV sync', () => {
     expect(new Set(calls.map((call) => call.url))).toEqual(new Set([CAL, siblingId]))
   })
 
+  it('reparses cached Shanghai times once even when the CalDAV ctag and etags match', async () => {
+    const accountId = 'shanghai-caldav-account'
+    new AccountsRepo(db).upsert({ id: accountId, type: 'caldav', name: 'Shanghai' })
+    db.prepare('UPDATE calendars SET account_id = ? WHERE id = ?').run(accountId, CAL)
+    vi.spyOn(SecureStore.prototype, 'getToken').mockReturnValue(CREDS)
+    vi.spyOn(engine, 'syncCalendarList').mockResolvedValue([{ id: CAL, ctag: 'ctag-1' }])
+    const samples = [
+      { uid: 'weekly', start: '20250124T200000', end: '20250124T220000', rule: 'RRULE:FREQ=WEEKLY;BYDAY=FR' },
+      { uid: 'flight-a', start: '20260608T193500', end: '20260609T054500' },
+      { uid: 'flight-b', start: '20260609T081500', end: '20260609T102000' }
+    ]
+    stubServer(samples.map(({ uid, start, end, rule }) => ({
+      name: `${uid}.ics`,
+      uid,
+      title: uid,
+      etag: `"${uid}"`,
+      ics: [
+        'BEGIN:VCALENDAR',
+        'VERSION:2.0',
+        'BEGIN:VTIMEZONE',
+        'TZID:Asia/Shanghai',
+        'END:VTIMEZONE',
+        'BEGIN:VEVENT',
+        `UID:${uid}`,
+        `DTSTART;TZID=Asia/Shanghai:${start}`,
+        `DTEND;TZID=Asia/Shanghai:${end}`,
+        ...(rule ? [rule] : []),
+        'END:VEVENT',
+        'END:VCALENDAR'
+      ].join('\r\n')
+    })))
+    await engine.syncAll(accountId)
+
+    // Recreate the previous importer storing each Shanghai wall time as UTC.
+    db.exec(`
+      UPDATE events SET dtstart_utc = strftime('%Y-%m-%dT%H:%M:%fZ', dtstart_utc, '+8 hours'),
+                        dtend_utc = strftime('%Y-%m-%dT%H:%M:%fZ', dtend_utc, '+8 hours');
+      DELETE FROM schema_migrations WHERE version = 34;
+    `)
+    expect(await engine.syncAll(accountId)).toMatchObject({ success: true, pulledCount: 0 })
+
+    reports = []
+    runMigrations(db)
+    expect(await engine.syncAll(accountId)).toMatchObject({ success: true, pulledCount: 3, pushedCount: 0 })
+    expect(reports).toEqual(['query'])
+    const eventTimes = db.prepare(
+      'SELECT uid, dtstart_utc, dtend_utc, etag FROM events WHERE calendar_id = ? ORDER BY uid'
+    ).all(CAL)
+    expect(eventTimes).toEqual([
+      { uid: 'flight-a', dtstart_utc: '2026-06-08T11:35:00.000Z', dtend_utc: '2026-06-08T21:45:00.000Z', etag: '"flight-a"' },
+      { uid: 'flight-b', dtstart_utc: '2026-06-09T00:15:00.000Z', dtend_utc: '2026-06-09T02:20:00.000Z', etag: '"flight-b"' },
+      { uid: 'weekly', dtstart_utc: '2025-01-24T12:00:00.000Z', dtend_utc: '2025-01-24T14:00:00.000Z', etag: '"weekly"' }
+    ])
+
+    reports = []
+    runMigrations(db)
+    expect(await engine.syncAll(accountId)).toMatchObject({ success: true, pulledCount: 0 })
+    expect(reports).toEqual([])
+  })
+
   it('updates an event xrncal pushed instead of inserting a copy', async () => {
     const created = repo.createEvent({
       calendarId: CAL,

@@ -35,7 +35,6 @@ export const EventPill: React.FC<EventPillProps> = ({
   onDragStart,
   onDragEnd
 }) => {
-  const bg = color || DEFAULT_EVENT_COLOR
   const dragStartedRef = useRef(false)
 
   const handleDragStart = (e: React.DragEvent) => {
@@ -82,7 +81,9 @@ export const EventPill: React.FC<EventPillProps> = ({
       title={title}
       data-selected-occurrence={isSelected || undefined}
       data-occurrence-id={occurrenceId}
-      className={`gc-event flex w-full min-w-0 items-center text-white ${
+      className={`gc-event flex w-full min-w-0 items-center ${
+        time ? 'gc-event-timed relative ps-3.5 hover:bg-hover' : 'gc-event-all-day'
+      } ${
         // Dense pills (all-day bars, Month view's mini list) are short enough that a
         // 6px radius - fine on a full-height timed block - eats a chunk of their own
         // height at each corner, which reads as extra empty space next to a neighbor.
@@ -92,7 +93,7 @@ export const EventPill: React.FC<EventPillProps> = ({
       } ${draggable ? 'cursor-grab active:cursor-grabbing' : ''} ${isDragging ? 'is-dragging' : ''} ${
         isSelected ? 'is-key-selected' : ''
       } ${className}`}
-      style={{ backgroundColor: bg }}
+      style={{ '--gc-event-color': color || DEFAULT_EVENT_COLOR } as React.CSSProperties}
     >
       {time ? <span className="shrink-0 opacity-90 font-mono text-[10px] mr-1">{time}</span> : null}
       <span className="min-w-0 flex-1 truncate font-medium">{title}</span>

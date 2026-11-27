@@ -1,8 +1,8 @@
 import ICAL from 'ical.js'
-import { DateTime, IANAZone } from 'luxon'
+import { IANAZone } from 'luxon'
 import type { AttendeeResponseStatus } from '@shared/event-model'
 import { normalizeReminders, type EventReminder } from '@shared/reminders'
-import { alarmAsReminder } from './parse-ics'
+import { alarmAsReminder, hasIcsTimeZoneRules, resolveIcsWallTime } from './parse-ics'
 
 /**
  * Carrying what the server's copy of an event holds, and xrncal does not model,
@@ -70,7 +70,8 @@ export function mergeServerCopy(generated: string, serverCopy: string, options: 
   const zones = new Map<string, ICAL.Component>()
   for (const vtz of src.getAllSubcomponents('vtimezone')) {
     const id = vtz.getFirstPropertyValue('tzid')
-    if (typeof id === 'string') zones.set(id, vtz)
+    // Keep the generated rules when a named zone only came with a stub.
+    if (typeof id === 'string' && (!IANAZone.isValidZone(id) || hasIcsTimeZoneRules(vtz))) zones.set(id, vtz)
   }
 
   const events = out.getAllSubcomponents('vevent')
@@ -265,14 +266,7 @@ function sameOccurrence(a: ICAL.Component, b: ICAL.Component): boolean {
 function instantOf(value: unknown): string {
   if (!(value instanceof ICAL.Time)) return String(value)
   if (value.isDate) return value.toString()
-  // A zone the file did not define reads as floating, its name left on the
-  // undeclared `timezone` field; an IANA name still resolves.
-  const tzid = (value as ICAL.Time & { timezone?: string }).timezone
-  if (tzid && value.zone?.tzid === 'floating' && IANAZone.isValidZone(tzid)) {
-    const { year, month, day, hour, minute, second } = value
-    return String(DateTime.fromObject({ year, month, day, hour, minute, second }, { zone: tzid }).toMillis())
-  }
-  return String(value.toUnixTime() * 1000)
+  return String(resolveIcsWallTime(value)?.toMillis() ?? value.toUnixTime() * 1000)
 }
 
 /** Start, end, rule and exceptions: what a guest has to be told about when it changes. */

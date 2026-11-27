@@ -38,13 +38,15 @@ describe('i18n resources', () => {
     }
   })
 
-  it('preserves interpolation placeholders in Simplified Chinese', () => {
+  it('preserves interpolation placeholders in all locales', () => {
     const placeholders = (value: unknown): string[] =>
       typeof value === 'string' ? [...value.matchAll(/\{\{\w+\}\}/g)].map(([match]) => match).sort() : []
-    for (const key of en) {
-      expect(placeholders(valueAt(resources['zh-CN'].translation, key)), key).toEqual(
-        placeholders(valueAt(resources.en.translation, key))
-      )
+    for (const [locale, bundle] of Object.entries(resources)) {
+      for (const key of en) {
+        expect(placeholders(valueAt(bundle.translation, key)), `${locale}: ${key}`).toEqual(
+          placeholders(valueAt(resources.en.translation, key))
+        )
+      }
     }
   })
 

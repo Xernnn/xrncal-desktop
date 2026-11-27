@@ -8,6 +8,7 @@ interface RecurringScopeDialogProps {
   isOpen: boolean
   title: string
   action: 'edit' | 'delete'
+  scopes?: readonly RecurringEditScope[]
   onConfirm: (scope: RecurringEditScope) => void
   onCancel: () => void
 }
@@ -16,6 +17,7 @@ export const RecurringScopeDialog: React.FC<RecurringScopeDialogProps> = ({
   isOpen,
   title,
   action,
+  scopes,
   onConfirm,
   onCancel
 }) => {
@@ -54,7 +56,7 @@ export const RecurringScopeDialog: React.FC<RecurringScopeDialogProps> = ({
         </div>
 
         <div className="space-y-0.5">
-          {options.map(({ scope, label }) => (
+          {options.filter(({ scope }) => !scopes || scopes.includes(scope)).map(({ scope, label }) => (
             <button
               key={scope}
               onClick={() => onConfirm(scope)}

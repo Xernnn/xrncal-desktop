@@ -25,6 +25,16 @@ test('selects year and month in either header and shows a Thursday series when o
     const month = header.getByRole('combobox', { name: '选择月份' })
     await expect(header.getByRole('heading').getByText('年', { exact: true })).toBeVisible()
     await expect(header.getByRole('heading').getByText('月', { exact: true })).toBeVisible()
+    const todayYear = await year.inputValue()
+    const todayMonth = await month.inputValue()
+    await expect(header.getByRole('button', { name: '回到今天' })).toBeHidden()
+    await year.selectOption(String(Number(todayYear) + 1))
+    await expect(header.getByRole('button', { name: '回到今天' })).toBeVisible()
+    await sidebar.getByRole('button', { name: '回到今天' }).click()
+    await expect(year).toHaveValue(todayYear)
+    await expect(month).toHaveValue(todayMonth)
+    await expect(header.getByRole('button', { name: '回到今天' })).toBeHidden()
+
     await year.selectOption('2027')
     await month.selectOption('2')
     await expect(sidebar.getByRole('combobox', { name: '选择年份' })).toHaveValue('2027')
@@ -37,12 +47,14 @@ test('selects year and month in either header and shows a Thursday series when o
     await sidebarMonth.selectOption('2')
 
     await page.locator('[data-occurrence-id]', { hasText: 'Thursday appointment' }).first().click()
-    const editor = page.getByRole('dialog', { name: '编辑日程' })
+    const occurrence = page.getByRole('dialog', { name: '编辑日程' })
+    await expect(occurrence.getByText('此日程属于重复系列。')).toBeVisible()
+    await occurrence.getByRole('button', { name: '修改系列', exact: true }).click()
+    const editor = page.getByRole('dialog', { name: '修改系列' })
     await expect(editor.getByRole('button', { name: '每周', exact: true })).toBeVisible()
     await expect(editor.getByRole('button', { name: '四', exact: true })).toHaveAttribute('aria-pressed', 'true')
     await editor.getByPlaceholder('日程标题…').fill('Thursday appointment edited')
     await editor.getByRole('button', { name: '保存更改' }).click()
-    await page.getByRole('button', { name: '重复系列中的所有日程' }).click()
 
     await expect.poll(() => page.evaluate(async (id) => {
       const saved = await window.xrncal.events.getById(id)

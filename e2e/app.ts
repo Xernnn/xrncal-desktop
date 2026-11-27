@@ -50,7 +50,10 @@ export async function launchApp(
   await page.waitForLoadState('domcontentloaded')
   if (!options.welcome) {
     await page.waitForFunction(() => Boolean(window.xrncal?.settings))
-    await page.evaluate(() => window.xrncal.settings.set('welcomeDone', true))
+    await page.evaluate(async () => {
+      await window.xrncal.settings.set('locale', 'en')
+      await window.xrncal.settings.set('welcomeDone', true)
+    })
     if (!options.useDefaultView) {
       // Older scenarios exercise the week grid; startup-view tests opt out.
       await page.evaluate(() => window.xrncal.settings.set('defaultView', 'week'))

@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react'
-import type { AppSettings } from '@shared/settings-contract'
+import { DEFAULT_APP_SETTINGS, type AppSettings } from '@shared/settings-contract'
 import { parseZoneHistory, type ZonePeriod } from '@shared/zone-history'
 import { newEventMinutes } from '@shared/event-length'
 import { favoriteEmojis } from '@shared/title-emoji'
@@ -7,6 +7,7 @@ import { parseZoneList } from '../lib/time-zones'
 
 export interface DisplayPreferences {
   timeFormat: AppSettings['timeFormat']
+  dateFormat: string
   hourBlockSize: AppSettings['hourBlockSize']
   dayStartHour: number
   /** IANA zone name, or '' when the secondary timezone gutter is disabled. */
@@ -35,6 +36,7 @@ export interface DisplayPreferences {
 
 const DEFAULT_DISPLAY_PREFERENCES: DisplayPreferences = {
   timeFormat: '24h',
+  dateFormat: DEFAULT_APP_SETTINGS.dateFormat,
   hourBlockSize: 'medium',
   dayStartHour: 7,
   secondaryTimezone: '',
@@ -54,6 +56,7 @@ const DEFAULT_DISPLAY_PREFERENCES: DisplayPreferences = {
 export function displayPreferencesOf(settings: AppSettings): DisplayPreferences {
   return {
     timeFormat: settings.timeFormat,
+    dateFormat: settings.dateFormat,
     hourBlockSize: settings.hourBlockSize,
     dayStartHour: settings.dayStartHour,
     secondaryTimezone: settings.secondaryTimezone,

@@ -1,6 +1,7 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import type { DateTime } from 'luxon'
+import { useToday } from '../hooks/use-now'
 
 interface MonthYearPickerProps {
   date: DateTime
@@ -14,6 +15,7 @@ const NUMBER_STYLE =
 export const MonthYearPicker: React.FC<MonthYearPickerProps> = ({ date, onChange }) => {
   const { t, i18n } = useTranslation()
   const chinese = i18n.language === 'zh-CN'
+  const today = useToday()
   const years = React.useMemo(() => {
     const first = Math.max(1, date.year - 100)
     return Array.from({ length: date.year + 101 - first }, (_, index) => first + index)
@@ -56,6 +58,11 @@ export const MonthYearPicker: React.FC<MonthYearPickerProps> = ({ date, onChange
         </select>
         {chinese && <span>月</span>}
       </span>
+      {!date.hasSame(today, 'day') && (
+        <button type="button" className="gc-btn ml-1 px-2 py-1" onClick={() => onChange(today)}>
+          {t('nav.backToToday')}
+        </button>
+      )}
     </span>
   )
 }
