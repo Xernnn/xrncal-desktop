@@ -1,7 +1,7 @@
 import { DateTime } from 'luxon'
 import { boundedBetween, type ExpansionBudget } from './bounded-rrule'
 import type { CalendarEvent, EventException, ExpandedOccurrence } from './event-model'
-import { resolveLunarOccurrence } from './lunar-vietnam'
+import { resolveCalendarLunarOccurrence } from './lunar-calendar'
 import { ianaZoneFor } from './windows-time-zones'
 
 /**
@@ -105,7 +105,7 @@ function expandLunarOccurrences(
   for (let year = rangeStart.year - 1; year <= rangeEnd.year + 1; year++) {
     if (coveredYears?.has(year)) continue
 
-    const isoDate = resolveLunarOccurrence(spec, year)
+    const isoDate = resolveCalendarLunarOccurrence(spec, year)
     if (!isoDate) continue
 
     const occStart = DateTime.fromISO(`${isoDate}T00:00:00.000Z`, { zone: 'utc' })
@@ -133,6 +133,7 @@ function expandLunarOccurrences(
       isRecurring: true,
       isException: Boolean(ex),
       isLunar: true,
+      lunarRule: spec,
       originalStartUtc: originalIso
     })
   }

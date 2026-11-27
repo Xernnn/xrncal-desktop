@@ -4,13 +4,17 @@
 
 <h1 align="center">xrncal</h1>
 
+Bản fork này do [immoke](https://github.com/immoke/xrncal-desktop) duy trì.
+Xernnn là tác giả của [dự án xrncal gốc](https://github.com/Xernnn/xrncal-desktop),
+được phát hành theo [giấy phép MIT](LICENSE).
+
 <p align="center">
   <strong>Lịch desktop local-first cho Windows và Linux.</strong><br>
   Google, Microsoft 365 và CalDAV trong một cửa sổ — kèm <em>lịch âm</em> và <em>giỗ theo năm âm</em>.
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.2.0-5865F2?style=flat-square" alt="Phiên bản 1.2.0">
+  <img src="https://img.shields.io/badge/version-1.2.0.3-5865F2?style=flat-square" alt="Phiên bản 1.2.0.3">
   <img src="https://img.shields.io/badge/Windows-10%2F11-1A73E8?style=flat-square" alt="Windows">
   <img src="https://img.shields.io/badge/Linux-AppImage-34C77B?style=flat-square" alt="Linux">
   <img src="https://img.shields.io/badge/Electron-44-47848F?style=flat-square" alt="Electron">
@@ -143,11 +147,10 @@ Giao diện và cách dùng của xrncal theo One Calendar (Code Spark), app kh�
 
 ## Cài đặt
 
-Chưa có bản release nào: phiên bản 1.2.0 đã nằm trong `package.json`, và workflow release đã sẵn sàng. Trong lúc chờ, hãy [tự build](#tự-build).
-
-Bản release sẽ nằm ở **[Releases](https://github.com/Xernnn/xrncal-desktop/releases/latest)**, gồm:
+Trang [Releases của bản fork](https://github.com/immoke/xrncal-desktop/releases/latest) cung cấp ba gói.
 
 - **Windows 10/11:** `xrncal Setup <phiên bản>.exe`. Khi bộ cài chưa được ký số, SmartScreen sẽ hỏi trước: *More info → Run anyway*.
+- **Windows portable:** Giải nén toàn bộ `xrncal-<phiên bản>-windows-x64-portable.zip` vào thư mục có quyền ghi rồi chạy trực tiếp `xrncal.exe`. Giữ `portable.flag` và các tệp còn lại cạnh tệp EXE. Lần chạy đầu tạo `xrncal.sqlite` trong cùng thư mục.
 - **Linux:** `xrncal-<phiên bản>.AppImage`. Cho phép chạy (`chmod +x`, hoặc *Properties → Allow executing*) rồi mở.
 
 Lần mở đầu tiên có ba bước ngắn: ngôn ngữ, vài thiết lập cơ bản (âm lịch, ngày lễ, khởi động cùng máy) và các lịch muốn thêm vào. Bản đã cài có thể tự cập nhật khi có release mới, sau khi bật *Cài đặt → Chung → Kiểm tra bản cập nhật*; mặc định tắt.
@@ -157,7 +160,7 @@ Lần mở đầu tiên có ba bước ngắn: ngôn ngữ, vài thiết lập c
 Cần **Node.js 23.4+** (khuyên dùng 24 - phần test dùng `node:sqlite` có sẵn trong Node) và Git.
 
 ```bash
-git clone https://github.com/Xernnn/xrncal-desktop.git
+git clone https://github.com/immoke/xrncal-desktop.git
 cd xrncal-desktop
 npm install
 ```
@@ -413,7 +416,9 @@ Release: tăng `version` trong `package.json`, commit, rồi push tag `v<phiên 
 
 [MIT](LICENSE) © Xernnn.
 
-Dùng `ical.js` (MPL-2.0) và `rrule` (BSD-3-Clause); còn lại là MIT hoặc ISC. Không có phụ thuộc copyleft lây lan. App và trang web dùng font [MiSans](https://hyperos.mi.com/font) của Xiaomi, miễn phí cho mục đích thương mại và được đóng gói theo điều khoản của nó; font đi kèm sẵn nên không tải từ đâu cả.
+Bộ cài Windows, tệp ZIP portable và AppImage đều kèm giấy phép MIT của dự án và
+[thông báo giấy phép bên thứ ba](THIRD-PARTY-NOTICES.md) trong thư mục `resources`
+của ứng dụng. Ứng dụng sử dụng phông chữ MiSans Latin của Xiaomi.
 
 ---
 

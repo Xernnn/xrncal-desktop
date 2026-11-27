@@ -48,11 +48,12 @@ export function startAutoUpdates(): void {
   })
   autoUpdater.on('update-not-available', () => (lastFailure = undefined))
   autoUpdater.on('update-available', () => (lastFailure = undefined))
-  autoUpdater.on('update-downloaded', (info) => log('info', `Update ${info.version} downloaded; installs on quit`))
   autoUpdater.on('update-downloaded', (info) => {
+    const version = info.releaseName?.replace(/^v(?=\d)/, '') || info.version
+    log('info', `Update ${version} downloaded; installs on quit`)
     if (!Notification.isSupported()) return
     new Notification({
-      title: mt('update.readyTitle', { version: info.version }),
+      title: mt('update.readyTitle', { version }),
       body: mt('update.readyBody')
     }).show()
   })

@@ -112,8 +112,8 @@ export function calendarMoveBlock(
 }
 
 /**
- * Compact spec for an anniversary that repeats on the same Vietnamese lunar
- * (âm lịch) date every year — e.g. a death anniversary (giỗ). Stored as JSON in
+ * Compact spec for an anniversary that repeats on the same lunar date every
+ * year. Stored as JSON in
  * the `lunar_rule` column. An event carrying this never has an `rrule`; the
  * occurrence expander resolves one all-day instance per Gregorian year.
  */
@@ -121,6 +121,8 @@ export interface LunarRecurrenceSpec {
   day: number   // lunar day of month, 1-30
   month: number // lunar month, 1-12
   leap: boolean // true if the anniversary falls in a leap month
+  /** Older events use the Vietnamese calendar when this is absent. */
+  calendar?: 'chinese'
 }
 
 export interface CalendarEvent {
@@ -202,6 +204,7 @@ export interface ExpandedOccurrence {
   isRecurring: boolean
   isException: boolean
   isLunar?: boolean        // True when produced by a yearly lunar-date master
+  lunarRule?: LunarRecurrenceSpec
   originalStartUtc: string // Original recurrence start in UTC ISO
 }
 

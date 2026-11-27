@@ -866,8 +866,8 @@ export class GoogleSyncEngine {
   /**
    * Sync all Google accounts
    */
-  async syncAll(clientId?: string, clientSecret?: string): Promise<SyncResult> {
-    const activeGoogleAccounts = new AccountsRepo(this.db).listActive('google')
+  async syncAll(clientId?: string, clientSecret?: string, accountId?: string): Promise<SyncResult> {
+    const activeGoogleAccounts = new AccountsRepo(this.db).listActive('google').filter((acc) => !accountId || acc.id === accountId)
 
     if (activeGoogleAccounts.length === 0) {
       return { success: true, pulledCount: 0, pushedCount: 0, errorCount: 0, message: 'No Google accounts connected' }

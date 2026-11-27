@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { extname, join } from 'node:path'
 import { IPC_CHANNELS, type AppLocale, type BackupResult } from '@shared/ipc-contract'
+import { isAppLocale } from '@shared/settings-contract'
 import { registerCalendarIpcHandlers } from './ipc/calendar-ipc'
 import { registerSettingsIpcHandlers } from './ipc/settings-ipc'
 import { registerAuthSyncIpcHandlers } from './ipc/auth-sync-ipc'
@@ -17,6 +18,7 @@ import { refreshTrayMenu } from './tray'
 import { logDirectory, logFilePath } from './log'
 import { describeError } from './sync/http'
 import { backgroundImageDataUrl } from './background-image'
+import { releaseVersion } from './release-version'
 
 let currentLocale: AppLocale = 'en'
 
@@ -36,9 +38,7 @@ export function registerIpcHandlers(): void {
   ipcMain.removeHandler(IPC_CHANNELS.APP.QUIT)
 
   // Return current application version
-  ipcMain.handle(IPC_CHANNELS.APP.GET_VERSION, () => {
-    return app.getVersion()
-  })
+  ipcMain.handle(IPC_CHANNELS.APP.GET_VERSION, releaseVersion)
 
   // Return current app locale
   ipcMain.handle(IPC_CHANNELS.APP.GET_LOCALE, () => {
@@ -47,7 +47,7 @@ export function registerIpcHandlers(): void {
 
   // Update current app locale
   ipcMain.handle(IPC_CHANNELS.APP.SET_LOCALE, (_event, locale: AppLocale) => {
-    if (locale === 'vi' || locale === 'en') {
+    if (isAppLocale(locale)) {
       currentLocale = locale
       setMainLocale(locale)
       refreshTrayMenu()

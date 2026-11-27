@@ -1,9 +1,10 @@
 import { app, BrowserWindow, dialog } from 'electron'
+import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { passwordStoreSwitch } from './password-store'
 import { registerIpcHandlers } from './ipc'
 import { loadCredentialsFile } from './load-credentials'
-import { adoptLegacyUserDataForApp } from './adopt-legacy-userdata'
+import { adoptLegacyUserDataForApp, adoptPreviousPortableUserData } from './adopt-legacy-userdata'
 import { closeDatabase, getDatabase } from './db/database'
 import { SettingsRepo, setSystemDefaults } from './db/repos/settings-repo'
 import { hasTray, refreshTrayHost, setupTray } from './tray'
@@ -17,6 +18,7 @@ import { denyUnusedPermissions, devServerUrl, guardIpcSenders, lockDownContents 
 import { refreshHolidayCalendars } from './holidays/holiday-subscription'
 import { startAutoUpdates } from './updater'
 import { defaultsForSystem } from '@shared/locale-defaults'
+import { windowsShortDateFormat } from './system-date-format'
 import { IPC_CHANNELS } from '@shared/ipc-contract'
 import { applySavedSettingEffects } from './setting-effects'
 import { windowBackground } from './window-background'
@@ -26,6 +28,22 @@ import { noticeRunningInTray, settleExistingProfile } from './first-run'
 import { icsPathsIn, queueOpenedFiles, setOpenedFileNotifier } from './opened-ics-files'
 import { openDatabaseOrQuit } from './startup-database'
 import { setMainLocale } from './i18n-main'
+import { getPortableFolder } from './portable-folder'
+import { releaseVersion } from './release-version'
+
+// Set the portable profile before Electron creates a session.
+const portableExeDir = getPortableFolder()
+if (portableExeDir) {
+  const session = join(portableExeDir, 'session')
+  try {
+    mkdirSync(session, { recursive: true })
+    app.setPath('userData', portableExeDir)
+    app.setPath('sessionData', session)
+  } catch (error) {
+    dialog.showErrorBox('Could not open the portable data folder', `${portableExeDir}\n\n${describeError(error)}`)
+    app.exit(1)
+  }
+}
 
 // The UI tests (e2e/) run the app on a throwaway profile. The single-instance
 // lock and the database both live in it, so a test run neither touches the real
@@ -189,15 +207,27 @@ if (!gotTheLock) {
     initLog(join(app.getPath('userData'), 'logs'))
     log(
       'info',
-      `xrncal ${app.getVersion()} starting (${process.platform} ${process.arch}, Electron ${process.versions.electron}${app.isPackaged ? '' : ', unpackaged'})`
+      `xrncal ${releaseVersion()} starting (${process.platform} ${process.arch}, Electron ${process.versions.electron}${app.isPackaged ? '' : ', unpackaged'})`
     )
     logCrashes()
 
-    adoptLegacyUserDataForApp()
+    if (portableExeDir) {
+      try {
+        adoptPreviousPortableUserData(portableExeDir)
+      } catch (error) {
+        dialog.showErrorBox('Could not migrate the portable calendar', describeError(error))
+        app.exit(1)
+        return
+      }
+    } else {
+      adoptLegacyUserDataForApp()
+    }
     loadCredentialsFile()
     // A setting nobody has chosen follows the computer: its language when the
     // app has it, its clock, the day its weeks start on.
     const systemDefaults = defaultsForSystem(app.getPreferredSystemLanguages()[0], app.getSystemLocale())
+    const dateFormat = await windowsShortDateFormat()
+    if (dateFormat) systemDefaults.dateFormat = dateFormat
     setSystemDefaults(systemDefaults)
 
     // Without a database there is no app to open (every IPC handler reads it):
@@ -236,7 +266,7 @@ if (!gotTheLock) {
     queueOpenedFiles(icsPathsIn(process.argv.slice(1)))
 
     app.on('activate', () => showMainWindow())
-    startAutoUpdates()
+    if (!portableExeDir) startAutoUpdates()
     startAutoBackups(app.getPath('userData'))
   })
 

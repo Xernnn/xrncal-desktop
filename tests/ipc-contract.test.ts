@@ -45,11 +45,13 @@ describe('IPC Channels and Contracts', () => {
       settings: {
         getAll: async () => ({
           locale: 'en',
+          defaultView: 'month',
           showLunar: true,
           showWeekNumbers: true,
           showMiniCalendar: false,
           firstDayOfWeek: 1,
           timeFormat: '24h',
+          dateFormat: 'yyyy/MM/dd',
           theme: 'light',
           autoHideHeader: true,
           dayStartHour: 7,

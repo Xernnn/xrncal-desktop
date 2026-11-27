@@ -1,5 +1,6 @@
 import type { ISqliteDatabase } from '../db/sqlite-driver'
 import { AccountsRepo } from '../db/repos/accounts-repo'
+import { CalendarsRepo } from '../db/repos/calendars-repo'
 import { SyncStateRepo } from '../db/repos/sync-state-repo'
 import { GoogleSyncEngine } from './google-sync-engine'
 import { MicrosoftSyncEngine } from './microsoft-sync-engine'
@@ -68,7 +69,7 @@ export class SyncWorker {
   /** Kick-off timer from start(); tracked so stop() can cancel it before it
    *  fires a sync against a database the app is in the middle of closing. */
   private startupTimer: NodeJS.Timeout | null = null
-  private isSyncing = false
+  private activeSync: Promise<SyncResult> | null = null
   /** When the last sync began (ms), so a focus soon after one does not start another. */
   private lastStartedAt = 0
   private lastSyncTime?: string
@@ -173,76 +174,104 @@ export class SyncWorker {
     return { success: false, pulledCount: 0, pushedCount: 0, errorCount: 1, message }
   }
 
-  /**
-   * Trigger immediate two-way sync for Google, Microsoft, and CalDAV accounts
-   */
+  /** A manual request waits for the current round before starting its own. */
+  async syncNow(sourceId?: string): Promise<SyncResult> {
+    while (this.activeSync) await this.activeSync
+    return this.startSync({ sourceId })
+  }
+
+  /** Trigger a regular round, keeping the subscription refresh interval. */
   async triggerSync(): Promise<SyncResult> {
-    if (this.isSyncing) {
+    if (this.activeSync) {
       return { success: false, pulledCount: 0, pushedCount: 0, errorCount: 0, message: 'Sync already in progress' }
     }
+    return this.startSync()
+  }
 
-    this.isSyncing = true
+  private startSync(manual?: { sourceId?: string }): Promise<SyncResult> {
     this.lastStartedAt = Date.now()
+    this.activeSync = this.runSync(manual).finally(() => {
+      this.activeSync = null
+    })
+    return this.activeSync
+  }
+
+  private async syncSource(sourceId: string): Promise<SyncResult> {
+    const calendar = new CalendarsRepo(this.db).getCalendarById(sourceId)
+    if (calendar?.subscriptionUrl) {
+      const { pulledCount, errorCount } = await refreshDueSubscriptions(this.db, undefined, { force: true, calendarId: sourceId })
+      return { success: errorCount === 0, pulledCount, pushedCount: 0, errorCount }
+    }
+
+    const account = new AccountsRepo(this.db).get(sourceId)
+    if (!account?.isActive || account.type === 'local') {
+      return { success: false, pulledCount: 0, pushedCount: 0, errorCount: 1, message: mt('sync.sourceUnavailable') }
+    }
+
+    const { google, microsoft } = this.oauthClients()
+    let result: SyncResult
+    switch (account.type) {
+      case 'caldav':
+        result = await this.caldavEngine.syncAll(account.id)
+        break
+      case 'google':
+        result = await this.googleEngine.syncAll(google?.clientId, google?.clientSecret, account.id)
+        break
+      case 'graph':
+        result = await this.microsoftEngine.syncAll(microsoft?.clientId, microsoft?.clientSecret, account.id)
+        break
+    }
+    return { ...result, message: result.accountErrors?.[account.id] }
+  }
+
+  private async syncAll(forceSubscriptions: boolean): Promise<SyncResult> {
     this.engineErrors = {}
+    // A slow or failing provider must not block the others from starting.
+    const { google, microsoft } = this.oauthClients()
+    const [googleRes, msRes, caldavRes, feedsRes] = await Promise.all([
+      this.googleEngine.syncAll(google?.clientId, google?.clientSecret).catch((err) => this.engineFailure('Google', err)),
+      this.microsoftEngine.syncAll(microsoft?.clientId, microsoft?.clientSecret).catch((err) => this.engineFailure('Microsoft', err)),
+      this.caldavEngine.syncAll().catch((err) => this.engineFailure('CalDAV', err)),
+      refreshDueSubscriptions(this.db, undefined, { force: forceSubscriptions }).catch(() => ({ pulledCount: 0, errorCount: 1 }))
+    ])
+
+    const pulledCount = googleRes.pulledCount + msRes.pulledCount + caldavRes.pulledCount + feedsRes.pulledCount
+    const pushedCount = googleRes.pushedCount + msRes.pushedCount + caldavRes.pushedCount
+    const errorCount = googleRes.errorCount + msRes.errorCount + caldavRes.errorCount + feedsRes.errorCount
+    this.lastError = errorCount > 0 ? `Sync completed with ${errorCount} errors` : undefined
+    this.accountErrors = { ...googleRes.accountErrors, ...msRes.accountErrors, ...caldavRes.accountErrors }
+    const failures = { ...this.accountErrors, ...this.engineErrors }
+    for (const line of accountErrorChanges(this.loggedFailures, failures)) log(line.level, line.message)
+    this.loggedFailures = failures
+    return { success: errorCount === 0, pulledCount, pushedCount, errorCount }
+  }
+
+  private async runSync(manual?: { sourceId?: string }): Promise<SyncResult> {
     try {
-      // Run the three providers concurrently and settle independently: in
-      // sequence, a slow provider delays the other two and a throw from the
-      // first skips the rest entirely.
-      const { google, microsoft } = this.oauthClients()
-      const [googleRes, msRes, caldavRes, feedsRes] = await Promise.all([
-        this.googleEngine
-          .syncAll(google?.clientId, google?.clientSecret)
-          .catch((err) => this.engineFailure('Google', err)),
-        this.microsoftEngine
-          .syncAll(microsoft?.clientId, microsoft?.clientSecret)
-          .catch((err) => this.engineFailure('Microsoft', err)),
-        this.caldavEngine.syncAll().catch((err) => this.engineFailure('CalDAV', err)),
-        // Calendars subscribed to by link; each is fetched only when it is due.
-        refreshDueSubscriptions(this.db).catch(() => ({ pulledCount: 0, errorCount: 1 }))
-      ])
-
-      const totalPulled = googleRes.pulledCount + msRes.pulledCount + caldavRes.pulledCount + feedsRes.pulledCount
-      const totalPushed = googleRes.pushedCount + msRes.pushedCount + caldavRes.pushedCount
-      const totalErrors = googleRes.errorCount + msRes.errorCount + caldavRes.errorCount + feedsRes.errorCount
-
+      const result = manual?.sourceId === undefined
+        ? await this.syncAll(manual !== undefined)
+        : await this.syncSource(manual.sourceId)
       this.lastSyncTime = new Date().toISOString()
-      this.lastError = totalErrors > 0 ? `Sync completed with ${totalErrors} errors` : undefined
-      this.accountErrors = { ...googleRes.accountErrors, ...msRes.accountErrors, ...caldavRes.accountErrors }
-      const failures = { ...this.accountErrors, ...this.engineErrors }
-      for (const line of accountErrorChanges(this.loggedFailures, failures)) log(line.level, line.message)
-      this.loggedFailures = failures
 
-      // An account's first sync brings in its calendars, and a sync can find
-      // a calendar gone from the provider: either can leave the default on a
-      // calendar here, or on none.
+      // Sync may discover calendars or change event IDs and subscriptions can
+      // change to an empty feed. Reload the windows after each manual round.
       const defaultMoved = settleDefaultCalendar(this.db)
-
-      // Tell the renderer its copy of the data is out of date. This matters more
-      // than "the view is a few minutes stale": a successful push re-keys the
-      // local row to the id the provider assigned, so an occurrence the renderer
-      // is still holding by its old `evt_...` id no longer resolves, and the next
-      // move or resize of it fails with "Event not found".
-      if (totalPulled > 0 || totalPushed > 0 || defaultMoved) {
+      if (manual || result.pulledCount > 0 || result.pushedCount > 0 || defaultMoved) {
         for (const win of BrowserWindow.getAllWindows()) {
           if (!win.isDestroyed()) win.webContents.send(IPC_CHANNELS.SYNC.CHANGED)
         }
       }
 
-      return {
-        success: totalErrors === 0,
-        pulledCount: totalPulled,
-        pushedCount: totalPushed,
-        errorCount: totalErrors,
-        message: mt('sync.done', { pulled: totalPulled, pushed: totalPushed })
-      }
+      const { pulledCount, pushedCount, errorCount } = result
+      const message = result.success
+        ? mt('sync.done', { pulled: pulledCount, pushed: pushedCount })
+        : result.message || mt('sync.errors', { count: errorCount })
+      return { ...result, message }
     } catch (err) {
-      this.lastError = describeError(err)
-      log('error', `Sync failed: ${describeError(err)}`)
-      return { success: false, pulledCount: 0, pushedCount: 0, errorCount: 1, message: this.lastError }
-    } finally {
-      // Always release, on every exit path: a flag left set makes every later
-      // poll return "sync already in progress" until the app is restarted.
-      this.isSyncing = false
+      const message = describeError(err)
+      if (manual?.sourceId === undefined) this.lastError = message
+      log('error', `Sync failed: ${message}`)
+      return { success: false, pulledCount: 0, pushedCount: 0, errorCount: 1, message }
     }
   }
 
@@ -254,7 +283,7 @@ export class SyncWorker {
 
     return {
       lastSyncTime: this.lastSyncTime,
-      isSyncing: this.isSyncing,
+      isSyncing: this.activeSync !== null,
       lastError: this.lastError,
       pendingPushesCount: new SyncStateRepo(this.db).countPendingPushes(),
       connectedAccounts: accounts,

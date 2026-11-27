@@ -2,6 +2,7 @@ import { app } from 'electron'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { getPortableFolder } from './portable-folder'
 
 /** Passed by the login entry: start in the tray, without opening the window. */
 export const START_HIDDEN_ARG = '--hidden'
@@ -65,6 +66,8 @@ export function linuxAutostartEntry(appImagePath: string, unpackFolder: string, 
  */
 export function applyLaunchAtLogin(enabled: boolean): void {
   if (!app.isPackaged) return
+  // A movable portable build should not leave a startup entry behind.
+  if (getPortableFolder()) return
   try {
     if (process.platform === 'linux') {
       const file = linuxAutostartFile()

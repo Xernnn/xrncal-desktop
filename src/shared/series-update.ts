@@ -82,6 +82,46 @@ function ruleParts(rrule: string): Map<string, string> {
   return new Map(rrule.toUpperCase().split(';').map((part) => part.split('=') as [string, string]))
 }
 
+/** Move a wall-clock date with a series' edit. Months and years have variable lengths. */
+function seriesDateAfterMove(date: DateTime, from: DateTime, to: DateTime, frequency?: string): DateTime {
+  if (frequency !== 'MONTHLY' && frequency !== 'YEARLY') return date.plus({ milliseconds: to.toMillis() - from.toMillis() })
+  const months = (to.year - from.year) * 12 + to.month - from.month
+  const days = to.day - from.day
+  const clock = to.diff(to.startOf('day')).milliseconds - from.diff(from.startOf('day')).milliseconds
+  return date.startOf('month').plus({
+    months,
+    days: date.day - 1 + days,
+    milliseconds: date.diff(date.startOf('day')).milliseconds + clock
+  })
+}
+
+/** Keep an unedited end with the moved series, including an occurrence exactly at UNTIL. */
+export function ruleWithMovedEnd(
+  rule: string,
+  stored: string,
+  from: DateTime,
+  to: DateTime,
+  fromZone: string,
+  toZone: string
+): string {
+  if (from.toMillis() === to.toMillis() && fromZone === toZone) return rule
+  const before = ruleParts(stored)
+  const after = ruleParts(rule)
+  const until = before.get('UNTIL')
+  if (!until || after.get('UNTIL') !== until || before.get('FREQ') !== after.get('FREQ')) return rule
+  const cutoff = DateTime.fromISO(until, { zone: fromZone }).setZone('utc', { keepLocalTime: true })
+  if (!cutoff.isValid) return rule
+  const dateOnly = /^\d{8}$/.test(until)
+  const moved = dateOnly
+    ? seriesDateAfterMove(cutoff, from.startOf('day'), to.startOf('day'), before.get('FREQ'))
+    : seriesDateAfterMove(cutoff, from, to, before.get('FREQ'))
+  if (!moved.isValid) return rule
+  const value = dateOnly ? moved.toFormat('yyyyMMdd') :
+    until.endsWith('Z') ? moved.setZone(toZone, { keepLocalTime: true }).toUTC().toFormat("yyyyMMdd'T'HHmmss'Z'") :
+      moved.toFormat("yyyyMMdd'T'HHmmss")
+  return rule.replace(/(^|;)UNTIL=[^;]+/i, (_whole, separator: string) => `${separator}UNTIL=${value}`)
+}
+
 /** The days a rule names, as one string to compare. */
 export function namedDays(rrule: string): string {
   const parts = ruleParts(rrule)
@@ -159,8 +199,13 @@ export function seriesWideUpdate(
 
   const fromZone = seriesZone(master.allDay, master.tzid)
   const toZone = seriesZone(input.allDay ?? master.allDay, input.tzid ?? master.tzid)
-  const shift = wallClock(input.dtStartUtc, toZone) - wallClock(occurrenceStartUtc, fromZone)
-  const start = DateTime.fromMillis(wallClock(master.dtStartUtc, fromZone) + shift, { zone: 'utc' })
+  const frequency = master.rrule && ruleParts(master.rrule).get('FREQ')
+  const start = seriesDateAfterMove(
+    wallTime(master.dtStartUtc, fromZone),
+    wallTime(occurrenceStartUtc, fromZone),
+    wallTime(input.dtStartUtc, toZone),
+    frequency || undefined
+  )
     .setZone(toZone, { keepLocalTime: true })
     .toUTC()
   const lengthMs = input.dtEndUtc

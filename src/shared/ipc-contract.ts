@@ -24,7 +24,7 @@ import type {
 } from './event-model'
 import type { SuggestTitlesOptions, TitleSuggestion } from './title-suggestions'
 import type { LocationSuggestion } from './location-suggestions'
-import type { AppSettings } from './settings-contract'
+import type { AppLocale, AppSettings } from './settings-contract'
 import type { OAuthClientForm, OAuthClientInfo, OAuthProvider } from './oauth-client'
 
 export const IPC_CHANNELS = {
@@ -133,7 +133,7 @@ export const IPC_CHANNELS = {
   }
 } as const
 
-export type AppLocale = 'vi' | 'en'
+export type { AppLocale } from './settings-contract'
 
 export interface DetachAccountResult {
   success: boolean
@@ -260,7 +260,8 @@ export interface XrncalAPI {
     clearOAuthClient: (provider: OAuthProvider) => Promise<void>
   }
   sync: {
-    triggerNow: () => Promise<SyncResult>
+    /** Sync all configured sources, or one remote account or online subscription. */
+    triggerNow: (sourceId?: string) => Promise<SyncResult>
     getStatus: () => Promise<SyncStatus>
     /** Fires when a background sync changed the database. Returns an unsubscribe. */
     onChanged: (callback: () => void) => () => void

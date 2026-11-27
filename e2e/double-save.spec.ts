@@ -62,8 +62,9 @@ test('a double click on "This and following events" splits the series once', asy
     await page.locator('[data-occurrence-id]', { hasText: 'Weekly review' }).first().click()
     const title = page.getByPlaceholder('Event title…')
     await expect(title).toHaveValue('Weekly review')
-    await title.fill('Weekly review (new room)')
-    await page.keyboard.press('Control+Enter')
+    await page.keyboard.press('Escape')
+    await expect(title).toBeHidden()
+    await page.keyboard.press('Shift+ArrowRight')
 
     const following = page.getByRole('button', { name: /This and following events/ })
     await expect(following).toBeVisible()
@@ -73,7 +74,7 @@ test('a double click on "This and following events" splits the series once', asy
     })
     await expect(following).toBeHidden()
 
-    expect(await titled(page, 'Weekly review')).toEqual(['Weekly review', 'Weekly review (new room)'])
+    expect(await titled(page, 'Weekly review')).toEqual(['Weekly review', 'Weekly review'])
     expect(running.errors).toEqual([])
   } finally {
     await running.close()

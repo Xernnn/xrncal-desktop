@@ -1,17 +1,27 @@
 import React from 'react'
 import { useTranslation } from 'react-i18next'
+import type { DateTime } from 'luxon'
 import { ChevronLeft, ChevronRight, Menu, Plus, Search, Settings } from 'lucide-react'
 import type { CalendarViewType } from '@shared/visible-range'
+import type { Calendar, CalendarAccount } from '@shared/event-model'
+import { SyncButtons } from './SyncButtons'
+import { MonthYearPicker } from '../MonthYearPicker'
 import ViewSwitcher from './ViewSwitcher'
 
 interface AppHeaderProps {
   onOpenMenu: () => void
   title: string
   currentView: CalendarViewType
+  anchorDate: DateTime
+  onSelectDate: (date: DateTime) => void
   showSidebarToggle?: boolean
   onToggleSidebar: () => void
   onPrev: () => void
   onNext: () => void
+  calendars: Calendar[]
+  accounts: CalendarAccount[]
+  syncing: boolean
+  onSync: (sourceId?: string) => void
   onNewEvent: () => void
   onChangeView: (view: CalendarViewType) => void
   onSearch: () => void
@@ -19,17 +29,23 @@ interface AppHeaderProps {
 }
 
 /**
- * The arrows on the left with the period's name; Create, search, the view and
- * Settings on the right. T goes to today, as does Week view's week number.
+ * Period navigation on the left, calendar actions on the right. T goes to
+ * today, as does Week view's week number.
  */
 export const AppHeader: React.FC<AppHeaderProps> = ({
   onOpenMenu,
   title,
   currentView,
+  anchorDate,
+  onSelectDate,
   showSidebarToggle = true,
   onToggleSidebar,
   onPrev,
   onNext,
+  calendars,
+  accounts,
+  syncing,
+  onSync,
   onNewEvent,
   onChangeView,
   onSearch,
@@ -63,7 +79,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
         </div>
         {title && !isYearView && (
           <h1 className="truncate py-0.5 text-[28px] font-normal leading-snug tracking-tight text-primary">
-            {title}
+            {currentView === 'month' ? <MonthYearPicker date={anchorDate} onChange={onSelectDate} /> : title}
           </h1>
         )}
       </div>
@@ -75,6 +91,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
       )}
 
       <div className="flex shrink-0 items-center gap-1">
+        <SyncButtons calendars={calendars} accounts={accounts} syncing={syncing} onSync={onSync} />
         <button
           type="button"
           className="gc-btn-primary mr-1"

@@ -1,9 +1,25 @@
+import type { CalendarViewType } from './visible-range'
+
 /**
  * Application Settings Interface & Defaults
  */
 
+export const APP_LANGUAGES = {
+  en: 'English',
+  vi: 'Tiếng Việt',
+  'zh-CN': '简体中文'
+} as const
+
+export type AppLocale = keyof typeof APP_LANGUAGES
+
+export function isAppLocale(value: unknown): value is AppLocale {
+  return typeof value === 'string' && Object.hasOwn(APP_LANGUAGES, value)
+}
+
 export interface AppSettings {
-  locale: 'en' | 'vi'
+  locale: AppLocale
+  /** View to show when the calendar window opens. */
+  defaultView: CalendarViewType
   showLunar: boolean
   showWeekNumbers: boolean
   showMiniCalendar: boolean
@@ -11,6 +27,8 @@ export interface AppSettings {
    *  chosen it follows the computer's region (see `defaultsForSystem`). */
   firstDayOfWeek: number
   timeFormat: '12h' | '24h'
+  /** Short date pattern from the system's regional settings. */
+  dateFormat: string
   theme: 'system' | 'dark' | 'light'
   themeAccent?: string
   themeCustomBg?: string
@@ -83,12 +101,12 @@ export interface AppSettings {
 }
 
 /**
- * What a setting is until the user picks something. `locale`, `timeFormat` and
- * `firstDayOfWeek` are overridden in the main process by what the computer is
- * set up for (`defaultsForSystem`), so these three are only the fallback.
+ * Language, date and time formats, and the start of the week follow the
+ * computer until they have been set explicitly.
  */
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   locale: 'en',
+  defaultView: 'month',
   showLunar: true,
   showWeekNumbers: true,
   // The sidebar holds the calendar list now, not just the mini calendar, so it
@@ -96,6 +114,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   showMiniCalendar: true,
   firstDayOfWeek: 1, // ISO standard Monday
   timeFormat: '24h',
+  dateFormat: 'dd/MM/yyyy',
   theme: 'system',
   themeAccent: '#5865f2',
   themeCustomBg: '',

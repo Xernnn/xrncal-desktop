@@ -1,7 +1,9 @@
 import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
+import { zhCN } from './zh-CN'
 
 export const resources = {
+  'zh-CN': { translation: zhCN },
   en: {
     translation: {
       appName: 'xrncal',
@@ -28,10 +30,15 @@ export const resources = {
       nav: {
         today: 'Today',
         prev: 'Previous',
-        next: 'Next'
+        next: 'Next',
+        backToToday: 'Back to today',
+        selectYear: 'Select year',
+        selectMonth: 'Select month'
       },
       actions: {
         newEvent: 'Create',
+        syncSource: 'Sync an account or subscription',
+        noSyncSources: 'No connected accounts or subscriptions',
         openDay: 'Open this day',
         search: 'Search',
         toggleSidebar: 'Toggle sidebar',
@@ -73,6 +80,8 @@ export const resources = {
         tabGeneral: 'General',
         tabAppearance: 'Appearance',
         tabView: 'Calendar view',
+        defaultView: 'Default calendar view',
+        viewOption: { day: 'Day view', week: 'Week view', month: 'Month view', year: 'Year view', list: 'List view' },
         tabCalendars: 'Calendars & accounts',
         language: 'Language',
         theme: 'Theme',
@@ -122,6 +131,7 @@ export const resources = {
         autoBackup: 'Back up automatically',
         showLog: 'Show log file',
         showLogFailed: 'The log file could not be opened',
+        fontCredit: 'Uses MiSans Latin by Xiaomi',
         weekStart: 'Week starts on',
         weekStartDay: { '0': 'Sunday', '1': 'Monday', '6': 'Saturday' },
         closeToTray: 'Keep running when the window is closed',
@@ -258,9 +268,16 @@ export const resources = {
         repeatDaily: 'Daily',
         repeatWeekly: 'Weekly',
         repeatMonthly: 'Monthly',
+        repeatMonthDay: 'Day {{day}} of the month',
+        repeatOrdinal: 'Week of the month',
+        repeatOrdinalValue: 'Occurrence {{position}}',
+        repeatWeekday: 'Weekday',
         repeatYearly: 'Yearly',
         repeatLunar: 'Yearly (lunar / âm lịch)',
         repeatCustom: 'Custom (RRULE)',
+        editSeries: 'Edit series',
+        seriesOccurrence: 'This event is part of a recurring series.',
+        seriesUnavailable: 'Could not open the recurring series',
         customRrulePlaceholder: 'RFC 5545 RRULE (e.g. FREQ=WEEKLY;BYDAY=MO,WE,FR;COUNT=10)',
         repeatEvery: 'Every',
         repeatUnitDaily: 'day(s)',
@@ -278,6 +295,7 @@ export const resources = {
         lunarLeapCheckbox: 'Anniversary falls in a leap month (tháng nhuận)',
         lunarNext: 'Next: {{dates}}',
         lunarDescribe: 'Day {{day}}, month {{month}} (tháng {{name}}){{leap}}',
+        lunarDescribeChinese: 'Chinese lunar month {{month}}, day {{day}}{{leap}}',
         lunarLeapSuffix: ' — leap month',
         addToCalendar: 'Add to calendar',
         generateThrough: 'Generate through {{year}}',
@@ -700,10 +718,15 @@ export const resources = {
       nav: {
         today: 'Hôm nay',
         prev: 'Trước',
-        next: 'Sau'
+        next: 'Sau',
+        backToToday: 'Về hôm nay',
+        selectYear: 'Chọn năm',
+        selectMonth: 'Chọn tháng'
       },
       actions: {
         newEvent: 'Tạo',
+        syncSource: 'Đồng bộ tài khoản hoặc lịch đăng ký',
+        noSyncSources: 'Không có tài khoản kết nối hoặc lịch đăng ký',
         openDay: 'Mở ngày này',
         search: 'Tìm kiếm',
         toggleSidebar: 'Thu gọn thanh bên',
@@ -745,6 +768,8 @@ export const resources = {
         tabGeneral: 'Chung',
         tabAppearance: 'Giao diện',
         tabView: 'Hiển thị lịch',
+        defaultView: 'Chế độ xem lịch mặc định',
+        viewOption: { day: 'Ngày', week: 'Tuần', month: 'Tháng', year: 'Năm', list: 'Danh sách' },
         tabCalendars: 'Lịch & tài khoản',
         language: 'Ngôn ngữ',
         theme: 'Giao diện',
@@ -794,6 +819,7 @@ export const resources = {
         autoBackup: 'Tự động sao lưu',
         showLog: 'Mở tệp nhật ký',
         showLogFailed: 'Không mở được tệp nhật ký',
+        fontCredit: 'Sử dụng phông chữ MiSans Latin của Xiaomi',
         weekStart: 'Tuần bắt đầu từ',
         weekStartDay: { '0': 'Chủ nhật', '1': 'Thứ hai', '6': 'Thứ bảy' },
         closeToTray: 'Vẫn chạy khi đóng cửa sổ',
@@ -930,9 +956,16 @@ export const resources = {
         repeatDaily: 'Hàng ngày',
         repeatWeekly: 'Hàng tuần',
         repeatMonthly: 'Hàng tháng',
+        repeatMonthDay: 'Ngày {{day}} trong tháng',
+        repeatOrdinal: 'Thứ tự trong tháng',
+        repeatOrdinalValue: 'Lần thứ {{position}}',
+        repeatWeekday: 'Thứ',
         repeatYearly: 'Hàng năm',
         repeatLunar: 'Hàng năm (âm lịch)',
         repeatCustom: 'Tùy chỉnh (RRULE)',
+        editSeries: 'Sửa chuỗi sự kiện',
+        seriesOccurrence: 'Sự kiện này thuộc một chuỗi lặp lại.',
+        seriesUnavailable: 'Không thể mở chuỗi sự kiện lặp lại',
         customRrulePlaceholder: 'RRULE RFC 5545 (VD: FREQ=WEEKLY;BYDAY=MO,WE,FR;COUNT=10)',
         repeatEvery: 'Mỗi',
         repeatUnitDaily: 'ngày',
@@ -950,6 +983,7 @@ export const resources = {
         lunarLeapCheckbox: 'Ngày giỗ rơi vào tháng nhuận',
         lunarNext: 'Kế tiếp: {{dates}}',
         lunarDescribe: 'Ngày {{day}}, tháng {{month}} (tháng {{name}}){{leap}}',
+        lunarDescribeChinese: 'Âm lịch Trung Quốc: ngày {{day}}, tháng {{month}}{{leap}}',
         lunarLeapSuffix: ' — tháng nhuận',
         addToCalendar: 'Thêm vào lịch',
         generateThrough: 'Tạo đến năm {{year}}',
@@ -1347,6 +1381,10 @@ export const resources = {
     }
   }
 }
+
+i18n.on('languageChanged', (locale) => {
+  if (typeof document !== 'undefined') document.documentElement.lang = locale
+})
 
 i18n.use(initReactI18next).init({
   resources,

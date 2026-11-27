@@ -1,21 +1,27 @@
-# Builds the Windows installer and the Linux AppImage for a version tag and
-# uploads them, with the latest*.yml files the in-app updater reads, to a
-# draft GitHub release. Nothing reaches users until that draft is published.
+# Builds the Windows installer, Windows portable ZIP, and Linux AppImage.
+# The upstream release stays a draft for review. Forks publish after packaging.
 #
-# To cut a release: bump "version" in package.json, commit, then
-#   git tag v<version> && git push origin v<version>
+# Set the npm/updater SemVer in package.json and the public version in
+# shortVersion, then tag the commit with v<shortVersion>.
 name: Release
 
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
 
 permissions:
   contents: write
 
 jobs:
   verify:
+    if: github.event.deleted != true
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
     steps:
@@ -26,33 +32,21 @@ jobs:
           node-version: 24
           cache: npm
 
-      # electron-builder names the release after package.json, so a tag that
-      # disagrees with it would publish under the wrong version.
-      - name: Tag matches package.json
+      # The updater still uses package.json's SemVer in latest*.yml.
+      - name: Resolve release version
+        id: version
         run: |
-          expected="v$(node -p "require('./package.json').version")"
-          if [ "$GITHUB_REF_NAME" != "$expected" ]; then
+          expected="v$(node -p "require('./package.json').shortVersion ?? require('./package.json').version")"
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "$expected" ]; then
             echo "Tag $GITHUB_REF_NAME does not match package.json ($expected)" >&2
             exit 1
           fi
+          echo "tag=$expected" >> "$GITHUB_OUTPUT"
 
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run test
-
-      # Both packaging jobs upload to this one draft. Left to electron-builder,
-      # two jobs reaching the upload together could each create their own.
-      # `gh release list` shows drafts too, so a re-run reuses the first one.
-      - name: Create the draft release
-        run: |
-          if gh release list --limit 100 --json tagName --jq '.[].tagName' | grep -qx "$GITHUB_REF_NAME"; then
-            echo "Release $GITHUB_REF_NAME already exists"
-          else
-            gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "$GITHUB_REF_NAME" --generate-notes
-          fi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   package:
     needs: verify
@@ -61,8 +55,14 @@ jobs:
         include:
           - os: windows-latest
             target: --win --x64
+            prefix: xrncal-Setup
+            extension: exe
+            channel: latest.yml
           - os: ubuntu-latest
             target: --linux AppImage --x64
+            prefix: xrncal
+            extension: AppImage
+            channel: latest-linux.yml
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -84,7 +84,8 @@ jobs:
           XRNCAL_GOOGLE_CLIENT_SECRET: ${{ secrets.XRNCAL_GOOGLE_CLIENT_SECRET }}
           XRNCAL_MICROSOFT_CLIENT_ID: ${{ secrets.XRNCAL_MICROSOFT_CLIENT_ID }}
 
-      # Both jobs upload to the same draft, which electron-builder finds by version.
+      # Upload explicitly to the public tag. electron-builder otherwise looks
+      # for a release named after the internal SemVer.
       #
       # The Windows installer is signed when signing is set up (see "Code
       # signing" in docs/deployment-guide.md), and unsigned otherwise - a secret
@@ -92,7 +93,7 @@ jobs:
       # certificate". Either a .pfx certificate (WIN_CSC_LINK, base64, and
       # WIN_CSC_KEY_PASSWORD) or Azure Trusted Signing (the AZURE_* secrets and
       # variables); the Linux job ignores both.
-      - name: Package and upload
+      - name: Package
         shell: bash
         run: |
           signing=()
@@ -104,9 +105,25 @@ jobs:
               -c.win.azureSignOptions.certificateProfileName="$AZURE_CERTIFICATE_PROFILE"
             )
           fi
-          npx electron-builder ${{ matrix.target }} --publish always "${signing[@]}"
+          version="${RELEASE_TAG#v}"
+          artifact="${{ matrix.prefix }}-$version.${{ matrix.extension }}"
+          npx electron-builder ${{ matrix.target }} --publish never "${signing[@]}" \
+            "-c.artifactName=$artifact" "-c.buildVersion=$version" \
+            "-c.extraMetadata.shortVersionWindows=$version" \
+            "-c.publish.owner=$GITHUB_REPOSITORY_OWNER" "-c.publish.repo=${GITHUB_REPOSITORY#*/}"
+          if [ "$RUNNER_OS" = Windows ]; then
+            packaged="dist/win-unpacked"
+          else
+            image="$PWD/dist/$artifact"
+            inspection="$(mktemp -d)"
+            (cd "$inspection" && "$image" --appimage-extract >/dev/null)
+            packaged="$inspection/squashfs-root"
+          fi
+          for notice in LICENSE THIRD-PARTY-NOTICES.md licenses/MiSans-LICENSE.pdf; do
+            cmp "$notice" "$packaged/resources/$notice"
+          done
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.verify.outputs.tag }}
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
@@ -116,3 +133,84 @@ jobs:
           AZURE_ENDPOINT: ${{ vars.AZURE_ENDPOINT }}
           AZURE_CODE_SIGNING_ACCOUNT: ${{ vars.AZURE_CODE_SIGNING_ACCOUNT }}
           AZURE_CERTIFICATE_PROFILE: ${{ vars.AZURE_CERTIFICATE_PROFILE }}
+
+      - name: Package Windows portable ZIP
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $version = $env:RELEASE_TAG.TrimStart('v')
+          $name = "xrncal-$version-windows-x64-portable"
+          # Mark the unpacked app only after the installer has been built.
+          New-Item -Path dist/win-unpacked/portable.flag -ItemType File -Force | Out-Null
+          Compress-Archive -Path 'dist/win-unpacked/*' -DestinationPath "dist/$name.zip" -Force
+        env:
+          RELEASE_TAG: ${{ needs.verify.outputs.tag }}
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ matrix.os }}
+          path: |
+            dist/*.exe
+            dist/*.AppImage
+            dist/*.blockmap
+            dist/*-portable.zip
+            dist/${{ matrix.channel }}
+          if-no-files-found: error
+          compression-level: 0
+
+  publish:
+    needs: [verify, package]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
+      - name: Update the release after both builds pass
+        run: |
+          version="${RELEASE_TAG#v}"
+          assets=()
+          for asset in "xrncal-Setup-$version.exe" "xrncal-$version.AppImage" \
+            "xrncal-$version-windows-x64-portable.zip" latest.yml latest-linux.yml; do
+            test -s "dist/$asset"
+            assets+=("dist/$asset")
+          done
+          for blockmap in dist/*.blockmap; do
+            if [ -f "$blockmap" ]; then assets+=("$blockmap"); fi
+          done
+
+          notes=()
+          if [ "$IS_FORK" = true ] && [ -f "docs/releases/$version.md" ]; then
+            notes=(--notes-file "docs/releases/$version.md")
+          fi
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            target=(--target "$GITHUB_SHA")
+            if [ "$GITHUB_REF_TYPE" = tag ]; then target=(--verify-tag); fi
+            initial_notes=("${notes[@]}")
+            if [ "${#initial_notes[@]}" -eq 0 ]; then initial_notes=(--generate-notes); fi
+            gh release create "$RELEASE_TAG" --draft "${target[@]}" --title "$RELEASE_TAG" "${initial_notes[@]}"
+          fi
+          # A manual run must not replace a release for a different commit.
+          target_sha="$(git ls-remote origin "refs/tags/$RELEASE_TAG^{}" | cut -f1)"
+          if [ -z "$target_sha" ]; then
+            target_sha="$(git ls-remote origin "refs/tags/$RELEASE_TAG" | cut -f1)"
+          fi
+          test "$target_sha" = "$GITHUB_SHA"
+          gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
+
+          if [ "$IS_FORK" = true ]; then
+            # Republishing an older commit must leave the update channel on main's release.
+            current="$(gh api "repos/$GH_REPO/contents/package.json" --jq .content | base64 --decode | jq -r '.shortVersion // .version')"
+            latest=false
+            if [ "$version" = "$current" ]; then latest=true; fi
+            gh release edit "$RELEASE_TAG" --draft=false "--latest=$latest" "${notes[@]}"
+          fi
+        env:
+          GH_REPO: ${{ github.repository }}
+          IS_FORK: ${{ github.event.repository.fork }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.verify.outputs.tag }}

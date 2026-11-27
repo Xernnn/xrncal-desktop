@@ -45,7 +45,7 @@ export const DatePicker: React.FC<DatePickerProps> = ({
   align = 'left',
   clearable = true
 }) => {
-  const { firstDayOfWeek } = useDisplayPreferences()
+  const { firstDayOfWeek, dateFormat } = useDisplayPreferences()
   const [isOpen, setIsOpen] = useState(false)
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -255,10 +255,7 @@ export const DatePicker: React.FC<DatePickerProps> = ({
 
   const today = useToday()
 
-  const displayLabel = useMemo(() => {
-    if (!parsedValue) return ''
-    return parsedValue.toFormat('dd/MM/yyyy')
-  }, [parsedValue])
+  const displayLabel = parsedValue?.setLocale(i18n.language).toFormat(dateFormat) ?? ''
 
   const presets = [
     { label: i18n.t('ui.today'), getDt: () => today },
@@ -338,7 +335,7 @@ export const DatePicker: React.FC<DatePickerProps> = ({
               </div>
 
               <span className="text-xs font-semibold text-primary">
-                {viewDate.toFormat('MMMM yyyy')}
+                {viewDate.setLocale(i18n.language).toFormat(i18n.language === 'zh-CN' ? 'yyyy年 MM月' : 'MMMM yyyy')}
               </span>
 
               <div className="flex items-center gap-0.5">
@@ -418,7 +415,7 @@ export const DatePicker: React.FC<DatePickerProps> = ({
                 onClick={() => handleSelectDate(today)}
                 className="font-medium text-accent hover:underline cursor-pointer"
               >
-                {i18n.t('ui.today')} ({today.toFormat('dd/MM')})
+                {i18n.t('ui.today')} ({today.setLocale(i18n.language).toFormat(dateFormat)})
               </button>
               <button
                 type="button"

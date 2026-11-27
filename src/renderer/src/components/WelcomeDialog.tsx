@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { Calendar } from '@shared/event-model'
 import type { AppLocale, ProviderStatus } from '@shared/ipc-contract'
+import { APP_LANGUAGES, isAppLocale } from '@shared/settings-contract'
 import HolidayCalendarToggle from './HolidayCalendarToggle'
 import ProviderMark from './accounts/ProviderMark'
 import { NavRow } from './accounts/AccountViews'
@@ -80,17 +81,14 @@ export const WelcomeDialog: React.FC<WelcomeDialogProps> = ({
             <div>
               <div className="mb-2 text-xs font-medium text-muted">{t('settings.language')}</div>
               <div className="flex gap-2">
-                {(
-                  [
-                    ['en', 'English'],
-                    ['vi', 'Tiếng Việt']
-                  ] as const
-                ).map(([locale, name]) => (
+                {Object.entries(APP_LANGUAGES).map(([locale, name]) => (
                   <button
                     key={locale}
                     type="button"
                     className={`flex-1 justify-center ${language === locale ? 'gc-btn-primary' : 'gc-btn'}`}
-                    onClick={() => onSetLanguage(locale)}
+                    onClick={() => {
+                      if (isAppLocale(locale)) onSetLanguage(locale)
+                    }}
                   >
                     {name}
                   </button>

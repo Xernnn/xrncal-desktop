@@ -107,6 +107,21 @@ describe('calendar subscriptions', () => {
     ).toBe('marker')
   })
 
+  it('reparses an unchanged feed after the time zone migration', async () => {
+    const body = feed([{ uid: 'a', summary: 'Class', start: '20260401T180000' }])
+      .replace('BEGIN:VEVENT', 'BEGIN:VTIMEZONE\r\nTZID:Asia/Shanghai\r\nEND:VTIMEZONE\r\nBEGIN:VEVENT')
+      .replace(/DT(START|END):/g, 'DT$1;TZID=Asia/Shanghai:')
+    vi.stubGlobal('fetch', vi.fn(async () => textResponse(body)))
+    const cal = await addSubscription(db, 'https://example.com/f.ics')
+    db.prepare("UPDATE events SET dtstart_utc = '2026-04-01T18:00:00.000Z' WHERE calendar_id = ?").run(cal.id)
+    db.exec('DELETE FROM schema_migrations WHERE version = 34')
+
+    runMigrations(db)
+    expect(await refreshDueSubscriptions(db)).toEqual({ pulledCount: 1, errorCount: 0 })
+    expect(db.prepare('SELECT dtstart_utc FROM events WHERE calendar_id = ?').get(cal.id))
+      .toEqual({ dtstart_utc: '2026-04-01T10:00:00.000Z' })
+  })
+
   it('refreshes only feeds that are due, and does not retry a broken one every poll', async () => {
     const fetchMock = vi.fn(async () => textResponse(feed([{ uid: 'a', summary: 'x', start: '20260401T180000Z' }])))
     vi.stubGlobal('fetch', fetchMock)

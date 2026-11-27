@@ -11,7 +11,7 @@ import {
   refindSelection,
   type CursorSelection
 } from '@shared/keyboard-nav'
-import { stepAnchor, weekTitle, type CalendarViewType } from '@shared/visible-range'
+import { isCalendarView, stepAnchor, weekTitle, type CalendarViewType } from '@shared/visible-range'
 import { startOfWeek } from '@shared/week-start'
 import { recordEmojiUse } from '@shared/title-emoji'
 import { useVisibleRange } from './hooks/use-visible-range'
@@ -80,11 +80,12 @@ export const App: React.FC = () => {
 const CalendarApp: React.FC = () => {
   const { t, i18n } = useTranslation()
   const { settings, ready, setSetting, setLanguage } = useSettings()
-  const { themeConfig } = useTheme()
+  const { themeConfig, isDark } = useTheme()
   const displayPreferences = useMemo(() => displayPreferencesOf(settings), [settings])
   const { firstDayOfWeek, dragSnapMinutes, defaultEventMinutes } = displayPreferences
 
-  const [currentView, setCurrentView] = useState<CalendarViewType>('week')
+  const [selectedView, setCurrentView] = useState<CalendarViewType>()
+  const currentView = selectedView ?? (isCalendarView(settings.defaultView) ? settings.defaultView : 'month')
   const [anchorDate, setAnchorDate] = useState<DateTime>(() => DateTime.local())
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [appInfo, setAppInfo] = useState({ version: '0.1.0', platform: 'win32' })
@@ -98,6 +99,8 @@ const CalendarApp: React.FC = () => {
   const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState(false)
   const [isPrintOpen, setIsPrintOpen] = useState(false)
   const [isConflictsModalOpen, setIsConflictsModalOpen] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const manualSyncRunning = useRef(false)
   const welcomeOpen = ready && !settings.welcomeDone
 
   const [isEditorOpen, setIsEditorOpen] = useState(false)
@@ -281,14 +284,19 @@ const CalendarApp: React.FC = () => {
     else if (next) setAccountsDialog([{ name: 'list' }, { name: 'add' }, { name: 'connect', provider: next }])
   }
 
-  const syncNow = async (): Promise<void> => {
-    if (!window.xrncal?.sync?.triggerNow) return
+  const syncNow = async (sourceId?: string): Promise<void> => {
+    if (manualSyncRunning.current || !window.xrncal?.sync?.triggerNow) return
+    manualSyncRunning.current = true
+    setSyncing(true)
     try {
-      const res = await window.xrncal.sync.triggerNow()
-      await reload()
-      toast.success(t('toast.syncDone'), { description: res.message || undefined })
+      const res = await window.xrncal.sync.triggerNow(sourceId)
+      if (res.success) toast.success(t('toast.syncDone'), { description: res.message })
+      else toast.error(t('toast.syncFailed'), { description: res.message })
     } catch (err) {
       showFriendlyError(err, t('toast.syncFailed'))
+    } finally {
+      manualSyncRunning.current = false
+      setSyncing(false)
     }
   }
 
@@ -459,10 +467,16 @@ const CalendarApp: React.FC = () => {
             : visibleRange.label
       }
       currentView={currentView}
+      anchorDate={anchorDate}
+      onSelectDate={setAnchorDate}
       showSidebarToggle={settings.showMiniCalendar}
       onToggleSidebar={() => setSidebarCollapsed((v) => !v)}
       onPrev={handlePrev}
       onNext={handleNext}
+      calendars={calendars}
+      accounts={accounts}
+      syncing={syncing}
+      onSync={(sourceId) => void syncNow(sourceId)}
       onNewEvent={() => openEditorForDate(anchorDate)}
       onChangeView={setCurrentView}
       onSearch={() => setIsSearchPaletteOpen(true)}
@@ -702,6 +716,7 @@ const CalendarApp: React.FC = () => {
           onSave={commands.saveEvent}
           onDelete={commands.deleteEvent}
           onDataChanged={reload}
+          onEditSeries={(event) => openEditor({ event, initialClientX: editorData?.initialClientX })}
           onClose={closeEditor}
           onDraftChange={onDraftChange}
           onEmojiPicked={(emoji) =>
@@ -714,6 +729,8 @@ const CalendarApp: React.FC = () => {
         isOpen={Boolean(commands.pendingScope)}
         title={commands.pendingScope?.title || ''}
         action={commands.pendingScope?.action || 'edit'}
+        scopes={commands.pendingScope?.input?.lunarRule ? ['all'] :
+          commands.pendingScope?.input?.rrule !== undefined ? ['future', 'all'] : undefined}
         onConfirm={commands.confirmScope}
         onCancel={commands.cancelScope}
       />
@@ -810,7 +827,7 @@ const CalendarApp: React.FC = () => {
         }}
       />
 
-      <NotionToaster />
+      <NotionToaster theme={isDark ? 'dark' : 'light'} />
     </div>
     </DisplayPreferencesProvider>
   )

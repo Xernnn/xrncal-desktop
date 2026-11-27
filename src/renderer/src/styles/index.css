@@ -296,11 +296,33 @@
   }
 
   .gc-event {
+    color: var(--color-text-main);
     transition:
       transform 160ms var(--ease-out),
       filter 160ms var(--ease-out),
       box-shadow 160ms var(--ease-out),
       opacity 160ms var(--ease-out);
+  }
+
+  .gc-event-all-day {
+    background-color: color-mix(in srgb, var(--gc-event-color) 18%, var(--color-bg-dialog));
+  }
+
+  .dark .gc-event-all-day {
+    background-color: color-mix(in srgb, var(--gc-event-color) 22%, var(--color-bg-dialog));
+  }
+
+  .gc-event-timed::before {
+    content: '';
+    position: absolute;
+    inset-inline-start: 4px;
+    top: 50%;
+    width: 5px;
+    height: min(16px, calc(100% - 4px));
+    transform: translateY(-50%);
+    border-radius: 999px;
+    background-color: var(--gc-event-color);
+    pointer-events: none;
   }
 
   .gc-event:hover {
@@ -316,9 +338,7 @@
     transform: scale(0.985);
   }
 
-  /* Where the keyboard cursor is sitting. A ring outside the block rather than
-     an inset one: events are solid colour blocks, so an inset ring reads as a
-     border on the event itself and disappears against a pale pastel. */
+  /* Keep the keyboard cursor ring outside the event's fill and marker. */
   .gc-event.is-key-selected {
     outline: 2px solid var(--color-text-main);
     outline-offset: 1px;

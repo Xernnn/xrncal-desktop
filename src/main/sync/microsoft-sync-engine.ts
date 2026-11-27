@@ -888,8 +888,8 @@ export class MicrosoftSyncEngine {
   /**
    * Sync all Microsoft Graph accounts
    */
-  async syncAll(clientId?: string, clientSecret?: string): Promise<SyncResult> {
-    const activeAccounts = new AccountsRepo(this.db).listActive('graph')
+  async syncAll(clientId?: string, clientSecret?: string, accountId?: string): Promise<SyncResult> {
+    const activeAccounts = new AccountsRepo(this.db).listActive('graph').filter((acc) => !accountId || acc.id === accountId)
 
     if (activeAccounts.length === 0) {
       return { success: true, pulledCount: 0, pushedCount: 0, errorCount: 0, message: 'No Microsoft accounts connected' }

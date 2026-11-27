@@ -105,13 +105,13 @@ export const TimedEventBlock: React.FC<TimedEventBlockProps> = ({
         // together than before while the nested look is untouched.
         left: `calc(${layout.leftPercent}% + ${layout.isNested ? 2 : 1.5}px)`,
         width: `calc(${layout.widthPercent}% - ${layout.isNested ? 4 : 3}px)`,
-        backgroundColor: layout.effectiveColor,
+        '--gc-event-color': layout.effectiveColor,
         borderRadius: 6
-      }}
-      className={`gc-event absolute cursor-grab overflow-hidden p-1.5 text-xs text-white active:cursor-grabbing min-w-0 hover:shadow-md ${
+      } as React.CSSProperties}
+      className={`gc-event gc-event-timed absolute min-w-0 cursor-grab overflow-hidden bg-dialog p-1.5 ps-3.5 text-xs before:top-1.5 before:transform-none hover:shadow-md active:cursor-grabbing ${
         layout.isNested
-          ? 'z-30 shadow-md border-2 border-white/70 hover:z-40'
-          : 'z-10 shadow-xs border border-white/20 hover:z-20'
+          ? 'z-30 border-2 border-hairline shadow-md hover:z-40'
+          : 'z-10 border border-hairline shadow-xs hover:z-20'
       } ${isDragging ? 'is-dragging' : ''} ${isSelected ? 'is-key-selected' : ''} ${
         isResizing ? 'z-50' : ''
       }`}

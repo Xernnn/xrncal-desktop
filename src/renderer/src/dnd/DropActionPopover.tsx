@@ -28,7 +28,7 @@ export const DropActionPopover: React.FC<DropActionPopoverProps> = ({
   onCancel
 }) => {
   const { t } = useTranslation()
-  const { timeFormat } = useDisplayPreferences()
+  const { timeFormat, dateFormat } = useDisplayPreferences()
   useEffect(() => {
     if (!pendingDrop) return
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -49,9 +49,10 @@ export const DropActionPopover: React.FC<DropActionPopoverProps> = ({
   const y = Math.min(window.innerHeight - 200, Math.max(16, pendingDrop.position.y))
 
   const isRecurring = pendingDrop.occurrence.isRecurring
+  const targetDate = pendingDrop.targetStart.toFormat(dateFormat)
   const targetTimeStr = pendingDrop.occurrence.allDay
-    ? pendingDrop.targetStart.toFormat('dd/MM/yyyy')
-    : `${pendingDrop.targetStart.toFormat('dd/MM')} ${formatClockTime(pendingDrop.targetStart, timeFormat)} – ${formatClockTime(pendingDrop.targetEnd, timeFormat)}`
+    ? targetDate
+    : `${targetDate} ${formatClockTime(pendingDrop.targetStart, timeFormat)} – ${formatClockTime(pendingDrop.targetEnd, timeFormat)}`
 
   return (
     <div className="gc-dnd-overlay pointer-events-auto select-none" onClick={onCancel}>

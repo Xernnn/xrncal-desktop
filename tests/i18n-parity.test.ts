@@ -10,9 +10,8 @@ const rendererSources = import.meta.glob('../src/renderer/src/**/*.{ts,tsx}', {
 }) as Record<string, string>
 
 /**
- * `vi` and `en` are meant to stay in lockstep. Nothing enforced that, so a key
- * added to one and forgotten in the other silently fell back to English (or to
- * the raw key) at runtime, with no build or test failure.
+ * Keep the translations in lockstep so missing keys fail a test instead of
+ * silently falling back to English at runtime.
  */
 function keyPaths(node: unknown, prefix = ''): string[] {
   if (node === null || typeof node !== 'object' || Array.isArray(node)) return [prefix]
@@ -31,11 +30,24 @@ function valueAt(tree: unknown, path: string): unknown {
 
 describe('i18n resources', () => {
   const en = new Set(keyPaths(resources.en.translation))
-  const vi = new Set(keyPaths(resources.vi.translation))
+  it('defines the same key set in all locales', () => {
+    for (const [locale, bundle] of Object.entries(resources)) {
+      const keys = new Set(keyPaths(bundle.translation))
+      expect([...en].filter((k) => !keys.has(k)), `missing keys in ${locale}`).toEqual([])
+      expect([...keys].filter((k) => !en.has(k)), `extra keys in ${locale}`).toEqual([])
+    }
+  })
 
-  it('defines the same key set in both locales', () => {
-    expect([...en].filter((k) => !vi.has(k))).toEqual([])
-    expect([...vi].filter((k) => !en.has(k))).toEqual([])
+  it('preserves interpolation placeholders in all locales', () => {
+    const placeholders = (value: unknown): string[] =>
+      typeof value === 'string' ? [...value.matchAll(/\{\{\w+\}\}/g)].map(([match]) => match).sort() : []
+    for (const [locale, bundle] of Object.entries(resources)) {
+      for (const key of en) {
+        expect(placeholders(valueAt(bundle.translation, key)), `${locale}: ${key}`).toEqual(
+          placeholders(valueAt(resources.en.translation, key))
+        )
+      }
+    }
   })
 
   it('has no empty translation strings', () => {

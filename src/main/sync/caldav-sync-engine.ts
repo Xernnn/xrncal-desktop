@@ -855,8 +855,8 @@ export class CalDavSyncEngine {
   /**
    * Sync all connected CalDAV accounts
    */
-  async syncAll(): Promise<SyncResult> {
-    const activeAccounts = new AccountsRepo(this.db).listActive('caldav')
+  async syncAll(accountId?: string): Promise<SyncResult> {
+    const activeAccounts = new AccountsRepo(this.db).listActive('caldav').filter((acc) => !accountId || acc.id === accountId)
 
     if (activeAccounts.length === 0) {
       return { success: true, pulledCount: 0, pushedCount: 0, errorCount: 0, message: 'No CalDAV accounts connected' }
@@ -880,6 +880,7 @@ export class CalDavSyncEngine {
         const colors = await this.pushCalendarColors(acc.id, creds)
         const calendars = await this.syncCalendarList(acc.id, creds)
         let firstFailure: string | undefined = colors.lastError
+        if (colors.lastError && accountId) totalErrors++
         const gone = this.dropGoneCalendars(acc.id, new Set(calendars.map((c) => c.id)))
         // Their events went with them: the window has to read again.
         totalPulled += gone.removed

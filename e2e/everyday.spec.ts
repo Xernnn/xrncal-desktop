@@ -2,10 +2,33 @@ import { test, expect } from '@playwright/test'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { launchApp } from './app'
+import { launchApp, newProfile } from './app'
 
 // What a new user does in the first five minutes: gets welcomed, makes an
 // event by clicking the grid, opens it, right-clicks it.
+
+test('the default view starts at Month and survives a restart after changing it', async () => {
+  const profile = newProfile()
+  let running: Awaited<ReturnType<typeof launchApp>> | undefined
+  try {
+    running = await launchApp({ profile, useDefaultView: true })
+    const { page } = running
+    await expect(page.getByRole('button', { name: 'Month', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Settings', exact: true }).click()
+    await page.getByRole('button', { name: 'Calendar view', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Month view', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await page.getByRole('button', { name: 'Year view', exact: true }).click()
+    await expect.poll(() => page.evaluate(() => window.xrncal.settings.get('defaultView'))).toBe('year')
+    await running.close()
+    running = undefined
+
+    running = await launchApp({ profile, useDefaultView: true })
+    await expect(running.page.getByRole('button', { name: 'Year', exact: true })).toBeVisible()
+  } finally {
+    await running?.close()
+    rmSync(profile, { recursive: true, force: true })
+  }
+})
 
 test('a fresh profile opens on the welcome, which can be finished without an account', async () => {
   const running = await launchApp({ welcome: true })

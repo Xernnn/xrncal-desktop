@@ -1,7 +1,12 @@
 import { DateTime } from 'luxon'
 import { startOfWeek } from './week-start'
 
-export type CalendarViewType = 'day' | 'week' | 'month' | 'year' | 'list'
+export const CALENDAR_VIEWS = ['day', 'week', 'month', 'year', 'list'] as const
+export type CalendarViewType = (typeof CALENDAR_VIEWS)[number]
+
+export function isCalendarView(value: unknown): value is CalendarViewType {
+  return CALENDAR_VIEWS.some((view) => view === value)
+}
 
 export interface VisibleRange {
   startUtc: string

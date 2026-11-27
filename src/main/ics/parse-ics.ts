@@ -23,19 +23,29 @@ interface ParsedIcsData {
   skipped: number
 }
 
-/** What `icalTimeToIso()` reads of an ICAL.Time. `timezone` is the TZID
- *  ical.js keeps when it could not resolve the zone, which its types omit. */
-interface IcalTimeParts {
-  isDate?: boolean
-  timezone?: string
-  zone?: { tzid: string }
-  year: number
-  month: number
-  day: number
-  hour: number
-  minute: number
-  second: number
-  toJSDate(): Date
+/** The original TZID, including when ical.js left it unresolved. */
+type IcsTime = ICAL.Time & { timezone?: string }
+
+export function hasIcsTimeZoneRules(component: ICAL.Component): boolean {
+  return component.getAllSubcomponents().some(
+    (rule) => (rule.name === 'standard' || rule.name === 'daylight') &&
+      rule.hasProperty('dtstart') && rule.hasProperty('tzoffsetfrom') && rule.hasProperty('tzoffsetto')
+  )
+}
+
+/** A missing VTIMEZONE looks floating to ical.js. A stub with a TZID but no
+ *  offset rules looks resolved, but ical.js converts it using a zero offset.
+ *  In both cases a known IANA name can supply the real offset for this date. */
+export function resolveIcsWallTime(time: IcsTime): DateTime | undefined {
+  const tzid = time.timezone || time.zone?.tzid
+  if (!tzid || !IANAZone.isValidZone(tzid)) return undefined
+
+  const definition = time.zone?.component
+  if (time.zone?.tzid !== 'floating' && (!definition || hasIcsTimeZoneRules(definition))) return undefined
+
+  const { year, month, day, hour, minute, second } = time
+  const zoned = DateTime.fromObject({ year, month, day, hour, minute, second }, { zone: tzid })
+  return zoned.isValid ? zoned : undefined
 }
 
 /**
@@ -44,7 +54,7 @@ interface IcalTimeParts {
  * (or an override with an empty RECURRENCE-ID) sat at whatever moment the file
  * was read, and moved with every pull.
  */
-function icalTimeToIso(time: IcalTimeParts | null | undefined): { iso: string; allDay: boolean; tzid: string } {
+function icalTimeToIso(time: IcsTime | null | undefined): { iso: string; allDay: boolean; tzid: string } {
   if (!time) throw new Error('A date the VEVENT needs is missing')
 
   const allDay = time.isDate === true
@@ -56,19 +66,7 @@ function icalTimeToIso(time: IcalTimeParts | null | undefined): { iso: string; a
   const pad = (n: number, width = 2): string => String(n).padStart(width, '0')
   if (allDay) return { iso: `${pad(time.year, 4)}-${pad(time.month)}-${pad(time.day)}T00:00:00.000Z`, allDay, tzid }
 
-  // A TZID whose VTIMEZONE the file left out stays unresolved, and ical.js then
-  // reads the time as floating - in this machine's zone, so 09:00 New York came
-  // out as 09:00 here. An IANA name can still be resolved without the block.
-  if (time.timezone && time.zone?.tzid === 'floating' && IANAZone.isValidZone(time.timezone)) {
-    const zoned = DateTime.fromObject(
-      { year: time.year, month: time.month, day: time.day, hour: time.hour, minute: time.minute, second: time.second },
-      { zone: time.timezone }
-    )
-    if (zoned.isValid) return { iso: zoned.toUTC().toISO()!, allDay, tzid }
-  }
-
-  const jsDate = time.toJSDate()
-  const iso = DateTime.fromJSDate(jsDate, { zone: 'utc' }).toISO() || jsDate.toISOString()
+  const iso = resolveIcsWallTime(time)?.toUTC().toISO() ?? time.toJSDate().toISOString()
   return { iso, allDay, tzid }
 }
 

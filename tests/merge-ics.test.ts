@@ -168,6 +168,21 @@ describe('mergeServerCopy', () => {
     expect(out).toContain('TZNAME:CEST')
   })
 
+  it('keeps generated time zone rules and matches overrides when the server sends a stub', () => {
+    const { event, exceptions } = pulled()
+    const stub = ['BEGIN:VTIMEZONE', 'TZID:Europe/Berlin', 'END:VTIMEZONE'].join('\r\n')
+    const src = serverCopy().replace(BERLIN.join('\r\n'), stub)
+    const parsed = parseIcsContent(src, CALENDAR.id)
+    expect(parsed.events[0].dtStartUtc).toBe(event.dtStartUtc)
+    expect(parsed.exceptions[0].originalStartUtc).toBe(exceptions[0].originalStartUtc)
+
+    const out = merged(event, exceptions, src)
+    expect(out).toContain('TZOFFSETTO:+0200')
+    const [master, override] = vevents(out)
+    expect(master.getFirstPropertyValue('sequence')).toBe(3)
+    expect(override.getFirstPropertyValue('x-override-note')).toBe('kept')
+  })
+
   it('writes the zone the event was moved to here, with a definition of it', () => {
     const { event, exceptions } = pulled()
     const out = merged({ ...event, tzid: 'Asia/Ho_Chi_Minh' }, exceptions)

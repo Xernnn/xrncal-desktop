@@ -1,6 +1,6 @@
-import type { AppSettings } from './settings-contract'
+import { isAppLocale, type AppSettings } from './settings-contract'
 
-export type SystemDefaults = Partial<Pick<AppSettings, 'locale' | 'timeFormat' | 'firstDayOfWeek'>>
+export type SystemDefaults = Partial<Pick<AppSettings, 'locale' | 'timeFormat' | 'dateFormat' | 'firstDayOfWeek'>>
 
 /** `Intl.Locale` week data: a method in newer engines, a getter in older ones. */
 function firstDayOf(locale: Intl.Locale): number | undefined {
@@ -28,7 +28,10 @@ export function defaultsForSystem(language: string | undefined, region: string |
   const out: SystemDefaults = {}
 
   try {
-    if (language) out.locale = new Intl.Locale(language).language === 'vi' ? 'vi' : 'en'
+    if (language) {
+      const base = new Intl.Locale(language).language
+      out.locale = base === 'zh' ? 'zh-CN' : isAppLocale(base) ? base : 'en'
+    }
   } catch {
     // Not a language tag; keep the built-in default.
   }
@@ -40,6 +43,16 @@ export function defaultsForSystem(language: string | undefined, region: string |
     if (cycle) out.timeFormat = cycle === 'h11' || cycle === 'h12' ? '12h' : '24h'
   } catch {
     // Unknown region; keep the built-in clock.
+  }
+  try {
+    const parts = new Intl.DateTimeFormat(formats, {
+      year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'UTC', calendar: 'gregory', numberingSystem: 'latn'
+    }).formatToParts(new Date(Date.UTC(2026, 10, 26)))
+    const tokens: Readonly<Record<string, string>> = { year: 'yyyy', month: 'MM', day: 'dd' }
+    out.dateFormat = parts.map(({ type, value }) => tokens[type] ??
+      (/[A-Za-z']/.test(value) ? `'${value.replaceAll("'", "''")}'` : value)).join('')
+  } catch {
+    // Keep the built-in date pattern if the region is unavailable.
   }
   try {
     const firstDay = firstDayOf(new Intl.Locale(formats))

@@ -35,7 +35,7 @@ const xrncalApi: XrncalAPI = {
     clearOAuthClient: (provider) => ipcRenderer.invoke(IPC_CHANNELS.AUTH.CLEAR_OAUTH_CLIENT, provider)
   },
   sync: {
-    triggerNow: () => ipcRenderer.invoke(IPC_CHANNELS.SYNC.TRIGGER_NOW),
+    triggerNow: (sourceId) => ipcRenderer.invoke(IPC_CHANNELS.SYNC.TRIGGER_NOW, sourceId),
     getStatus: () => ipcRenderer.invoke(IPC_CHANNELS.SYNC.GET_STATUS),
     onChanged: (callback: () => void) => {
       // The renderer never sees the raw IpcRendererEvent - passing the sender
