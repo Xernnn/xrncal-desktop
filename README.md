@@ -4,6 +4,10 @@
 
 <h1 align="center">xrncal</h1>
 
+This fork is maintained by [immoke](https://github.com/immoke/xrncal-desktop).
+Xernnn created the [original xrncal project](https://github.com/Xernnn/xrncal-desktop)
+and released it under the [MIT License](LICENSE).
+
 <p align="center">
   <strong>A local-first desktop calendar for Windows and Linux.</strong><br>
   Google, Microsoft 365 and CalDAV in one window — with <em>Vietnamese lunar dates</em> and <em>lunar-year anniversaries</em>.
@@ -142,7 +146,7 @@ The way xrncal looks and behaves follows One Calendar (Code Spark), which has no
 
 ## Install
 
-A release will be at **[Releases](https://github.com/Xernnn/xrncal-desktop/releases/latest)**, with:
+The fork's [Releases](https://github.com/immoke/xrncal-desktop/releases/latest) provide three builds.
 
 - **Windows 10/11:** `xrncal Setup <version>.exe`. Until the installer is code-signed, SmartScreen asks first: *More info → Run anyway*.
 - **Windows portable:** Extract the entire `xrncal-<version>-windows-x64-portable.zip` to a writable folder and run `xrncal.exe` directly. Keep `portable.flag` and the other files beside it. The first launch creates `xrncal.sqlite` in the same folder.
@@ -155,7 +159,7 @@ The first launch walks you through three steps: language, a few basics (lunar da
 You need **Node.js 23.4+** (24 recommended - the tests use its built-in `node:sqlite`) and Git.
 
 ```bash
-git clone https://github.com/Xernnn/xrncal-desktop.git
+git clone https://github.com/immoke/xrncal-desktop.git
 cd xrncal-desktop
 npm install
 ```
@@ -397,7 +401,9 @@ Releases: bump `version` in `package.json`, commit, then push a `v<version>` tag
 
 [MIT](LICENSE) © Xernnn.
 
-Uses `ical.js` (MPL-2.0) and `rrule` (BSD-3-Clause); everything else is MIT or ISC. No viral copyleft dependencies. The app and the website use [MiSans](https://hyperos.mi.com/font) by Xiaomi, free for commercial use and embedded under its terms; the font ships with them, so none is fetched from anywhere.
+The installer, portable ZIP, and AppImage include the project's MIT license and
+the [third-party notices](THIRD-PARTY-NOTICES.md) in the application's `resources`
+directory. The application uses MiSans Latin by Xiaomi.
 
 ---
 

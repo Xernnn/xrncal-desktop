@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: release-${{ github.sha }}
+  group: release-${{ github.ref }}
 
 permissions:
   contents: write
@@ -47,22 +47,6 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run test
-
-      # Both packaging jobs upload to this one draft. Left to electron-builder,
-      # two jobs reaching the upload together could each create their own.
-      # A re-run reuses that release.
-      - name: Create the draft release
-        run: |
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "Release $RELEASE_TAG already exists"
-          else
-            target=(--target "$GITHUB_SHA")
-            if [ "$GITHUB_REF_TYPE" = tag ]; then target=(--verify-tag); fi
-            gh release create "$RELEASE_TAG" --draft "${target[@]}" --title "$RELEASE_TAG" --generate-notes
-          fi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ steps.version.outputs.tag }}
 
   package:
     needs: verify
@@ -109,7 +93,7 @@ jobs:
       # certificate". Either a .pfx certificate (WIN_CSC_LINK, base64, and
       # WIN_CSC_KEY_PASSWORD) or Azure Trusted Signing (the AZURE_* secrets and
       # variables); the Linux job ignores both.
-      - name: Package and upload
+      - name: Package
         shell: bash
         run: |
           signing=()
@@ -127,11 +111,18 @@ jobs:
             "-c.artifactName=$artifact" "-c.buildVersion=$version" \
             "-c.extraMetadata.shortVersionWindows=$version" \
             "-c.publish.owner=$GITHUB_REPOSITORY_OWNER" "-c.publish.repo=${GITHUB_REPOSITORY#*/}"
-          assets=("dist/$artifact" "dist/${{ matrix.channel }}")
-          if [ -f "dist/$artifact.blockmap" ]; then assets+=("dist/$artifact.blockmap"); fi
-          gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
+          if [ "$RUNNER_OS" = Windows ]; then
+            packaged="dist/win-unpacked"
+          else
+            image="$PWD/dist/$artifact"
+            inspection="$(mktemp -d)"
+            (cd "$inspection" && "$image" --appimage-extract >/dev/null)
+            packaged="$inspection/squashfs-root"
+          fi
+          for notice in LICENSE THIRD-PARTY-NOTICES.md licenses/MiSans-LICENSE.pdf; do
+            cmp "$notice" "$packaged/resources/$notice"
+          done
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ needs.verify.outputs.tag }}
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
@@ -143,7 +134,7 @@ jobs:
           AZURE_CODE_SIGNING_ACCOUNT: ${{ vars.AZURE_CODE_SIGNING_ACCOUNT }}
           AZURE_CERTIFICATE_PROFILE: ${{ vars.AZURE_CERTIFICATE_PROFILE }}
 
-      - name: Package and upload Windows portable ZIP
+      - name: Package Windows portable ZIP
         if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
@@ -152,30 +143,74 @@ jobs:
           # Mark the unpacked app only after the installer has been built.
           New-Item -Path dist/win-unpacked/portable.flag -ItemType File -Force | Out-Null
           Compress-Archive -Path 'dist/win-unpacked/*' -DestinationPath "dist/$name.zip" -Force
-          gh release upload $env:RELEASE_TAG "dist/$name.zip" --clobber
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ needs.verify.outputs.tag }}
 
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ matrix.os }}
+          path: |
+            dist/*.exe
+            dist/*.AppImage
+            dist/*.blockmap
+            dist/*-portable.zip
+            dist/${{ matrix.channel }}
+          if-no-files-found: error
+          compression-level: 0
+
   publish:
-    if: github.event.repository.fork
     needs: [verify, package]
     runs-on: ubuntu-latest
     steps:
-      - name: Publish verified release
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
+      - name: Update the release after both builds pass
         run: |
-          assets="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
           version="${RELEASE_TAG#v}"
+          assets=()
           for asset in "xrncal-Setup-$version.exe" "xrncal-$version.AppImage" \
             "xrncal-$version-windows-x64-portable.zip" latest.yml latest-linux.yml; do
-            grep -Fxq "$asset" <<< "$assets"
+            test -s "dist/$asset"
+            assets+=("dist/$asset")
           done
-          # Republishing an older commit must leave the update channel on main's release.
-          current="$(gh api "repos/$GH_REPO/contents/package.json" --jq .content | base64 --decode | jq -r '.shortVersion // .version')"
-          latest=false
-          if [ "$version" = "$current" ]; then latest=true; fi
-          gh release edit "$RELEASE_TAG" --draft=false "--latest=$latest"
+          for blockmap in dist/*.blockmap; do
+            if [ -f "$blockmap" ]; then assets+=("$blockmap"); fi
+          done
+
+          notes=()
+          if [ "$IS_FORK" = true ] && [ -f "docs/releases/$version.md" ]; then
+            notes=(--notes-file "docs/releases/$version.md")
+          fi
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            target=(--target "$GITHUB_SHA")
+            if [ "$GITHUB_REF_TYPE" = tag ]; then target=(--verify-tag); fi
+            initial_notes=("${notes[@]}")
+            if [ "${#initial_notes[@]}" -eq 0 ]; then initial_notes=(--generate-notes); fi
+            gh release create "$RELEASE_TAG" --draft "${target[@]}" --title "$RELEASE_TAG" "${initial_notes[@]}"
+          fi
+          # A manual run must not replace a release for a different commit.
+          target_sha="$(git ls-remote origin "refs/tags/$RELEASE_TAG^{}" | cut -f1)"
+          if [ -z "$target_sha" ]; then
+            target_sha="$(git ls-remote origin "refs/tags/$RELEASE_TAG" | cut -f1)"
+          fi
+          test "$target_sha" = "$GITHUB_SHA"
+          gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
+
+          if [ "$IS_FORK" = true ]; then
+            # Republishing an older commit must leave the update channel on main's release.
+            current="$(gh api "repos/$GH_REPO/contents/package.json" --jq .content | base64 --decode | jq -r '.shortVersion // .version')"
+            latest=false
+            if [ "$version" = "$current" ]; then latest=true; fi
+            gh release edit "$RELEASE_TAG" --draft=false "--latest=$latest" "${notes[@]}"
+          fi
         env:
           GH_REPO: ${{ github.repository }}
+          IS_FORK: ${{ github.event.repository.fork }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ needs.verify.outputs.tag }}
