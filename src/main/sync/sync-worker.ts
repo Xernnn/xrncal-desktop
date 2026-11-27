@@ -40,6 +40,27 @@ export interface SyncOAuthClients {
   microsoft: OAuthClient | null
 }
 
+/**
+ * How often the providers are asked for changes while one of the app's windows
+ * has focus: near-instant pulls without hammering provider APIs (true push
+ * would need a public HTTPS webhook, which a desktop app doesn't have).
+ */
+export const FOCUSED_POLL_MS = 20 * 1000
+
+/**
+ * ...and while none has: the window closed to the tray, minimised or behind
+ * another app. Every poll costs the server something even when nothing has
+ * changed - a CalDAV server works out each calendar's ctag from every event in
+ * it, about 1.6 s of a small home server's CPU for 8,000 events - and nobody is
+ * looking. Coming back to the window syncs at once.
+ */
+export const BACKGROUND_POLL_MS = 10 * 60 * 1000
+
+/** Whether one of the app's windows has focus now. */
+function anyWindowFocused(): boolean {
+  return BrowserWindow.getFocusedWindow() !== null
+}
+
 export class SyncWorker {
   private googleEngine: GoogleSyncEngine
   private microsoftEngine: MicrosoftSyncEngine
@@ -49,6 +70,8 @@ export class SyncWorker {
    *  fires a sync against a database the app is in the middle of closing. */
   private startupTimer: NodeJS.Timeout | null = null
   private activeSync: Promise<SyncResult> | null = null
+  /** When the last sync began (ms), so a focus soon after one does not start another. */
+  private lastStartedAt = 0
   private lastSyncTime?: string
   private lastError?: string
   /** Accounts the last sync could not reach, by id, and why. */
@@ -59,12 +82,16 @@ export class SyncWorker {
    *  changes or ends rather than on every poll. */
   private loggedFailures: Record<string, string> = {}
 
-  private currentIntervalMs = 5 * 60 * 1000
+  private currentIntervalMs = BACKGROUND_POLL_MS
 
-  /** `oauthClients` is asked on every sync, so details saved in the app apply without a restart. */
+  /**
+   * `oauthClients` is asked on every sync, so details saved in the app apply
+   * without a restart. `hasFocus` is asked before each poll is timed.
+   */
   constructor(
     private db: ISqliteDatabase,
-    private oauthClients: () => SyncOAuthClients
+    private oauthClients: () => SyncOAuthClients,
+    private hasFocus: () => boolean = anyWindowFocused
   ) {
     this.googleEngine = new GoogleSyncEngine(db)
     this.microsoftEngine = new MicrosoftSyncEngine(db)
@@ -72,12 +99,10 @@ export class SyncWorker {
   }
 
   /**
-   * Start periodic background sync with adaptive polling
+   * Start periodic background sync: a first sync shortly after launch, then
+   * polls at the rate that goes with focus (FOCUSED_POLL_MS, BACKGROUND_POLL_MS).
    */
-  start(intervalMs = 5 * 60 * 1000): void {
-    this.currentIntervalMs = intervalMs
-    if (this.timer) clearInterval(this.timer)
-
+  start(): void {
     // Initial sync
     if (this.startupTimer) clearTimeout(this.startupTimer)
     this.startupTimer = setTimeout(() => {
@@ -85,32 +110,54 @@ export class SyncWorker {
       this.triggerSync().catch(() => {})
     }, 3000)
 
-    this.timer = setInterval(() => {
-      this.triggerSync().catch(() => {})
-    }, this.currentIntervalMs)
+    this.schedule(this.pollIntervalNow(), true)
   }
 
   /**
-   * Adaptive polling policy: 20s when focused (near-instant pulls without hammering provider
-   * APIs — true push notifications would need a public HTTPS webhook endpoint, which a desktop
-   * app doesn't have), 5m when background/tray
+   * A window gained or lost focus, or closed: poll at the rate that goes with
+   * it from now on.
+   *
+   * The rate used to follow these calls alone, so a blur that never came left
+   * the app polling every 20 s for as long as it ran: a focused window closed
+   * to the tray is destroyed, and nothing promises a blur on the way out. A
+   * home server's calendar was asked for its ctags three times a minute, day
+   * and night, at about 7.5 % of a core. Each poll now also asks which window
+   * has focus before timing the next one.
    */
   setFocusState(isFocused: boolean): void {
-    const nextInterval = isFocused ? 20 * 1000 : 5 * 60 * 1000
-    if (this.currentIntervalMs !== nextInterval) {
-      this.currentIntervalMs = nextInterval
-      if (this.timer) {
-        clearInterval(this.timer)
-        this.timer = setInterval(() => {
-          this.triggerSync().catch(() => {})
-        }, this.currentIntervalMs)
-      }
-    }
+    this.schedule(isFocused ? FOCUSED_POLL_MS : BACKGROUND_POLL_MS)
+  }
+
+  /**
+   * Sync because the user came back to a window - unless a sync began less
+   * than a focused poll ago. Each switch back to the window used to sync, so
+   * moving between windows asked the servers again every few seconds.
+   */
+  syncOnFocus(): void {
+    if (Date.now() - this.lastStartedAt < FOCUSED_POLL_MS) return
+    this.triggerSync().catch(() => {})
+  }
+
+  private pollIntervalNow(): number {
+    return this.hasFocus() ? FOCUSED_POLL_MS : BACKGROUND_POLL_MS
+  }
+
+  /** Time the next poll `intervalMs` from now, unless one is already timed at that rate. */
+  private schedule(intervalMs: number, restart = false): void {
+    if (!restart && !this.timer) return // not started, or stopped
+    if (!restart && intervalMs === this.currentIntervalMs) return
+    if (this.timer) clearTimeout(this.timer)
+    this.currentIntervalMs = intervalMs
+    this.timer = setTimeout(() => {
+      // The next one first, so nothing a sync does can end the polling.
+      this.schedule(this.pollIntervalNow(), true)
+      this.triggerSync().catch(() => {})
+    }, intervalMs)
   }
 
   stop(): void {
     if (this.timer) {
-      clearInterval(this.timer)
+      clearTimeout(this.timer)
       this.timer = null
     }
     if (this.startupTimer) {
@@ -142,6 +189,7 @@ export class SyncWorker {
   }
 
   private startSync(manual?: { sourceId?: string }): Promise<SyncResult> {
+    this.lastStartedAt = Date.now()
     this.activeSync = this.runSync(manual).finally(() => {
       this.activeSync = null
     })

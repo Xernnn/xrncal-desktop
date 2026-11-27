@@ -83,7 +83,7 @@ User saves in the editor (or drags, resizes, deletes)
 ### Sync loop
 
 ```
-SyncWorker: every 20 s while the window has focus, 5 min otherwise
+SyncWorker: every 20 s while a window has focus, 10 min otherwise
   → Google, Graph, CalDAV and due subscriptions run concurrently, each with its own .catch
   → per calendar: replies (rsvp_pending) → dirty pushes → pull
       Google: incremental via syncToken
@@ -91,6 +91,9 @@ SyncWorker: every 20 s while the window has focus, 5 min otherwise
               a changed series (and every series each 6 h) is read for its changed and
               cancelled occurrences
       CalDAV: skipped when the ctag is unchanged and nothing was pushed
+  → CalDAV calendar list (one PROPFIND on the home): a calendar it no longer names is removed,
+    unless it holds unsent changes; a listing that is not a whole 207 multistatus, or names
+    none of the account's calendars, fails the sync and removes nothing
   → SYNC.CHANGED to every window when rows changed
 ```
 

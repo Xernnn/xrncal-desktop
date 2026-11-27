@@ -27,7 +27,8 @@ function checksEnabled(): boolean {
  * A new release downloads in the background and installs when the app quits;
  * nothing restarts under the user. Asking GitHub is the one request the app
  * makes that is not to a calendar provider, so it follows the
- * `checkForUpdates` setting, read again before every check.
+ * `checkForUpdates` setting, read again before every check - off until it is
+ * turned on.
  */
 export function startAutoUpdates(): void {
   if (started || !app.isPackaged) return
@@ -37,8 +38,16 @@ export function startAutoUpdates(): void {
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
   // Offline, rate-limited or no release yet: try again at the next interval.
-  // Logged, because a download that fails its checksum lands here too.
-  autoUpdater.on('error', (err) => log('warn', `Update check failed: ${describeError(err)}`))
+  // Logged, because a download that fails its checksum lands here too - once
+  // for as long as it fails the same way, not every six hours.
+  let lastFailure: string | undefined
+  autoUpdater.on('error', (err) => {
+    const failure = describeError(err)
+    if (failure !== lastFailure) log('warn', `Update check failed: ${failure}`)
+    lastFailure = failure
+  })
+  autoUpdater.on('update-not-available', () => (lastFailure = undefined))
+  autoUpdater.on('update-available', () => (lastFailure = undefined))
   autoUpdater.on('update-downloaded', (info) => {
     const version = info.releaseName?.replace(/^v(?=\d)/, '') || info.version
     log('info', `Update ${version} downloaded; installs on quit`)

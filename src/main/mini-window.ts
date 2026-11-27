@@ -49,6 +49,12 @@ function createMiniWindow(): BrowserWindow {
   // navigating away from the app.
   lockDownContents(miniWindow.webContents)
 
+  // Its own title, not the page's ("xrncal", the main window's too). On
+  // Wayland a window can neither stay on top nor choose where it goes, so a
+  // compositor rule does both (README), and it finds the mini window by this
+  // title - the one it had when it opened.
+  miniWindow.on('page-title-updated', (event) => event.preventDefault())
+
   // Load URL with #mini hash
   const devServer = devServerUrl()
   if (devServer) {

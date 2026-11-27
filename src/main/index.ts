@@ -126,6 +126,8 @@ if (!gotTheLock) {
     // with the setting off, closing the window quits as it used to.
     mainWindow.on('closed', () => {
       mainWindow = null
+      // A window closed while focused need not report a blur first.
+      getSyncWorker()?.setFocusState(false)
       if (isQuitting) return
       if (keepsRunningWhenClosed()) {
         try {
@@ -144,12 +146,13 @@ if (!gotTheLock) {
       void refreshTrayHost()
       const worker = getSyncWorker()
       worker?.setFocusState(true)
-      worker?.triggerSync().catch(() => {})
+      worker?.syncOnFocus()
     })
 
-    mainWindow.on('blur', () => {
-      getSyncWorker()?.setFocusState(false)
-    })
+    const away = (): void => getSyncWorker()?.setFocusState(false)
+    mainWindow.on('blur', away)
+    mainWindow.on('hide', away)
+    mainWindow.on('minimize', away)
 
     // Links open in the browser (web and mail addresses only: event text comes
     // from providers, and openExternal launches whatever handles a scheme), and

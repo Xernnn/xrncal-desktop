@@ -10,6 +10,7 @@ import { AccountsRepo } from '../db/repos/accounts-repo'
 import { EventsRepo, type EventRow } from '../db/repos/events-repo'
 import { CalendarsRepo } from '../db/repos/calendars-repo'
 import { SyncStateRepo } from '../db/repos/sync-state-repo'
+import { removeCalendar } from '../db/repos/remove-calendar'
 import type { Attendee, AttendeeResponseStatus, SyncResult } from '@shared/event-model'
 import { markSelfAttendee } from '@shared/event-model'
 import { mergePulledReminders, parseRemindersJson, serializeReminders } from '@shared/reminders'
@@ -22,6 +23,9 @@ const MULTIGET_MAX = 500
 
 /** Stored as the pull state of a calendar whose server reports no ctag. */
 const PULLED_WITHOUT_CTAG = 'pulled'
+
+/** The failure kept on a calendar the server no longer lists, held for its unsent changes. */
+const CALENDAR_GONE = 'Not on the server'
 
 export class CalDavSyncEngine {
   private secureStore: SecureStore
@@ -37,6 +41,12 @@ export class CalDavSyncEngine {
   /**
    * Sync calendar list from CalDAV server. Returns each calendar with its ctag,
    * which changes whenever anything in the calendar does.
+   *
+   * A listing that names none of the calendars this account holds is refused
+   * before anything is written: an empty one, or one of other calendars only,
+   * is also what a server answers when it has lost its folder or its rights
+   * (a restore into the wrong place lists the principal and nothing else), and
+   * read as it stands it would remove every calendar here (dropGoneCalendars).
    */
   async syncCalendarList(
     accountId: string,
@@ -44,6 +54,11 @@ export class CalDavSyncEngine {
   ): Promise<{ id: string; ctag?: string }[]> {
     const adapter = new CalDavAdapter(creds)
     const descriptors = await adapter.discoverCalendars()
+    const listed = new Set(descriptors.map((d) => d.href))
+    const held = this.db.prepare('SELECT id FROM calendars WHERE account_id = ?').all<{ id: string }>(accountId)
+    if (held.length > 0 && !held.some((c) => listed.has(c.id))) {
+      throw new Error("The server's calendar list names none of this account's calendars")
+    }
     const now = new Date().toISOString()
     const syncedCalendars: { id: string; ctag?: string }[] = []
 
@@ -103,6 +118,54 @@ export class CalDavSyncEngine {
     }
 
     return syncedCalendars
+  }
+
+  /**
+   * Remove this account's calendars that the calendar list (`listed`, as
+   * syncCalendarList returned it) no longer names: deleted on the server, from
+   * another device or the server's own page. They used to stay here for good,
+   * events and all, while the phone dropped them.
+   *
+   * One holding a change not yet sent - an edit, a conflict, an answer to an
+   * invitation, a changed date of a series - stays, marked as not on the
+   * server, and is returned: removing it would lose the change unseen. It goes
+   * at the first listing after the change is settled here (the event deleted,
+   * or moved to another calendar). Only a real listing gets here: the list is
+   * read from a complete multistatus (discoverCalendars), and one naming none
+   * of the account's calendars has already failed the sync.
+   */
+  private dropGoneCalendars(accountId: string, listed: ReadonlySet<string>): { removed: number; kept: string[] } {
+    const gone = this.db
+      .prepare('SELECT id, name FROM calendars WHERE account_id = ? ORDER BY name')
+      .all<{ id: string; name: string }>(accountId)
+      .filter((c) => !listed.has(c.id))
+    let removed = 0
+    const kept: string[] = []
+    for (const cal of gone) {
+      if (this.holdsUnsentChanges(cal.id)) {
+        this.syncStateRepo.recordFailure(cal.id, CALENDAR_GONE)
+        kept.push(cal.name)
+      } else if (removeCalendar(this.db, cal.id)) {
+        removed++
+      }
+    }
+    return { removed, kept }
+  }
+
+  /** Whether a calendar holds anything of this computer's that its server has not had yet. */
+  private holdsUnsentChanges(calendarId: string): boolean {
+    return Boolean(
+      this.db
+        .prepare(
+          `SELECT 1 AS found FROM events
+           WHERE calendar_id = ? AND (has_conflict = 1 OR (is_deleted = 0 AND (dirty = 1 OR rsvp_pending IS NOT NULL)))
+           UNION ALL
+           SELECT 1 FROM event_exceptions x JOIN events e ON e.id = x.master_event_id
+           WHERE e.calendar_id = ? AND e.is_deleted = 0 AND x.dirty = 1
+           LIMIT 1`
+        )
+        .get<{ found: number }>(calendarId, calendarId)
+    )
   }
 
   /**
@@ -816,8 +879,12 @@ export class CalDavSyncEngine {
         // Before the list is read, so it reads back what was sent.
         const colors = await this.pushCalendarColors(acc.id, creds)
         const calendars = await this.syncCalendarList(acc.id, creds)
-        let firstFailure = colors.lastError
-        if (firstFailure && accountId) totalErrors++
+        let firstFailure: string | undefined = colors.lastError
+        if (colors.lastError && accountId) totalErrors++
+        const gone = this.dropGoneCalendars(acc.id, new Set(calendars.map((c) => c.id)))
+        // Their events went with them: the window has to read again.
+        totalPulled += gone.removed
+        if (gone.kept.length > 0) firstFailure ??= `${CALENDAR_GONE}: ${gone.kept.join(', ')}`
         for (const { id: calId, ctag } of calendars) {
           // One calendar failing - a server error on one collection - no longer
           // skips the calendars after it.

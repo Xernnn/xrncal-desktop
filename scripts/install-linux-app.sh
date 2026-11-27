@@ -44,9 +44,17 @@ install -m 755 "$SRC_APPIMAGE" "$TMP_APPIMAGE"
 mv -f "$TMP_APPIMAGE" "$TARGET_APPIMAGE"
 install -m 644 resources/icon.png "$ICON_DIR/${APP_ID}.png"
 
-# --ozone-platform=x11: under Wayland the app would otherwise run as a native
-# Wayland client, where the tray's mini window can neither place itself nor
-# stay on top (see executableArgs in electron-builder.yml).
+# Native Wayland by default: in a Wayland session Electron 38+ runs as a
+# Wayland client. Under XWayland - one X server for every X11 app - any other
+# X11 client can read xrncal's windows and keystrokes, the password typed into
+# the account dialog included, and a sandboxed app that was given the X11
+# socket is no exception. On Wayland the tray's mini window can neither place
+# itself nor stay on top; a compositor rule does both (README, "Linux"), and
+# it keeps its title, "xrncal Mini", for the rule to match.
+# XRNCAL_X11=1 npm run app:install writes --ozone-platform=x11 into the
+# launcher, running it under XWayland as earlier builds did, and XRNCAL_X11=1
+# into its environment, which the login entry (src/main/launch-at-login.ts)
+# follows.
 #
 # --appimage-extract-and-run with NO_CLEANUP=1: run from an extracted copy in
 # UNPACK_DIR, not from the FUSE mount. The mount lives only as long as the
@@ -68,12 +76,18 @@ install -m 644 resources/icon.png "$ICON_DIR/${APP_ID}.png"
 # single-instance socket and the .ics files Share writes go in the same
 # user-only folder, and a second launch still finds the running xrncal through
 # the link to that socket in its profile.
+OZONE_ENV=""
+OZONE_ARGS=""
+if [[ "${XRNCAL_X11:-}" == "1" ]]; then
+  OZONE_ENV=" XRNCAL_X11=1"
+  OZONE_ARGS=" --ozone-platform=x11"
+fi
 cat > "$DESKTOP_DIR/${APP_ID}.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=${APP_NAME}
 Comment=Modern desktop calendar with multi-provider sync
-Exec=env NO_CLEANUP=1 "TMPDIR=${UNPACK_DIR}" "${TARGET_APPIMAGE}" --appimage-extract-and-run --ozone-platform=x11 %U
+Exec=env NO_CLEANUP=1${OZONE_ENV} "TMPDIR=${UNPACK_DIR}" "${TARGET_APPIMAGE}" --appimage-extract-and-run${OZONE_ARGS} %U
 Icon=${ICON_DIR}/${APP_ID}.png
 Terminal=false
 Categories=Office;Calendar;

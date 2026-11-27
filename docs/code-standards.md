@@ -222,10 +222,11 @@ rethrowing. Handlers that return a result object instead (`connectCalDav`, `impo
 - **Adapters normalize** provider data into the canonical `CalendarEvent` model. Provider-specific JSON must not leak into the renderer.
 - **Dirty flag**: events modified locally are marked `dirty = 1` in SQLite. The sync engine pushes dirty events before pulling.
 - **Conflict strategy**: last-write-wins guarded by `If-Match`. A 412 sets `has_conflict = 1`; the row leaves the push set until the user resolves it in the conflicts dialog. Never overwrite silently.
-- **Adaptive poll interval**: 20 seconds when the main window is focused; 5 minutes when blurred/minimized. Controlled via `SyncWorker.setFocusState()`.
+- **Adaptive poll interval**: 20 seconds while one of the app's windows has focus; 10 minutes otherwise. Focus, blur, hide and close call `SyncWorker.setFocusState()`, and each poll asks which window has focus before timing the next.
 - **Guest lists**: push an event's attendees only when `attendees_synced = 1` or the event has never been pushed. An empty list that was simply never fetched would remove every guest from the meeting.
 - **Reminders**: a pull merges with `mergePulledReminders()` so the parts of a local list a provider cannot hold (Graph keeps one reminder) survive the round trip.
 - **Calendar colours**: a CalDAV calendar that can be written to keeps its colour on the server (Apple's `calendar-color`). One picked here waits in `calendar_color_push` until a sync sends it with a PROPPATCH, and the calendar list leaves it alone meanwhile; otherwise the list brings the server's. `color_is_custom` marks a colour kept on this computer only - a read-only calendar's, Google's, Outlook's, or one the server refused - which syncs never overwrite.
+- **Calendars gone from the server**: only a real listing removes anything. A CalDAV calendar the home's listing no longer names is removed with its events (`dropGoneCalendars`), unless it holds an unsent edit, a conflict, a reply or a changed date of a series; then it stays, marked "Not on the server". A listing that is not a whole multistatus, or names none of the account's calendars, fails the sync before anything is written.
 - **Replies**: an invitation reply waits in `rsvp_pending` and travels on its own path (Google guest-list PATCH, Graph accept/decline, CalDAV PUT), not through `dirty`.
 
 ---
